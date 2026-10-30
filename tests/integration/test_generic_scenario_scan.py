@@ -1,6 +1,7 @@
 """End-to-end offline scenario scan: API, persistence, reports, adversarial no-bypass."""
 import json
 import socket
+from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -13,21 +14,28 @@ from canarygate.scan.offline import OfflineGuardedRunner
 from canarygate.scan.transcript import OfflineTranscript, TranscriptEntry
 
 
-def client(path):
-    return TestClient(create_app(path))
-
-
 def start(client, scenario_id):
     response = client.post('/api/scenario-scans', json={'scenario_id': scenario_id})
     assert response.status_code == 201, response.text
     return response.json()
 
 
+def forbidden(*args, **kwargs):
+    raise AssertionError('network or DNS attempted by an offline scan')
+
+
 def no_network(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError('network or DNS attempted by an offline scan')
     monkeypatch.setattr(socket.socket, 'connect', forbidden)
     monkeypatch.setattr(socket, 'getaddrinfo', forbidden)
+
+
+@contextmanager
+def offline_client(monkeypatch, path):
+    # Windows asyncio creates a loopback socketpair while TestClient starts, so
+    # the outbound guard is installed only after that internal event loop exists.
+    with TestClient(create_app(path)) as api:
+        no_network(monkeypatch)
+        yield api
 
 
 @pytest.mark.parametrize('scenario_id,verdict', [
@@ -39,8 +47,7 @@ def no_network(monkeypatch):
     ('synthetic-guard-block', 'SKIPPED'),
 ])
 def test_scenario_verdicts_survive_the_application(monkeypatch, tmp_path, scenario_id, verdict):
-    no_network(monkeypatch)
-    with client(tmp_path / 'scenario.sqlite3') as api:
+    with offline_client(monkeypatch, tmp_path / 'scenario.sqlite3') as api:
         run = start(api, scenario_id)
         stored = api.get('/api/scenario-scans/' + run['id'])
         assert stored.status_code == 200 and stored.json() == run
@@ -91,8 +98,7 @@ def test_scenario_verdicts_survive_the_application(monkeypatch, tmp_path, scenar
 
 
 def test_confirmed_scan_is_explained_consistently_in_both_reports(monkeypatch, tmp_path):
-    no_network(monkeypatch)
-    with client(tmp_path / 'report.sqlite3') as api:
+    with offline_client(monkeypatch, tmp_path / 'report.sqlite3') as api:
         run = start(api, 'synthetic-vulnerable')
         sections_response = api.get('/api/scenario-scans/' + run['id'] + '/report?view=sections')
         assert sections_response.status_code == 200
@@ -120,8 +126,7 @@ def test_confirmed_scan_is_explained_consistently_in_both_reports(monkeypatch, t
 
 
 def test_secure_scan_reports_checked_denial_and_skipped_scan_reports_reason(monkeypatch, tmp_path):
-    no_network(monkeypatch)
-    with client(tmp_path / 'outcomes.sqlite3') as api:
+    with offline_client(monkeypatch, tmp_path / 'outcomes.sqlite3') as api:
         safe = start(api, 'synthetic-secure')
         text = api.get('/api/scenario-scans/' + safe['id'] + '/report?format=html').text
         assert 'SAFE' in text and 'verified_denial' in text and '403' in text
@@ -133,17 +138,16 @@ def test_secure_scan_reports_checked_denial_and_skipped_scan_reports_reason(monk
 
 
 def test_scenario_runs_survive_restart_and_detect_tampering(monkeypatch, tmp_path):
-    no_network(monkeypatch)
     database = tmp_path / 'restart.sqlite3'
-    with client(database) as api:
+    with offline_client(monkeypatch, database) as api:
         run = start(api, 'synthetic-vulnerable')
-    with client(database) as api:
+    with offline_client(monkeypatch, database) as api:
         restored = api.get('/api/scenario-scans/' + run['id']).json()
         assert restored['verdict'] == 'CONFIRMED' and restored['evidence'] == run['evidence']
     import sqlite3
     with sqlite3.connect(database) as connection:
         connection.execute("UPDATE scenario_runs SET payload = replace(payload, 'CONFIRMED', 'SAFE')")
-    with client(database) as api:
+    with offline_client(monkeypatch, database) as api:
         assert api.get('/api/scenario-scans/' + run['id']).status_code == 500
 
 
@@ -152,8 +156,7 @@ def test_scenario_runs_survive_restart_and_detect_tampering(monkeypatch, tmp_pat
     {'scenario_id': ''}, {'scenario_id': 7},
 ])
 def test_api_rejects_unknown_or_widened_requests(monkeypatch, tmp_path, payload):
-    no_network(monkeypatch)
-    with client(tmp_path / 'reject.sqlite3') as api:
+    with offline_client(monkeypatch, tmp_path / 'reject.sqlite3') as api:
         response = api.post('/api/scenario-scans', json=payload)
         assert response.status_code in (404, 422), response.text
         assert api.get('/api/scenario-scans/missing').status_code == 404
