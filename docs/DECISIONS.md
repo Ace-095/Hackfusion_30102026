@@ -308,8 +308,9 @@ third-party Starlette/AnyIO deprecation warning. Tests cover DNS/network isolati
 missing prerequisites, authorization and budget blocks, actual fixture response
 variants, redaction, persistence and evidence hashes. A real Uvicorn demo was run,
 old and new reports were retrieved, and the new result survived a server restart;
-the wheel contains the enumeration module and its exact scope. Live scanning
-stays disabled.
+the wheel contains the enumeration module and its exact scope. GitHub Actions
+passed on Linux and Windows for code commit `8ee800e` (run 41040353076). Live
+scanning stays disabled.
 
 ## Outstanding checkpoints
 
