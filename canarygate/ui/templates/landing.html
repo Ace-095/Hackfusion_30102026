@@ -1,0 +1,184 @@
+{#- The landing page is deliberately standalone: no sidebar, no backend data,
+    no JavaScript required to read it. The 15-second sequence is decorative; the
+    headline, both calls to action and the skip control are present and usable
+    from the first frame. -#}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="CanaryGate — evidence-backed API authorization testing. Boundary checks, ownership proofs and stored evidence, not opinions.">
+  <title>CanaryGate · every request has a boundary, every finding needs proof</title>
+  <link rel="stylesheet" href="/ui/static/css/landing.css">
+  <script src="/ui/static/js/landing.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#platform">Skip to content</a>
+
+  <header class="landing-top">
+    <a class="landing-brand" href="/" aria-label="CanaryGate home">
+      <span class="landing-mark" aria-hidden="true">CG</span>
+      <span>CanaryGate</span>
+    </a>
+    <nav class="landing-nav" aria-label="Landing">
+      <a href="#platform">Platform</a>
+      <a href="#proof">How proof works</a>
+      <a class="landing-cta-small" href="/ui/">Enter CanaryGate</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" data-intro aria-labelledby="hero-title">
+      {#- Decorative motion layer. Hidden from assistive technology; every fact on
+          this page is in the text below it. -#}
+      <div class="scene" data-scene aria-hidden="true">
+        <div class="scene-grid"></div>
+
+        <svg class="scene-network" viewBox="0 0 1200 620" preserveAspectRatio="xMidYMid slice" focusable="false">
+          <g class="net-edges">
+            <line x1="150" y1="140" x2="380" y2="260"/><line x1="380" y1="260" x2="620" y2="150"/>
+            <line x1="620" y1="150" x2="880" y2="270"/><line x1="880" y1="270" x2="1060" y2="150"/>
+            <line x1="150" y1="140" x2="250" y2="420"/><line x1="380" y1="260" x2="330" y2="480"/>
+            <line x1="620" y1="150" x2="560" y2="430"/><line x1="880" y1="270" x2="820" y2="470"/>
+            <line x1="1060" y1="150" x2="980" y2="440"/><line x1="250" y1="420" x2="560" y2="430"/>
+            <line x1="560" y1="430" x2="820" y2="470"/><line x1="820" y1="470" x2="980" y2="440"/>
+          </g>
+          <g class="net-nodes">
+            <circle cx="150" cy="140" r="6"/><circle cx="380" cy="260" r="8"/>
+            <circle cx="620" cy="150" r="6"/><circle cx="880" cy="270" r="8"/>
+            <circle cx="1060" cy="150" r="6"/><circle cx="250" cy="420" r="7"/>
+            <circle cx="330" cy="480" r="5"/><circle cx="560" cy="430" r="8"/>
+            <circle cx="820" cy="470" r="6"/><circle cx="980" cy="440" r="5"/>
+          </g>
+          <g class="net-paths">
+            <path class="route route-1" d="M150 140 L380 260 L620 150 L880 270"/>
+            <path class="route route-2" d="M250 420 L560 430 L820 470 L980 440"/>
+            <path class="route route-3" d="M620 150 L560 430"/>
+          </g>
+        </svg>
+
+        {#- The authorization boundary: a gate that one request crosses. -#}
+        <div class="boundary">
+          <span class="boundary-line"></span>
+          <span class="boundary-label">authorization boundary</span>
+          <span class="boundary-pulse"></span>
+        </div>
+        <div class="verdict-chip" data-verdict-chip>
+          <span class="dot"></span> cross-account request · CONFIRMED
+        </div>
+
+        {#- Evidence fragments assembling into a report. -#}
+        <div class="evidence-stack">
+          <div class="frag frag-1"><span class="frag-key">request</span><span class="frag-val mono">200</span></div>
+          <div class="frag frag-2"><span class="frag-key">owner baseline</span><span class="frag-val mono">verified</span></div>
+          <div class="frag frag-3"><span class="frag-key">evidence sha-256</span><span class="frag-val mono">7f3a…c91d</span></div>
+        </div>
+      </div>
+
+      <div class="hero-inner">
+        <p class="eyebrow"><span class="dot"></span> API authorization testing · evidence first</p>
+        <h1 id="hero-title">Every request has a boundary.<br><span>Every finding needs proof.</span></h1>
+        <p class="lede">
+          Intelligent API authorization testing. Evidence-backed findings.
+          Verifiable security decisions.
+        </p>
+        <div class="hero-actions">
+          <a class="btn-primary" href="/ui/">Enter CanaryGate</a>
+          <a class="btn-ghost" href="#platform">Explore the platform</a>
+        </div>
+        <p class="hero-note">
+          Local build · loopback lab only · five verdicts, never inferred
+        </p>
+      </div>
+
+      <div class="intro-controls">
+        <button type="button" class="skip-intro" data-skip-intro>
+          Skip intro
+        </button>
+        <span class="intro-meter" aria-hidden="true"><span data-intro-bar></span></span>
+      </div>
+    </section>
+
+    <section id="platform" class="section" aria-labelledby="platform-title">
+      <div class="section-head">
+        <h2 id="platform-title">What the platform actually does</h2>
+        <p>Three capabilities, all of them backed by stored checks. Nothing on this page is
+          a claim about a live or organizer-supplied API.</p>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <h3>Boundary testing</h3>
+          <p>One account requests another account's private record. The run proves ownership
+            first, then the disclosure, then compares the same request against the secure route.</p>
+          <p class="card-foot mono">LAB-BOLA-01 … 06</p>
+        </article>
+        <article class="card">
+          <h3>Control interaction</h3>
+          <p>Two controls that work alone — authentication and authorization — are exercised
+            together. The finding is an interaction, and the evidence says so.</p>
+          <p class="card-foot mono">SCI-AUTHZ · SCI-AUTHN · combined</p>
+        </article>
+        <article class="card">
+          <h3>Evidence, not opinions</h3>
+          <p>Every verdict carries a status, an evidence hash, the identity that proved ownership
+            and the identifiers needed to re-open the exact check.</p>
+          <p class="card-foot mono">CONFIRMED · SUSPECTED · SAFE · INCONCLUSIVE · SKIPPED</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="proof" class="section" aria-labelledby="proof-title">
+      <div class="section-head">
+        <h2 id="proof-title">How a finding becomes proof</h2>
+        <p>A finding is never a status code on its own. Each step below is a check that the
+          backend stores, hashes and can re-open.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="step-no">01</span><div><h3>Authenticate</h3>
+          <p>Two distinct identities, each with its own token. Nothing is shared.</p></div></li>
+        <li><span class="step-no">02</span><div><h3>Verify ownership</h3>
+          <p>Each account reads its own record first. That baseline is what a disclosure is
+            measured against.</p></div></li>
+        <li><span class="step-no">03</span><div><h3>Attempt the boundary</h3>
+          <p>The requesting account asks for the other account's resource. The response is
+            recorded; it is not judged yet.</p></div></li>
+        <li><span class="step-no">04</span><div><h3>Confirm the disclosure</h3>
+          <p>Only a private marker that matches the verified owner baseline is a disclosure.
+            A 200 alone is never a finding.</p></div></li>
+        <li><span class="step-no">05</span><div><h3>Compare the secure route</h3>
+          <p>The same request against the corrected endpoint must be refused — that denial is
+            the evidence the vulnerable route is the anomaly.</p></div></li>
+      </ol>
+    </section>
+
+    <section class="section two-up" aria-labelledby="env-title">
+      <div class="section-head">
+        <h2 id="env-title">Two environments, never confused</h2>
+      </div>
+      <div class="cards two">
+        <article class="card">
+          <span class="tag">Offline</span>
+          <h3>Frozen fixtures</h3>
+          <p>A synthetic API and a recorded transcript. Reproducible, deterministic and
+            labelled as fixture evidence everywhere it appears.</p>
+          <p class="dim small">No sockets. No target. Never presented as a live result.</p>
+        </article>
+        <article class="card">
+          <span class="tag tag-accent">Loopback</span>
+          <h3>TargetLab (AssetVault)</h3>
+          <p>A deliberately vulnerable lab on <span class="mono">127.0.0.1</span> with a pinned
+            test CA, three accounts and three private assets. Real HTTPS, real status codes,
+            controlled validation only.</p>
+          <p class="dim small">Written by the same team. Not a live scan of your API.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="landing-foot">
+    <div>CanaryGate · local build · backend mode <span class="mono">fixture</span> · loopback lab only · live scanning disabled</div>
+    <div>Do not treat fixture, transcript or loopback results as live-target results.</div>
+  </footer>
+</body>
+</html>

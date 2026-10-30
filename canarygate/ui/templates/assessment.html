@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, stat, icon, verdict_badge, kv, empty %}
+{% block title %}New security assessment{% endblock %}
+{% block content %}
+{{ page_head("Workspace", "New security assessment",
+             "Choose what to inspect, where to run it and which identity acts. Nothing runs
+              until you submit one of the forms below — opening this page never contacts a
+              target.") }}
+
+{# ------------------------------------------------------------------ A. spec #}
+<section class="card" id="specification" aria-labelledby="spec-title">
+  <div class="card-head">
+    <h2 id="spec-title">{{ icon("spec") }} A · API specification</h2>
+    <span class="badge badge-info">inventory only</span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-info">
+      {{ icon("info") }}
+      <div><b>Inventory only — no security scan performed.</b>
+        Uploading or inspecting a specification lists the operations it declares. It does
+        not execute a request, and it is not evidence about any running API.</div>
+    </div>
+    <div class="grid grid-3 mt-1">
+      {{ stat("Operations discovered", inventory|length, "from the active inventory", small=True) }}
+      {{ stat("Methods", methods|join(" · ") if methods else "—", "declared by the inventory", small=True) }}
+      {{ stat("Spec bytes accepted", "≤ 1 MiB", "JSON or YAML, parsed locally", small=True) }}
+    </div>
+    <p class="note mt-1">The inventory above is the backend's current declaration. To upload a
+      different document, use the API inspector — the same parser, with validation errors
+      reported verbatim.</p>
+    <p><a class="btn" href="/ui/spec">{{ icon("spec") }} Open the API inspector</a>
+       <a class="btn btn-ghost" href="/openapi.json" target="_blank" rel="noopener">
+         {{ icon("file") }} CanaryGate's own schema</a></p>
+  </div>
+</section>
+
+{# ------------------------------------------------------------ B. environment #}
+<section class="card" id="environment" aria-labelledby="env-title">
+  <div class="card-head">
+    <h2 id="env-title">{{ icon("database") }} B · Testing environment</h2>
+    <span class="hint">two environments, never merged</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <article class="card card-inset">
+        <div class="card-head"><h3>{{ icon("database") }} Offline fixtures</h3>
+          <span class="badge badge-muted">no sockets</span></div>
+        <p>A frozen synthetic API and a recorded transcript. Reproducible, deterministic and
+          labelled as fixture evidence everywhere it appears.</p>
+        <p class="note">Supports: read-BOLA scenarios, authentication scenarios, validation
+          scenarios, interaction scenarios, the nine-section report.</p>
+        <p class="note"><b>Does not test:</b> your API, any network, or any live target.</p>
+        <p><a class="btn btn-sm" href="/ui/suites">{{ icon("suites") }} Offline test suites</a></p>
+      </article>
+      <article class="card card-inset">
+        <div class="card-head"><h3>{{ icon("shield") }} AssetVault / TargetLab</h3>
+          {% if readiness.ca_configured %}
+          <span class="badge badge-ok">CA configured</span>
+          {% else %}
+          <span class="badge badge-warn">CA not configured</span>
+          {% endif %}
+        </div>
+        <p>A deliberately vulnerable lab on <span class="mono">127.0.0.1</span> with a pinned
+          test CA: three accounts, three private assets, real HTTPS and real status codes.</p>
+        <p class="note">Supports: read-BOLA checks (six per run), interaction checks (SCI),
+          the reset proof, and the nine-cell asset matrix.</p>
+        <p class="note"><b>Does not test:</b> a live or organizer-supplied API. The lab is
+          written by the same team; every result is controlled validation.</p>
+        {% if readiness.ca_configured %}
+        <p class="note mono xs">{{ readiness.ca_env }} is set</p>
+        {% else %}
+        <p class="note">Set <span class="mono">{{ readiness.ca_env }}</span> before starting
+          the server to enable this environment. See <a href="/ui/setup">readiness</a>.</p>
+        {% endif %}
+      </article>
+    </div>
+  </div>
+</section>
+
+{# --------------------------------------------------------------- C. accounts #}
+<section class="card" id="accounts" aria-labelledby="accounts-title">
+  <div class="card-head">
+    <h2 id="accounts-title">{{ icon("account") }} C · Demo accounts</h2>
+    <span class="hint mono">source: GET /api/lab-catalog</span>
+  </div>
+  <div class="card-body">
+    <p class="note">Each account owns exactly one private asset. Ownership below is the
+      catalog's declaration; a scan verifies it against the lab before any cross-account
+      request is judged.</p>
+    <div class="grid grid-3">
+      {% for account in catalog.accounts %}
+      {% set cell = (matrix.cells|selectattr("requester", "equalto", account.account)
+                     |selectattr("asset_id", "equalto", account.asset_id)|first) %}
+      <article class="card card-inset">
+        <div class="card-head">
+          <h3>{{ icon("account") }} {{ account.account|capitalize }}</h3>
+          {% if cell and cell.state == "tested" %}
+          {{ verdict_badge(cell.verdict) }}
+          {% else %}
+          <span class="badge badge-muted">untested</span>
+          {% endif %}
+        </div>
+        <dl class="kv">
+          {{ kv("Role", account.title) }}
+          {{ kv("Owns", account.asset_id, True) }}
+          {{ kv("Asset", account.asset_label) }}
+          {{ kv("Asset type", account.asset_type|humanize) }}
+        </dl>
+        <p class="note mt-1">
+          {% if cell and cell.state == "tested" %}
+          Its own record was returned by <span class="mono">{{ cell.evidence.check_id }}</span>
+          in run <span class="mono">{{ cell.evidence.run_id[:8] }}…</span>.
+          {% else %}
+          No stored check has verified this account's baseline yet.
+          {% endif %}
+        </p>
+        <p><a class="btn btn-sm" href="/ui/lab/matrix?cell={{ account.account }}:{{ account.asset_id }}#cell-detail">
+          {{ icon("eye") }} Inspect ownership evidence</a></p>
+      </article>
+      {% endfor %}
+    </div>
+    <p class="note mt-1">These three identities belong to the demo environment only. The
+      frozen offline fixture keeps its own two-account dataset, labelled separately wherever
+      it appears; the two are never mixed.</p>
+  </div>
+</section>
+
+{# ------------------------------------------------------------------ D. tests #}
+<section class="card" id="tests" aria-labelledby="tests-title">
+  <div class="card-head">
+    <h2 id="tests-title">{{ icon("play") }} D · Test selection</h2>
+    <span class="hint">each button runs a real backend workflow</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <article class="card card-inset">
+        <div class="card-head"><h3>BOLA testing</h3>
+          <span class="badge badge-muted">TargetLab</span></div>
+        <p>Checks whether one account can read another account's private resource. The run
+          verifies both owner baselines first, then the cross-account request, then the same
+          request against the secure route.</p>
+        <form class="form mt-1" method="post" action="/ui/actions/lab-bola-scan">
+          <div class="field-row">
+            <label class="field"><span>Port</span>
+              <input type="number" name="port" min="1024" max="65535" required
+                     inputmode="numeric" placeholder="8765"></label>
+            <label class="field"><span>Requester</span>
+              <select name="actor">
+                {% for account in catalog.accounts %}
+                <option value="{{ account.account }}">{{ account.account }}</option>
+                {% endfor %}
+              </select></label>
+            <label class="field"><span>Asset to request</span>
+              <select name="asset">
+                {% for account in catalog.accounts %}
+                <option value="{{ account.asset_id }}">{{ account.asset_id }} — {{ account.account }}</option>
+                {% endfor %}
+              </select></label>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">{{ icon("play") }} Run BOLA test</button>
+            <span class="note">18 requests at most; every one passes the safety guard.</span>
+          </div>
+        </form>
+      </article>
+
+      <article class="card card-inset">
+        <div class="card-head"><h3>SCI testing</h3>
+          <span class="badge badge-muted">TargetLab</span></div>
+        <p>Checks whether two controls that work alone — authentication and authorization —
+          fail when they interact. Two baselines are recorded before the combined action.</p>
+        <form class="form mt-1" method="post" action="/ui/actions/lab-sci-scan">
+          <div class="field-row">
+            <label class="field"><span>Port</span>
+              <input type="number" name="port" min="1024" max="65535" required
+                     inputmode="numeric" placeholder="8765"></label>
+            <label class="field"><span>Requester</span>
+              <select name="actor">
+                {% for account in catalog.accounts %}
+                <option value="{{ account.account }}">{{ account.account }}</option>
+                {% endfor %}
+              </select></label>
+            <label class="field"><span>Asset to guard</span>
+              <select name="asset">
+                {% for account in catalog.accounts %}
+                <option value="{{ account.asset_id }}">{{ account.asset_id }} — {{ account.account }}</option>
+                {% endfor %}
+              </select></label>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">{{ icon("play") }} Run SCI test</button>
+            <span class="note">The requester and the owner must differ.</span>
+          </div>
+        </form>
+      </article>
+    </div>
+
+    <article class="card card-inset mt-1" id="full-demonstration">
+      <div class="card-head">
+        <h3>Full authorization demonstration</h3>
+        <span class="badge badge-info">three sequential runs</span>
+      </div>
+      <p>Covers all nine account × asset combinations by running the catalog's three
+        coverage pairs, one after another, through the same scan API. The page that follows
+        reports what was actually stored — partial coverage stays partial.</p>
+      <form class="form mt-1" method="post" action="/ui/actions/lab-demo-run">
+        <div class="field-row-2">
+          <label class="field"><span>TargetLab port</span>
+            <input type="number" name="port" min="1024" max="65535" required
+                   inputmode="numeric" placeholder="8765"></label>
+          <div class="field"><span>Pairs, in catalog order</span>
+            <ul class="inline-list">
+              {% for pair in coverage %}
+              <li class="mono xs">{{ pair.actor }} → {{ pair.owner }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-run" type="submit">
+            {{ icon("play") }} RUN SECURITY ASSESSMENT</button>
+          <span class="note">Three runs, each capped by its own 20-request budget. Full
+            coverage is claimed only when all nine cells carry stored evidence.</span>
+        </div>
+      </form>
+    </article>
+
+    <div class="alert alert-warn mt-1">
+      {{ icon("info") }}
+      <div><b>What happens when you press a button.</b> The run executes synchronously on the
+        local server and the page you land on is rendered from the stored result. The backend
+        does not stream live progress, so no stage, percentage or request is animated here;
+        the run pages show the recorded stages and say so.</div>
+    </div>
+  </div>
+</section>
+{% endblock %}

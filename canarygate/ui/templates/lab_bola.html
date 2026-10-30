@@ -154,6 +154,84 @@
   {% endif %}
 </section>
 
+<section class="card" aria-labelledby="execution-title">
+  <div class="card-head">
+    <h2 id="execution-title">{{ icon("clock") }} Execution timeline</h2>
+    <span class="hint">recorded from this stored run · the backend streams no live events</span>
+  </div>
+  <div class="card-body">
+    <p class="note">A scan runs synchronously and is stored when it finishes, so there is no
+      progress feed to render. These are the stages this run recorded, in the order the oracle
+      performs them. A stage with no stored check says so rather than showing invented progress.</p>
+    <ol class="timeline mt-1">
+      {% for stage in stages %}
+      <li class="{% if stage.checks and (stage.checks|selectattr('verdict', 'equalto', 'CONFIRMED')|list) %}is-warn{% elif stage.checks %}is-ok{% endif %}">
+        <p class="t-title">{{ stage.title }}</p>
+        <p class="note">{{ stage.detail }}</p>
+        {% if stage.checks %}
+        <ul class="inline-list mt-1">
+          {% for check in stage.checks %}
+          <li><a class="mono xs" href="#{{ check.id }}">{{ check.id }}</a>
+            {{ status_badge(check.status) }} {{ verdict_badge(check.verdict, "xs") }}</li>
+          {% endfor %}
+        </ul>
+        {% elif stage.note %}
+        <p class="t-meta">{{ stage.note }}</p>
+        {% else %}
+        <p class="t-meta">not recorded by this run</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="proof-title">
+  <div class="card-head">
+    <h2 id="proof-title">{{ icon("eye") }} Disclosure proof</h2>
+    <span class="hint">every step is a stored field of this run</span>
+  </div>
+  {% if proof %}
+  <div class="card-body stack">
+    {% for item in proof %}
+    <article class="card card-inset">
+      <div class="card-head">
+        <h3 class="mono">{{ item.requester }} → {{ item.owner }}'s record</h3>
+        {{ verdict_badge(item.check.verdict) }}
+      </div>
+      <ol class="flow mt-1">
+        {% for step in item.steps %}
+        <li>
+          <span class="flow-label">{{ step.label }}</span>
+          <span class="flow-value">
+            {% if step.value is sameas true %}<span class="tri tri-yes">yes</span>
+            {% elif step.value is sameas false %}<span class="tri tri-no">no</span>
+            {% elif step.value is number %}<span class="mono">{{ step.value }}</span>
+            {% else %}<span class="tri tri-none">not recorded</span>{% endif %}
+          </span>
+          <a class="flow-link mono xs" href="#{{ step.anchor }}">{{ step.anchor }}</a>
+        </li>
+        {% endfor %}
+        {% if item.secure %}
+        <li class="flow-secure">
+          <span class="flow-label">The same request · secure route</span>
+          <span class="flow-value mono">HTTP {{ item.secure.status }} · {{ item.secure.verdict }}</span>
+          <a class="flow-link mono xs" href="#{{ item.secure.id }}">{{ item.secure.id }}</a>
+        </li>
+        {% endif %}
+      </ol>
+      <p class="note mt-1">{{ item.check.reason }}</p>
+      {% if item.check.remediation %}
+      <p class="note"><b>Remediation:</b> {{ item.check.remediation }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card-body">{{ empty("No cross-account attempt in this run") }}</div>
+  {% endif %}
+</section>
+
 <div class="grid grid-2">
   <section class="card">
     <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>

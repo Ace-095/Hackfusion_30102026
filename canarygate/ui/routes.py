@@ -55,25 +55,26 @@ _UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-
 #: Navigation is a flat list because the UI is deliberately small.
 #: Grouped, flat navigation: (group label, [(key, href, label, icon)]).
 NAV_GROUPS = (
-    ("Overview", (
-        ("dashboard", "/ui/", "Dashboard", "dashboard"),
-        ("findings", "/ui/findings", "Findings", "findings"),
+    ("Workspace", (
+        ("dashboard", "/ui/", "Overview", "dashboard"),
+        ("assessment", "/ui/assessment", "New security assessment", "play"),
     )),
     ("Analysis", (
-        ("endpoints", "/ui/endpoints", "API inventory", "inventory"),
-        ("matrix", "/ui/matrix", "Authorization matrix", "matrix"),
-        ("lab_matrix", "/ui/lab/matrix", "Asset matrix (TargetLab)", "shield"),
-    )),
-    ("Runs and evidence", (
-        ("scans", "/ui/scans", "Read-BOLA scans", "scans"),
-        ("suites", "/ui/suites", "Test suites", "suites"),
-        ("lab", "/ui/lab", "TargetLab validation", "shield"),
+        ("endpoints", "/ui/endpoints", "API inspector", "inventory"),
+        ("lab_matrix", "/ui/lab/matrix", "Authorization matrix", "matrix"),
+        ("findings", "/ui/findings", "Evidence explorer", "findings"),
+        ("scans", "/ui/scans", "Scan history", "scans"),
         ("reports", "/ui/reports", "Reports", "reports"),
     )),
+    ("TargetLab", (
+        ("lab", "/ui/lab", "Validation & demo accounts", "shield"),
+        ("suites", "/ui/suites", "Offline test suites", "suites"),
+        ("matrix", "/ui/matrix", "Offline endpoint matrix", "matrix"),
+    )),
     ("Configuration", (
+        ("spec", "/ui/spec", "API specification", "spec"),
         ("configure", "/ui/configure", "Scan configuration", "config"),
         ("setup", "/ui/setup", "Setup & readiness", "setup"),
-        ("spec", "/ui/spec", "Spec inspection", "spec"),
     )),
 )
 
@@ -543,8 +544,14 @@ def _check_gaps(runs: list[dict]) -> dict[str, int]:
 # Pages
 # --------------------------------------------------------------------------- #
 @router.get("/")
-def root():
-    return RedirectResponse("/ui/", status_code=307)
+def root(request: Request):
+    """The landing page: standalone, data-free and readable without JavaScript.
+
+    It is deliberately outside the workspace shell — it presents the product and
+    links into it. Nothing on it claims a scan ran, and every number lives behind
+    the "Enter CanaryGate" link where the backend supplies it.
+    """
+    return templates.TemplateResponse(request, "landing.html", {}, status_code=200)
 
 
 @router.get("/ui/")
@@ -977,6 +984,97 @@ def _bola_comparison(run: dict) -> list[dict]:
     return rows
 
 
+def _execution_stages(run: dict) -> list[dict]:
+    """The stages of a stored BOLA run, in the order the oracle records them.
+
+    This is a projection, not telemetry: each stage names the stored checks that
+    belong to it and repeats their own status and verdict. A stage whose checks are
+    absent says "not recorded" instead of showing progress that never existed.
+    """
+    checks = {check.get("id"): check for check in run.get("checks") or []}
+    ownership = (run.get("ownership") or {}).get("vulnerable") or {}
+    identities = ownership.get("identities_verified") or []
+    def stage(title, detail, ids, note=None):
+        return {"title": title, "detail": detail, "note": note,
+                "checks": [checks[check_id] for check_id in ids if check_id in checks]}
+
+    return [
+        stage("Authentication",
+              "Each identity authenticates with its own credential; tokens are never shared.",
+              [], ", ".join(identities) if identities else "not recorded by this run"),
+        stage("Ownership baselines",
+              "Each account reads its own record before anything else is judged.",
+              ["LAB-BOLA-01", "LAB-BOLA-02"]),
+        stage("Cross-account request",
+              "One account requests the other account's record.",
+              ["LAB-BOLA-03", "LAB-BOLA-04"]),
+        stage("Disclosure verification",
+              "Only a private marker matching the verified owner baseline counts as a disclosure.",
+              ["LAB-BOLA-03", "LAB-BOLA-04"]),
+        stage("Secure-route comparison",
+              "The same request against the corrected endpoint must be refused.",
+              ["LAB-BOLA-05", "LAB-BOLA-06"]),
+    ]
+
+
+def _disclosure_proof(run: dict) -> list[dict]:
+    """The stored steps of each cross-account attempt, for the proof flow.
+
+    Every step is read from the check's own evidence block, so the flow can only
+    show what the oracle recorded. The secure twin is included whenever the run
+    stored one, which is what makes the comparison visible.
+    """
+    checks = run.get("checks") or []
+    secure = {(check["actor"], check["owner"]): check for check in checks
+              if check.get("direction") == "cross_account_secure"}
+    proofs = []
+    for check in checks:
+        if check.get("direction") != "cross_account":
+            continue
+        evidence = check.get("evidence") or {}
+        proofs.append({
+            "requester": check["actor"], "owner": check["owner"], "check": check,
+            "secure": secure.get((check["actor"], check["owner"])),
+            "steps": [
+                {"label": "Owner baseline verified",
+                 "value": evidence.get("owner_baseline"), "anchor": check["id"]},
+                {"label": "Ownership verified",
+                 "value": evidence.get("ownership_verified"), "anchor": check["id"]},
+                {"label": "Cross-account request", "value": check.get("status"),
+                 "anchor": check["id"]},
+                {"label": "Private data disclosed",
+                 "value": evidence.get("private_disclosure"), "anchor": check["id"]},
+            ],
+        })
+    return proofs
+
+
+@router.get("/ui/assessment")
+def assessment_page(request: Request):
+    """The configuration workspace: specification, environment, accounts, tests.
+
+    Nothing here starts a scan. Every account, asset and pair comes from
+    ``GET /api/lab-catalog`` and every coverage figure from ``GET /api/lab-matrix``;
+    the forms post to the existing action routes with the fields those backend
+    models actually accept.
+    """
+    def build():
+        api = _api()
+        return (build_lab_catalog(),
+                build_lab_matrix(list(reversed(_listed(_lab_store(request, "bola"))))),
+                api.endpoints()["endpoints"], _lab_readiness())
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
+        return result
+    catalog, matrix, inventory, readiness = result
+    methods = sorted({endpoint["method"] for endpoint in inventory})
+    return _page(request, "assessment.html", "assessment",
+                 catalog=catalog, matrix=matrix, rows=_matrix_rows(matrix),
+                 columns=matrix["accounts"], inventory=inventory, methods=methods,
+                 readiness=readiness, coverage=catalog_coverage_pairs())
+
+
 @router.get("/ui/lab/{family}/{run_id}")
 def lab_run_page(request: Request, family: str, run_id: str):
     if family not in LAB_FAMILIES:
@@ -996,7 +1094,9 @@ def lab_run_page(request: Request, family: str, run_id: str):
                 "reset": "lab_reset.html"}[family]
     return _page(request, template, "lab", run=result, family=family,
                  family_spec=LAB_FAMILIES[family], resets=resets,
-                 comparisons=_bola_comparison(result) if family == "bola" else [])
+                 comparisons=_bola_comparison(result) if family == "bola" else [],
+                 stages=_execution_stages(result) if family == "bola" else [],
+                 proof=_disclosure_proof(result) if family == "bola" else [])
 
 
 @router.get("/ui/lab/{family}/{run_id}/report")

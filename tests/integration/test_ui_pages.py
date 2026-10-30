@@ -14,7 +14,7 @@ from canarygate.api.app import create_app as create_backend_app
 from canarygate.ui.app import create_ui_app
 
 PATHS = ["/ui/", "/ui/endpoints", "/ui/setup", "/ui/scans", "/ui/matrix",
-         "/ui/reports", "/ui/suites", "/ui/spec"]
+         "/ui/reports", "/ui/suites", "/ui/spec", "/ui/assessment"]
 EXTERNAL_REFERENCE = re.compile(r"""(?:src|href)\s*=\s*["'](?:https?:)?//""", re.IGNORECASE)
 
 
@@ -677,3 +677,47 @@ def test_the_spec_page_is_labelled_inventory_only(tmp_path):
         assert page.status_code == 200
         assert "INVENTORY ONLY — NO SECURITY SCAN PERFORMED" in page.text
         assert "no request is made and no verdict can be produced here" in page.text
+
+
+# --- the landing page and the workspace navigation ---------------------------
+
+def test_the_landing_page_is_a_standalone_product_page(tmp_path):
+    with _client(tmp_path) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        body = response.text
+        assert "Every request has a boundary" in body
+        assert "Every finding needs proof" in body
+        # Both calls to action exist and the workspace is one click away.
+        assert 'href="/ui/"' in body and 'href="#platform"' in body
+        # The intro can be skipped and the content never waits for it.
+        assert "Skip intro" in body
+        assert "What the platform actually does" in body
+        # No action surface and no external origin on a page that holds no data.
+        assert "<form" not in body
+        assert EXTERNAL_REFERENCE.search(body) is None
+        assert '<meta name="viewport"' in body
+        assert body.count("<h1") == 1
+
+
+def test_the_motion_layer_respects_reduced_motion_and_the_skip_control(tmp_path):
+    with _client(tmp_path) as client:
+        css = client.get("/ui/static/css/landing.css")
+        js = client.get("/ui/static/js/landing.js")
+    assert css.status_code == 200 and js.status_code == 200
+    assert "prefers-reduced-motion: reduce" in css.text
+    assert ".is-static" in css.text
+    assert "is-static" in js.text and "prefers-reduced-motion" in js.text
+    assert "Escape" in js.text
+    # One local 15-second timeline, not a chain of scripts.
+    assert "@keyframes" in css.text and "15s" in css.text
+
+
+def test_every_workspace_navigation_link_resolves(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/ui/").text
+        hrefs = set(re.findall(r'class="nav-link" href="([^"]+)"', body))
+        assert {"/ui/assessment", "/ui/lab/matrix", "/ui/reports", "/ui/spec"} <= hrefs
+        for href in sorted(hrefs):
+            response = client.get(href)
+            assert response.status_code == 200, href

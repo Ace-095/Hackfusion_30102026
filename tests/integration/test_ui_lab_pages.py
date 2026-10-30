@@ -666,3 +666,64 @@ def test_the_matrix_page_leaks_no_lab_secret(client, lab):
         body = client.get(url).text
         for secret in FORBIDDEN:
             assert secret not in body, (url, secret)
+
+
+# --- the assessment workspace and the recorded execution view ----------------
+
+def test_the_assessment_workspace_is_built_from_backend_data(client):
+    body = _text(client.get("/ui/assessment"))
+    catalog = client.get("/api/lab-catalog").json()
+    for heading in ("A · API specification", "B · Testing environment",
+                    "C · Demo accounts", "D · Test selection"):
+        assert heading in body, heading
+    assert "Inventory only — no security scan performed" in body
+    assert "RUN SECURITY ASSESSMENT" in body
+    for account in catalog["accounts"]:
+        assert account["account"] in body and account["title"] in body
+        assert account["asset_id"] in body and account["asset_label"] in body
+    # The forms post to the existing action routes and nowhere else.
+    for action in ("/ui/actions/lab-bola-scan", "/ui/actions/lab-sci-scan",
+                   "/ui/actions/lab-demo-run"):
+        assert f'action="{action}"' in body, action
+    # Opening the workspace starts nothing.
+    assert client.get("/api/lab-matrix").json()["summary"]["runs_considered"] == 0
+    for secret in FORBIDDEN:
+        assert secret not in body, secret
+
+
+def test_the_assessment_form_runs_the_pair_it_names(client, lab):
+    response = client.post("/ui/actions/lab-bola-scan",
+                           data={"port": lab.port, "actor": "sakshi", "asset": "ADS-2026-027"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    run = client.get(f"/api/lab-bola-scans/{response.headers['location'].rsplit('/', 1)[-1]}").json()
+    cross = {(check["actor"], check["owner"]) for check in run["checks"]
+             if check["direction"] == "cross_account"}
+    assert cross == {("sakshi", "harsha"), ("harsha", "sakshi")}
+    baselines = {(check["actor"], check["owner"]) for check in run["checks"]
+                 if check["direction"] == "owner_baseline"}
+    assert baselines == {("sakshi", "sakshi"), ("harsha", "harsha")}
+    assert run["verdict"] == "CONFIRMED"
+
+
+def test_the_run_page_shows_a_recorded_timeline_and_the_disclosure_proof(client, lab):
+    response = client.post("/ui/actions/lab-bola-scan",
+                           data={"port": lab.port, "actor": "mallapa", "asset": "BRD-2026-018"},
+                           follow_redirects=False)
+    run_id = response.headers["location"].rsplit("/", 1)[-1]
+    body = _text(client.get(f"/ui/lab/bola/{run_id}"))
+    assert "Execution timeline" in body
+    assert "the backend streams no live events" in body
+    for stage in ("Authentication", "Ownership baselines", "Cross-account request",
+                  "Disclosure verification", "Secure-route comparison"):
+        assert stage in body, stage
+    assert "Disclosure proof" in body
+    assert "mallapa → sakshi's record" in body
+    assert "Private data disclosed" in body
+    assert "The same request · secure route" in body
+    # Every step links to the stored check it came from.
+    for check_id in ("LAB-BOLA-03", "LAB-BOLA-05"):
+        assert f'target="#{check_id}"' in body or f'href="#{check_id}"' in body
+        assert f'id="{check_id}"' in body
+    for secret in FORBIDDEN:
+        assert secret not in body, secret

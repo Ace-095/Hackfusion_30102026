@@ -217,8 +217,10 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
 | `/ui/suites/validation/{id}` | Input/disclosure detail | per-check verdicts (INPUT, DISC), evidence summaries, request accounting, scope, constraints, limitations | `GET /api/validation-scans/{id}` | backend HTML/JSON report | 404 page; "no run-level verdict in this family" is stated on the page |
 | `/ui/suites/interaction/{id}` | Control-interaction detail | both baselines, combined action, `interaction_induced` attribution, 8-key checklist, evidence, limitations | `GET /api/interaction-scans/{id}` | backend HTML/JSON report | 404 page; SKIPPED and INCONCLUSIVE keep their reason |
 | `/ui/suites/{family}/{id}/report` | A family's section projection, in-page | the backend's own sections and titles for read-bola, authentication, validation or interaction | `GET /api/…-scans/{id}/report?view=sections` | print, open backend HTML/JSON | 404 page; a section the backend omits stays absent |
+| `/` | Landing page (standalone, no shell, no data) | 15-second CSS/SVG motion sequence, the headline "Every request has a boundary. Every finding needs proof.", two calls to action (`/ui/` and `#platform`), a platform overview, the five proof steps and the two environments | none — the page reads no backend data | Enter CanaryGate, Explore the platform, Skip intro | n/a (always renders) |
+| `/ui/assessment` | New assessment workspace | four sections: A specification (inventory only, operations and methods), B two environments with capabilities and limits, C the three demo accounts with their owned assets and ownership evidence links (from `/api/lab-catalog`), D three real run forms (BOLA pair, SCI pair, full demonstration) | `GET /api/lab-catalog`, `GET /api/lab-matrix`, `GET /api/endpoints` | BOLA/SCI/demo actions, ownership inspection | forms validate on the server; a missing CA is shown as a warning, never as a working environment |
 | `/ui/lab` | TargetLab validation entry | CA readiness (`CANARYGATE_TARGETLAB_CA`), transport, the three workflows with their ports and budget bounds (BOLA 16–40, SCI 8–40), every stored lab run, and the reset-proof links | none directly (reads the three lab stores and the CA environment) | run read-BOLA / control interaction / reset proof | refusal panel when the CA is unset; 422 for an invalid port or budget |
-| `/ui/lab/bola/{id}` | Read-BOLA evidence | six checks with direction, actors, endpoint, HTTP status, verdict, reason and evidence hash; summary counts; 10-key checklist; transport; constraints; ground truth scored after the verdicts; limitations | `GET /api/lab-bola-scans/{id}` | backend HTML/JSON report | 404 page; "no evidence stored" states |
+| `/ui/lab/bola/{id}` | Read-BOLA evidence (+ execution timeline and disclosure proof) | six checks with direction, actors, endpoint, HTTP status, verdict, reason and evidence hash; a **recorded execution timeline** (authentication, owner baselines, cross-account request, disclosure verification, secure-route comparison) that says the backend streams no live events; a **disclosure proof flow** whose every step is a stored field, ending in the secure route's 403; summary counts; 10-key checklist; transport; constraints; ground truth scored after the verdicts; limitations | `GET /api/lab-bola-scans/{id}` | backend HTML/JSON report | 404 page; "no evidence stored" states |
 | `/ui/lab/sci/{id}` | Control-interaction evidence | both baselines with their own verdicts and statuses (403, 401), the combined action (200), attribution, 8-key checklist, ownership and disclosure evidence, constraints, limitations | `GET /api/lab-sci-scans/{id}` | backend HTML/JSON report; reset proofs on the same port | 404 page; a missing part is named, never filled in |
 | `/ui/lab/matrix` | The 3×3 demo-tenant asset matrix | "RUN FULL AUTHORIZATION DEMONSTRATION" (port only); nine requester × asset cells, each `tested` (verdict + the run/check it came from) or **untested**; a selected cell (`?cell=requester:asset`, unknown → 404) shows the requester, the resource owner, the asset and its type, expected vs actual access, the verdict with its reason, the stored run id, evidence id (`<run>#<check>`), check id, evidence SHA-256, lab instance, status, request count, the four evidence booleans, the oracle's remediation for a confirmed cell, the secure-route counterpart with its 403 and digest, superseded runs and staleness; vulnerable-vs-secure comparison; the three coverage pairs; and the reset panel with what it clears and what it preserves | `GET /api/lab-matrix`, `GET /api/lab-catalog` (coverage pairs) | run one combination (`actor`+`asset`, posted to `/ui/actions/lab-bola-scan`); run all three pairs (`/ui/actions/lab-demo-run`); run the reset proof; jump to the run (`/ui/lab/bola/{id}#CHECK`) | "No stored check answers this combination. It stays untested — not SAFE", with the run form offered; an unknown cell answers 404 |
 | `/ui/lab/demo` | Full-demonstration result | whether all nine cells are covered, four counts (pairs run, cells tested, confirmed, safe), one row per pair with the stored run, its verdict, confirmed count and requests/budget — or the backend's refusal detail; the same grid, each cell linking back to its evidence; and a statement of what the page is and is not | `GET /api/lab-matrix` (rebuilt after the runs) | open the grid, open a cell, open a run, re-run the demonstration | "Coverage is incomplete" naming every failed pair; a non-numeric or out-of-range port answers 422 before anything runs |
@@ -300,10 +302,10 @@ documented default view; see §10 and the integration document.
 
 ## 7. Tests
 
-Four files, 128 tests, run with the rest of the suite and registered in
+Four files, 134 tests, run with the rest of the suite and registered in
 `tools/p0_audit.py` (`in_process_api`, or `loopback_tls` for the lab file):
-`test_ui_pages.py` (29), `test_ui_replay_adapter.py` (16),
-`test_ui_backend_contract.py` (33) and `test_ui_lab_pages.py` (50).
+`test_ui_pages.py` (32), `test_ui_replay_adapter.py` (16),
+`test_ui_backend_contract.py` (33) and `test_ui_lab_pages.py` (53).
 
 `tests/integration/test_ui_backend_contract.py` (33 tests) covers the integration
 itself. For all four offline families it compares the action → stored run → page →
@@ -318,7 +320,7 @@ the lab only through `start_lab_bola_scan` / `start_lab_sci_scan`. A final test
 runs the same structural accessibility checks over each of the four suite run
 pages and their section reports.
 
-`tests/integration/test_ui_lab_pages.py` (50 tests) drives the three TargetLab
+`tests/integration/test_ui_lab_pages.py` (53 tests) drives the three TargetLab
 workflows through the HTML forms against the real TLS lab (`lab_server.LabTlsServer`
 with `CANARYGATE_TARGETLAB_CA`) and compares every rendered verdict, status and
 count with the JSON API for the same stored run: LAB-BOLA-01…06, both SCI

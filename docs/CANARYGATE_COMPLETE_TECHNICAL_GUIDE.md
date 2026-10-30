@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP41](#17-checkpoint-history-cp26cp41)
+- [§17 Checkpoint history CP26–CP42](#17-checkpoint-history-cp26cp42)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -2108,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP41
+## 17. Checkpoint history CP26–CP42
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2130,6 +2130,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 39 | Demo asset matrix | `scan/lab_matrix.py`, `scan/lab_matrix_models.py`, `/api/lab-matrix`, `/ui/lab/matrix` | Projected stored checks onto the nine account × asset combinations; untested is a distinct state, never SAFE |
 | 40 | Judge experience | `/ui/actions/lab-demo-run`, `lab_demo_result.html`, `partials/matrix_grid.html`, `X-Lab-Instance` | One port fills all nine cells through three ordinary sequential runs; coverage is claimed only from stored evidence; instance ids replace the port heuristic |
 | 41 | Demonstration readiness | `GatedLabTlsServer`, three more interface tests, clean-wheel check | Proved the demonstration survives a lab that disappears mid-run: stored runs stay, the missing pair's cells stay untested, and a connection failure is never a verdict |
+| 42 | Product experience | `landing.html` + `landing.css`/`landing.js`, `/ui/assessment`, execution timeline, disclosure proof, new navigation | The journey is self-service end to end; the run page shows recorded stages and says plainly that the backend streams no live events |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -3319,6 +3320,33 @@ virtualenv outside the checkout and served every page, asset and API route from
 One claim in this guide is deliberately narrowed at CP41: **no real browser was
 used**. jsdom executes the pages' scripts, but it has no layout engine, so nothing
 here asserts how the interface looks, and the guide does not claim it does.
+
+### G.13 Refresh at CP42
+
+Checkpoint 42 added the product experience: `/` is now a standalone landing page
+(it was a 307 redirect to `/ui/`), `/ui/assessment` is the configuration
+workspace, the BOLA run page gained a recorded execution timeline and a disclosure
+proof flow, and the sidebar was regrouped into Workspace · Analysis · TargetLab ·
+Configuration. The architecture report behind it is
+`docs/frontend/EXPERIENCE_ARCHITECTURE.md`; the milestone report is
+`docs/checkpoints/42-experience-redesign.md`.
+
+```
+$ .venv/bin/python -m pytest -q
+1088 passed, 1 warning in 110.11s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1088 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+```
+
+The guide still makes no claim about visual rendering: jsdom has no layout engine,
+and the cinematic sequence is checked structurally plus a focused jsdom run (skip
+control, Escape, no external assets). Live progress remains unimplemented by
+design; §14.10 and the architecture report state what it would need.
 
 ---
 
