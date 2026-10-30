@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 MAX_ENTRIES = 32
 MAX_BODY_BYTES = 64 * 1024
 MAX_TOTAL_BYTES = 512 * 1024
-_ALLOWED_STATUSES = frozenset(range(200, 300)) | {400, 401, 403, 404, 409, 422}
+_ALLOWED_STATUSES = frozenset(range(200, 300)) | {400, 401, 403, 404, 409, 422, 500}
+MAX_HEADERS = 8
 
 
 class TranscriptEntry(BaseModel):
@@ -21,6 +22,9 @@ class TranscriptEntry(BaseModel):
     path: str
     status: int
     body: dict | list | None = None
+    # Recorded response headers are disclosure evidence (server/version/debug),
+    # never request metadata. Values are bounded and never persisted raw.
+    headers: dict[str, str] = Field(default_factory=dict, max_length=MAX_HEADERS)
 
     @field_validator("path")
     @classmethod
@@ -35,6 +39,16 @@ class TranscriptEntry(BaseModel):
     def recorded_status(cls, value):
         if value not in _ALLOWED_STATUSES:
             raise ValueError("transcript status is not an allowed recorded response")
+        return value
+
+    @field_validator("headers")
+    @classmethod
+    def bounded_headers(cls, value):
+        for key, item in value.items():
+            if (not isinstance(key, str) or len(key) > 64 or not key.isascii()
+                    or any(character.isspace() for character in key)
+                    or not isinstance(item, str) or len(item) > 256 or not item.isprintable()):
+                raise ValueError("invalid recorded header")
         return value
 
     def body_bytes(self):

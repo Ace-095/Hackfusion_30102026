@@ -91,7 +91,10 @@ class OfflineGuardedRunner(GuardedReadRunner):
                 raise ValueError("recorded response exceeds size limit")
             request = httpx.Request("GET", self._scope.origin + path,
                                     extensions={"canary_actor": actor})
-            response = httpx.Response(entry.status, content=body, request=request,
+            headers = dict(entry.headers)
+            if body and "content-type" not in {key.lower() for key in headers}:
+                headers["content-type"] = "application/json"
+            response = httpx.Response(entry.status, content=body, headers=headers, request=request,
                                       extensions={PAGINATION_METADATA_KEY: False})
             self._run_guard.record_status(entry.status)
             self._record_read(response, actor, path)

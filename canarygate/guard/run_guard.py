@@ -47,20 +47,21 @@ class RunSafetyGuard:
                 self._blocked += 1
             raise
 
-    def authorize_authentication(self, actor, url):
+    def authorize_authentication(self, actor, url, *, input_probe=None):
         with self._lock:
-            if actor in self._authentication_attempts:
+            attempt = (actor, input_probe)
+            if attempt in self._authentication_attempts:
                 self._blocked += 1
                 raise ValueError("authentication already attempted in this run")
             try:
-                classification = self._policy.check(actor, "POST", url)
+                classification = self._policy.check(actor, "POST", url, input_probe=input_probe)
             except ValueError:
                 self._blocked += 1
                 raise
             if classification != "AUTHENTICATION":
                 self._blocked += 1
                 raise ValueError("not an authentication operation")
-            self._authentication_attempts.add(actor)
+            self._authentication_attempts.add(attempt)
 
     def stats(self):
         """Counters for honest constraint reports; never includes credentials or bodies."""

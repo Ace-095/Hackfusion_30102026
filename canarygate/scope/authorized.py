@@ -18,6 +18,8 @@ AUTH_PROBE_NAMES = ("missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role
                     "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse")
 AuthProbeName = Literal["missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
                         "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse"]
+INPUT_PROBE_NAMES = ("control", "extra_property", "malformed_json", "special_characters")
+InputProbeName = Literal["control", "extra_property", "malformed_json", "special_characters"]
 
 
 class _ScopeLoader(yaml.SafeLoader):
@@ -66,6 +68,9 @@ class AuthorizedOperation(BaseModel):
     creation_authorization_reference: str | None = None
     # Crafted-credential probes run only where the written scope permits them.
     auth_probes: tuple[AuthProbeName, ...] = ()
+    # Body-carrying validation probes are permitted only on the exact
+    # authentication POST, each at most once, where the scope declares them.
+    input_probes: tuple[InputProbeName, ...] = ()
 
     @field_validator("path")
     @classmethod
@@ -89,6 +94,11 @@ class AuthorizedOperation(BaseModel):
                 raise ValueError("authentication probes require an exact read-only GET operation")
             if len(set(self.auth_probes)) != len(self.auth_probes):
                 raise ValueError("duplicate authentication probe")
+        if self.input_probes:
+            if self.method != "POST" or self.classification != "AUTHENTICATION":
+                raise ValueError("input probes require the exact authentication POST operation")
+            if len(set(self.input_probes)) != len(self.input_probes):
+                raise ValueError("duplicate input probe")
         if self.classification == "AUTHENTICATION" and self.method != "POST":
             raise ValueError("only an exact POST login can be classified as authentication")
         if self.classification == "STATE_CHANGING":
@@ -120,8 +130,10 @@ class AuthorizedScope(ScopeConfig):
                     value[field] = tuple(value[field])
             operations = []
             for operation in value.get("operations") or ():
-                if isinstance(operation, dict) and isinstance(operation.get("auth_probes"), list):
-                    operation = {**operation, "auth_probes": tuple(operation["auth_probes"])}
+                if isinstance(operation, dict):
+                    for field_name in ("auth_probes", "input_probes"):
+                        if isinstance(operation.get(field_name), list):
+                            operation = {**operation, field_name: tuple(operation[field_name])}
                 operations.append(operation)
             if operations:
                 value["operations"] = tuple(operations)

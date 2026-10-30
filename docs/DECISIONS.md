@@ -749,6 +749,44 @@ strict model, minimized evidence and payload hashes. The API exposes only
 bundled scenario ids, never a token, transcript or target. This remains offline
 synthetic evidence, not live validation or P0 acceptance.
 
+### Checkpoint 30: body-carrying validation probes on the recorded guarded transport
+
+INPUT-05/06/07 need a JSON-accepting operation, and the only body-carrying
+operation in the model is the exact authentication POST. Instead of allowing a
+free-form body, the validated scope gains `input_probes` on that one operation
+and the shared preflight rejects any probe the scope did not declare, in the
+same decision as actor, method, URL and budget. `RunSafetyGuard` tracks
+`(actor, probe)` attempts, so a login is never automatically retried and each
+declared probe releases exactly one recorded response. The alternative — a
+second, body-capable execution path — was rejected.
+
+Every recorded submission is released inside the run guard's execution lock
+after authorisation, is verified by same-run provenance and content hashes, and
+is discarded afterwards. Input verdicts therefore rest on the recorded status
+code and bounded error body, never on a success status alone: a SAFE rejection
+must be a 400/422 with a bounded, field-specific error that does not leak
+internals, and it must be paired with a verified control response showing the
+operation accepts valid input. Acceptance is SUSPECTED at most because the MVP
+does no persistence checks.
+
+DISC checks reuse one bounded inspection module: fixed signature names, bounded
+JSON traversal (10 000 nodes, depth 32), name-based sensitive-field detection
+plus three conservative value patterns (JWT, private-key header, provider API
+key prefixes), top-level excess-field comparison against an explicitly closed
+simple schema, and one existing/nonexistent error comparison that requires two
+usable 4xx bodies. Incomplete traversal, an unusable schema, a 2xx on a denied
+resource or a 5xx during enumeration is INCONCLUSIVE or SKIPPED, never SAFE.
+
+Two additive changes were needed outside the checkpoint: recorded reads may now
+carry bounded response headers (DISC-05 evidence) and a recorded 500 read is
+allowed, because a framework error page is exactly where disclosure appears.
+Header values are used for signature matching only and are never persisted.
+
+Runs are stored in a new `validation_runs` table with a payload hash; the store
+rejects a payload that is not already redacted. The API exposes bundled scenario
+ids only. This remains offline synthetic evidence, not live validation or P0
+acceptance.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

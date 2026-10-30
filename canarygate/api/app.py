@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from canarygate.database.auth_store import AuthenticationStore
 from canarygate.database.scenario_store import ScenarioStore
+from canarygate.database.validation_store import ValidationStore
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
@@ -17,12 +18,17 @@ from canarygate.report.fixture import build_fixture_sections, render_fixture_rep
 from canarygate.report.authentication import (build_authentication_sections,
                                               render_authentication_report)
 from canarygate.report.scenario import build_scenario_sections, render_scenario_report
+from canarygate.report.validation import build_validation_sections, render_validation_report
 from canarygate.scan.auth_generic import run_authentication_scan
 from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRequest,
                                          AuthenticationSectionReport)
 from canarygate.scan.auth_scenarios import build_auth_scenario, runner_for
 from canarygate.scan.models import (ScenarioRun, ScenarioScanRequest, ScenarioSectionReport)
 from canarygate.scan.scenarios import build_scenario, execute_offline_scenario
+from canarygate.scan.validation_generic import run_offline_validation
+from canarygate.scan.validation_models import (ValidationRun, ValidationScanRequest,
+                                               ValidationSectionReport)
+from canarygate.scan.validation_scenarios import build_validation_scenario, runner_for as validation_runner_for
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
                       ObservationSet, FixtureReportBundle, FixtureSectionReport, SpecInspection)
@@ -42,6 +48,10 @@ def get_auth_store(request: Request) -> AuthenticationStore:
     return request.app.state.auth_store
 
 
+def get_validation_store(request: Request) -> ValidationStore:
+    return request.app.state.validation_store
+
+
 def _database_call(method, *args):
     try:
         return method(*args)
@@ -58,6 +68,15 @@ def _scenario_call(method, *args):
         raise HTTPException(status_code=500, detail="Stored scenario data failed integrity verification") from None
     except (sqlite3.Error, OSError, ValueError):
         raise HTTPException(status_code=500, detail="Scenario storage unavailable or invalid") from None
+
+
+def _validation_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500, detail="Stored validation data failed integrity verification") from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(status_code=500, detail="Validation storage unavailable or invalid") from None
 
 
 def _auth_call(method, *args):
@@ -247,6 +266,51 @@ def authentication_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
+@router.post("/api/validation-scans", status_code=201, response_model=ValidationRun)
+def start_validation_scan(payload: ValidationScanRequest,
+                          store: ValidationStore = Depends(get_validation_store)):
+    """Run one bundled synthetic offline validation scenario; no live target."""
+    try:
+        plan = build_validation_scenario(payload.scenario_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown offline validation scenario") from None
+    runner = validation_runner_for(plan)
+    try:
+        run = run_offline_validation(plan, runner)
+    finally:
+        runner.close()
+    return _validation_call(store.save, run)
+
+
+def _find_validation_run(store, run_id):
+    run = _validation_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Validation scan not found")
+    return run
+
+
+@router.get("/api/validation-scans/{run_id}", response_model=ValidationRun)
+def validation_scan(run_id: str, store: ValidationStore = Depends(get_validation_store)):
+    return _find_validation_run(store, run_id)
+
+
+@router.get("/api/validation-scans/{run_id}/report", response_model=ValidationSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def validation_report(run_id: str, format: str = "json", view: str = "run",
+                      store: ValidationStore = Depends(get_validation_store)):
+    run = _find_validation_run(store, run_id)
+    if view not in {"run", "sections"}:
+        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    if format == "html":
+        return HTMLResponse(render_validation_report(run))
+    if view == "sections":
+        return ValidationSectionReport(mode="offline_validation", id=run_id, run_id=run_id,
+                                       sections=build_validation_sections(run))
+    return run
+
+
 @router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle | FixtureSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def report(run_id: str, format: str = "json", include_observations: bool = False, view: str = "run",
@@ -275,12 +339,14 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     store = FixtureStore(path)
     scenario_store = ScenarioStore(path)
     auth_store = AuthenticationStore(path)
+    validation_store = ValidationStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         store.initialize()
         scenario_store.initialize()
         auth_store.initialize()
+        validation_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
@@ -289,6 +355,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     application.state.store = store
     application.state.scenario_store = scenario_store
     application.state.auth_store = auth_store
+    application.state.validation_store = validation_store
     application.include_router(router)
     return application
 

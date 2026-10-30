@@ -36,6 +36,10 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/authentication-scans/{id}` | `AuthenticationRun`, or 404 |
 | `GET /api/authentication-scans/{id}/report?view=sections` | Authentication section JSON for the same stored run |
 | `GET /api/authentication-scans/{id}/report?format=html` | HTML authentication report from the same sections |
+| `POST /api/validation-scans` | Sync offline input-validation and disclosure scan; body `{scenario_id}`; returns `ValidationRun` (201) |
+| `GET /api/validation-scans/{id}` | `ValidationRun`, or 404 |
+| `GET /api/validation-scans/{id}/report?view=sections` | Validation section JSON for the same stored run |
+| `GET /api/validation-scans/{id}/report?format=html` | HTML validation report from the same sections |
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
@@ -221,3 +225,42 @@ crafted tokens, API keys, headers or raw bodies are stored or returned.
 `constraints` and `limitations`; the HTML report renders the same projection.
 This is an authentication-specific report, not the frozen nine-section contract.
 The API remains local-only and unauthenticated: do not expose it.
+
+## Offline input-validation and disclosure scans (checkpoint 30)
+
+`POST /api/validation-scans` accepts exactly `{"scenario_id": "<bundled-id>"}`.
+There is no field for a target, body, header, credential or transcript; unknown
+ids return 404 and unexpected fields return 422. Bundled ids are
+`synthetic-validation-secure`, `synthetic-validation-weak`,
+`synthetic-validation-unobservable` and
+`synthetic-validation-malformed-responses`.
+
+Every run carries nine checks in canonical order: `INPUT-05`, `INPUT-06`,
+`INPUT-07`, `DISC-01`, `DISC-02`, `DISC-03`, `DISC-04`, `DISC-05` and `DISC-06`.
+`mode` is `offline_validation`, `transport` is `offline_transcript`,
+`network_transport_enabled` is `false` and `policy_source` is
+`offline validation scenario policy`.
+
+Body-carrying probes are possible only because the validated scope declares
+`input_probes` on the exact authentication POST: `control`, `extra_property`,
+`malformed_json` and `special_characters`. Each declared probe is authorised by
+the shared run guard immediately before its recorded response is released and
+may execute at most once per actor per run. No other operation accepts a body.
+A check whose recorded response cannot be verified in the same run is
+INCONCLUSIVE; a check whose comparison cannot be performed at all (no declared
+response schema) is SKIPPED with the reason.
+
+`request_probes` lists the probes a check actually executed, and `evidence`
+carries only bounded facts: the probe or path, the recorded status, the
+disclosure signal names, an excess-field boolean and the two enumeration
+statuses. Request bodies, response bodies and credentials are never stored,
+returned or reported. SAFE and CONFIRMED input verdicts additionally require a
+verified control response showing that the operation accepts valid input.
+
+Runs are stored in `validation_runs` with a payload hash; tampering yields a
+generic 500 and a stored payload that is not already redacted is rejected.
+`GET .../report?view=sections` returns `executive_summary`,
+`scope_and_accounts`, `check_results`, `outcome` and `limitations`; the HTML
+report renders the same projection. This is a validation-specific report, not
+the frozen nine-section contract. The API remains local-only and
+unauthenticated: do not expose it.

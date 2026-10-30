@@ -170,6 +170,9 @@ persistence and consistent JSON/HTML scenario reports; see
 `docs/checkpoints/28-generic-scan-integration.md`. Checkpoint 29 adds the
 remaining P0 authentication checks (AUTHN-04a/04b/05/06/08) over the same
 recorded transport; see `docs/checkpoints/29-authentication-checks.md`.
+Checkpoint 30 adds the remaining P0 input-validation and disclosure checks
+(INPUT-05/06/07, DISC-01–06) as scope-declared recorded probes; see
+`docs/checkpoints/30-input-disclosure.md`.
 Production networking remains disabled and none of these documents indicates P0
 or production acceptance.
 
@@ -204,3 +207,23 @@ Show `synthetic-jwt-secure` (SAFE), `synthetic-jwt-role-confirmed` (CONFIRMED
 admin capability), `synthetic-jwt-no-observability` (INCONCLUSIVE/SUSPECTED) and
 `synthetic-jwt-opaque` (SKIPPED reasons). The report states that JWT claims are
 unverified; no live endpoint or real credential is used.
+
+
+### Checkpoint 30 input-validation and disclosure demo
+
+With the local API running as above:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/validation-scans \
+  -H "content-type: application/json" -d '{"scenario_id": "synthetic-validation-weak"}'
+curl -sS "http://127.0.0.1:8000/api/validation-scans/<id>/report?view=sections"
+curl -sS "http://127.0.0.1:8000/api/validation-scans/<id>/report?format=html"
+```
+
+Show `synthetic-validation-secure` (nine SAFE results), `synthetic-validation-weak`
+(three SUSPECTED inputs and six CONFIRMED disclosure findings) and
+`synthetic-validation-unobservable` (INCONCLUSIVE plus one SKIPPED schema
+comparison). Each check lists `request_probes` and bounded `evidence`, so a
+judge can see that the probe executed and what the recorded answer was. The run
+contains no request or response body, no credential and no token; the report
+states that no live target was contacted.

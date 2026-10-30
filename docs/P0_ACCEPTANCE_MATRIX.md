@@ -95,15 +95,15 @@ Evidence type: synthetic fixture responses only; no row uses real networking.
 | INPUT-02 | Partial | Fixed wrong type on same query; same tests. |
 | INPUT-03 | Partial | Fixed enum-invalid request only when exact matching schema exists; `test_enum_validation.py::test_enum_result_uses_actual_response_and_stays_offline` and `test_ambiguous_or_inapplicable_enum_is_skipped_without_probe`. |
 | INPUT-04 | Partial | Fixed numeric out-of-range only; overlong strings not implemented; same input tests. |
-| INPUT-05 | Missing | Extra JSON property SKIPPED before any request; no approved JSON-accepting operation or separate authorization. |
-| INPUT-06 | Missing | Malformed JSON SKIPPED before any request; no approved JSON-accepting operation. |
-| INPUT-07 | Missing | Special characters SKIPPED; no declared scalar string field with an independently approved literal probe. |
-| DISC-01 | Partial | Narrow traceback signature in sampled search responses; `test_input_disclosure.py::test_disclosure_checks_detect_observed_signatures_without_leaking_raw_details`. |
-| DISC-02 | Partial | Limited SQLSTATE and Unix-path signatures, same tests; not general internals detection. |
-| DISC-03 | Partial | Bounded JSON name-based sensitive-field detection (`test_sensitive_disclosure.py::test_actual_response_contents_drive_disclosure_verdicts_without_leaking`); incomplete patterns/internal flags and response coverage. |
-| DISC-04 | Partial | Top-level extra keys only for explicitly closed simple fixture JSON schemas; `test_sensitive_disclosure.py`; no general schema comparison. |
-| DISC-05 | Partial | Narrow version/debug header names in sampled fixture responses; `test_p0_acceptance.py::test_debug_signal_is_retained_and_redacted_in_stored_sections`; header values not retained. Not comprehensive. |
-| DISC-06 | Partial | One predeclared synthetic existing/nonexistent pair, compare status, content type and body in memory; `test_resource_enumeration.py::test_known_synthetic_resource_comparison_uses_real_guarded_responses`. No generic enumeration, timing or arbitrary headers. |
+| INPUT-05 | Partial | Declared `extra_property` probe on the exact authentication POST; a field-specific bounded 400/422 is SAFE and acceptance is SUSPECTED (no persistence checks in the MVP), requiring a verified control response (`test_validation_scenario.py::test_input_checks_execute_declared_probes_and_record_their_status`, `test_input_validation_probes.py::test_extra_property_acceptance_is_suspected_until_an_effect_is_observed`). Recorded synthetic responses only; no live operation was ever sent a body. |
+| INPUT-06 | Partial | Declared `malformed_json` probe; a bounded parse error is SAFE and acceptance is SUSPECTED. A body containing traceback text or an oversized error is INCONCLUSIVE, never SAFE (`test_malformed_json_error_bodies_that_leak_internals_are_inconclusive`, `test_malformed_or_hostile_responses_never_read_as_safe`). Recorded synthetic only; no production parser is exercised. |
+| INPUT-07 | Partial | Declared `special_characters` probe observing error handling only: a bounded validation error or an ordinary invalid-credential rejection is SAFE, acceptance or a 5xx is SUSPECTED, an ambiguous status is INCONCLUSIVE. Injected characters are quote, angle-bracket and NUL-like strings in a recorded fixture (`test_special_characters_validation_error_and_ordinary_rejection_are_safe`). No exploitation or data extraction is attempted. |
+| DISC-01 | Partial | Bounded stack-trace signature scanned on a recorded error read; an observed signature is CONFIRMED and a complete clean scan is SAFE (`test_disclosure_checks_rest_on_recorded_read_evidence`, `synthetic-validation-weak`). Only the fixed signature name is recorded, never the raw text. |
+| DISC-02 | Partial | SQLSTATE, JSON-escaped Unix source path and server-version signatures; detection is signature-based, not a general internals classifier (`test_disclosure_signals_detect_only_bounded_signatures`). Recorded synthetic error bodies only. |
+| DISC-03 | Partial | Bounded JSON traversal with name-based sensitive fields plus three conservative value patterns (JWT, private-key header, provider key prefixes); an incomplete traversal is INCONCLUSIVE and only signal names are stored (`test_sensitive_values_are_detected_by_pattern_without_returning_them`, `test_sensitive_json_scan_is_bounded_and_reports_incompleteness`). Pattern coverage is a fixed list, not general secret detection. |
+| DISC-04 | Partial | Top-level excess keys compared only against an explicitly closed simple response schema; a missing or open schema is SKIPPED with a reason and a non-object response is INCONCLUSIVE (`test_excess_field_comparison_needs_a_closed_simple_schema`). No nested or composed schema comparison. |
+| DISC-05 | Partial | Server/version, `x-powered-by` and debug header names scanned on a recorded read; an observed header is CONFIRMED and a clean scan is SAFE (`test_disclosure_header_signals_require_a_version_or_debug_header`). Only signature names are stored; header values are not persisted or reported. |
+| DISC-06 | Partial | Existing/nonexistent error comparison on two scoped reads: identical bounded 4xx bodies are SAFE, differing bodies are CONFIRMED, and a 2xx on the denied resource or any 5xx is INCONCLUSIVE (`test_enumeration_comparison_requires_two_usable_error_responses`, `test_malformed_or_hostile_responses_never_read_as_safe`). No timing, header or generic resource discovery. |
 
 ## Nine HTML and JSON report sections (§12)
 
@@ -185,12 +185,13 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 | Consistent HTML/JSON evidence | Partial | Both derive from `build_scenario_sections`; `test_confirmed_scan_is_explained_consistently_in_both_reports` compares verdict, checklist and evidence. Seven sections, not the nine-section contract. |
 | Acceptance outcomes through the workflow | Partial | CONFIRMED, SAFE, INCONCLUSIVE (metadata and leaky denial), SKIPPED (pagination limit and guard block) in `test_scenario_verdicts_survive_the_application`. Synthetic responses only. |
 | Production/live scanning | Missing | Disabled transport, no DNS pinning execution, no organizer approval, no supplied-target scan. |
-| Remaining P0 checks | Missing | AUTHN-04a/04b/05/06/08, INPUT-05–07, full DISC coverage, role/endpoint matrix and manual-intervention capture. |
+| Remaining P0 checks | Missing | BFLA, the frozen nine-section report, the full role/endpoint authorization matrix and manual-intervention capture. |
 
 ## Next blocking work
 
-1. Milestone 30: remaining input-validation and disclosure checks (INPUT-05–07,
-   broader DISC coverage), including an approved JSON/string operation.
+1. Milestone 30 is complete in code: INPUT-05/06/07 and DISC-01–06 execute
+   through `POST /api/validation-scans`; the narrow depth recorded per row above
+   is the remaining limitation and is not a live-data claim.
 2. Milestone 31: complete the report contract — the frozen nine sections for
    generic runs, the full authorization matrix and manual-intervention capture.
 3. Milestone 32: full P0 regression and acceptance audit. Do not claim P0.
