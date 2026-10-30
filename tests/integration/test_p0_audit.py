@@ -48,3 +48,9 @@ def test_every_requirement_row_is_well_formed():
     # Every frozen section that the report claims is represented in the audit.
     for requirement in ("R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"):
         assert requirement in ids
+
+
+def test_windows_style_test_paths_are_normalised():
+    # CI runs on Windows; the audit must classify a backslash path identically.
+    p0_audit.check_test_file("tests\\integration\\test_auth_checks.py::test_example")
+    assert all("\\" not in key for key in p0_audit.TEST_EVIDENCE)

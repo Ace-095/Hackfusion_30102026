@@ -385,7 +385,7 @@ def check_test(reference: str, node_ids: set[str]) -> None:
 
 
 def check_test_file(reference: str) -> None:
-    path = reference.split("::", 1)[0]
+    path = reference.split("::", 1)[0].replace("\\", "/")
     if path not in TEST_EVIDENCE:
         raise AuditError(f"{reference}: test file {path} has no declared evidence class")
 
@@ -404,7 +404,8 @@ def run_audit() -> dict:
     failures: list[str] = []
     rows = []
 
-    test_files = {str(path.relative_to(ROOT)) for path in (ROOT / "tests").rglob("test_*.py")}
+    # POSIX separators keep the registry identical on Windows and Linux.
+    test_files = {path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").rglob("test_*.py")}
     for path in sorted(test_files - set(TEST_EVIDENCE)):
         failures.append(f"unclassified test file: {path}")
     for path, label in TEST_EVIDENCE.items():
