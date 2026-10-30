@@ -95,7 +95,29 @@ def asset_version(directory: Path = STATIC_ROOT) -> str:
     return digest.hexdigest()[:12]
 
 
-#: Injected into every template as ``asset_v``; appended to static URLs.
+_version_cache: tuple | None = None
+
+
+def current_asset_version(directory: Path = STATIC_ROOT) -> str:
+    """The fingerprint to use *now*, recomputed only when a file changes.
+
+    Hashing the files on import would be a trap of its own: a long-running
+    server (this one, during a demo) would keep advertising the version it
+    started with, so an edited stylesheet would be served under the URL the
+    browser had already cached. Watching the stats keeps the stamp honest at
+    the cost of a few ``stat`` calls per render.
+    """
+    global _version_cache
+    stats = tuple(
+        (path.as_posix(), path.stat().st_mtime_ns, path.stat().st_size)
+        for path in sorted(p for p in directory.rglob("*") if p.is_file())
+    )
+    if _version_cache is None or _version_cache[0] != stats:
+        _version_cache = (stats, asset_version(directory))
+    return _version_cache[1]
+
+
+#: Injected into every template as ``asset_v()``; appended to static URLs.
 ASSET_VERSION = asset_version()
 
 
@@ -117,7 +139,9 @@ def build_templates() -> Jinja2Templates:
     environment.filters["pct"] = pct
     # Asset fingerprint: templates append it to every /ui/static URL so a new
     # stylesheet can never be shadowed by a cached copy of the old one.
-    environment.globals["asset_v"] = ASSET_VERSION
+    # a callable, so the stamp is re-checked on every render rather than frozen
+    # at import time
+    environment.globals["asset_v"] = current_asset_version
     return Jinja2Templates(env=environment)
 
 

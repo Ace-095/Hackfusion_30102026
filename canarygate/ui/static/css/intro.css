@@ -28,8 +28,10 @@
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
-  /* sequence runtime — intro.js declares RUN_MS = 21000; a test keeps them equal */
-  --run: 18s;
+  /* sequence runtime — intro.js declares RUN_MS = 15000; a test keeps them equal.
+     Fifteen seconds, like the showreel brief: nine cuts, ~0.25s overlaps, and
+     the last frame of the finale lands exactly on the hand-off. */
+  --run: 15s;
   --pop: 0.62s;
 }
 
@@ -267,20 +269,21 @@ body.cover {
   will-change: opacity, transform, filter;
 }
 
-/* scene windows: (delay, length) pairs that add up to the 21s runtime,
-   with a ~0.4s overlap so scenes cross-fade instead of cutting hard */
-/* Eight windows across 18 s with ~0.35 s of overlap, so scenes cross-fade
-   rather than cut. The order here is the order on screen; DOM order is set for
-   the reading order instead (the h1 comes first). */
-.scene-0     { --sd: 0.10s;  animation: scene-out 3.60s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-words { --sd: 3.35s;  animation: scene-slam 2.30s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-1     { --sd: 5.30s;  animation: scene-out 2.30s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-2     { --sd: 7.15s;  animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-3     { --sd: 8.95s;  animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-4     { --sd: 10.75s; animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-5     { --sd: 12.55s; animation: scene-out 2.10s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-6     { --sd: 14.30s; animation: scene-out 2.00s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-title { --sd: 16.15s; animation: scene-final 1.85s cubic-bezier(.16,.84,.34,1) var(--sd) both; }
+/* Scene windows: (delay, length) pairs over a 15 s runtime. Every cut sits on
+   the 0.5 s beat grid of the 120 BPM track, so the picture lands with the kick;
+   windows overlap by ~0.25 s so the outgoing scene is still blurring out when
+   the next one lands. The finale starts at 12.95 s, runs to 15.00 s and holds,
+   meeting the hand-off exactly. The order here is the order on screen — DOM
+   order is set for reading order instead (the h1 comes first). */
+.scene-0     { --sd: 0.00s;  animation: scene-out 2.50s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-words { --sd: 2.50s;  animation: scene-slam 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-1     { --sd: 4.00s;  animation: scene-out 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-2     { --sd: 5.50s;  animation: scene-out 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-3     { --sd: 7.00s;  animation: scene-out 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-4     { --sd: 8.50s;  animation: scene-out 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-5     { --sd: 10.00s; animation: scene-out 1.75s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-6     { --sd: 11.50s; animation: scene-out 1.60s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-title { --sd: 12.95s; animation: scene-final 2.05s cubic-bezier(.16,.84,.34,1) var(--sd) both; }
 
 @keyframes scene-out {
   0%   { opacity: 0; visibility: hidden; transform: translateY(20px) scale(0.988); filter: blur(9px) }
@@ -328,6 +331,9 @@ body.cover {
 
 /* ------------------------------------------------------------------ type */
 .kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   margin: 0;
   font-family: var(--mono);
   font-size: 0.68rem;
@@ -335,7 +341,121 @@ body.cover {
   text-transform: uppercase;
   color: var(--accent);
   opacity: 0.9;
+  flex-wrap: wrap;
 }
+
+/* The scene counter is the showreel's spine: a bookended number that tells the
+   viewer a cut is coming and how far through they are. Brackets, not a badge,
+   so it reads as instrumentation rather than decoration. */
+.kicker-n {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.34em;
+  padding: 0.18rem 0.44rem;
+  border: 1px solid rgb(76 194 255 / 42%);
+  border-radius: 3px;
+  background: rgb(76 194 255 / 8%);
+  color: var(--ink);
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kicker-n b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.kicker-n i {
+  font-style: normal;
+  color: var(--ink-4);
+  font-size: 0.9em;
+}
+
+/* the cursor that types the reel: on, off, on */
+.kicker-n::after {
+  content: "";
+  width: 0.42em;
+  height: 0.9em;
+  margin-inline-start: 0.12em;
+  background: var(--accent);
+  animation: caret 1.06s steps(1, end) infinite;
+}
+
+@keyframes caret {
+  0%, 49%   { opacity: 1 }
+  50%, 100% { opacity: 0 }
+}
+
+/* ------------------------------------------------------------ reel telemetry
+   The reel's own clock, not the product's. Decorative, aria-hidden, and it
+   never reports a scan result — only time and the scene it is on. */
+.hero-hud {
+  position: fixed;
+  left: 1.15rem;
+  top: 50%;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border-left: 1px solid rgb(76 194 255 / 30%);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0;
+  animation: fade-in 0.9s ease-out 1.1s both;
+  transform: translateY(-50%);
+}
+
+.hero-hud-line { display: flex; align-items: center; gap: 0.45rem; }
+
+.hero-hud-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 8px rgb(255 107 107 / 80%);
+  animation: caret 1.6s steps(1, end) infinite;
+}
+
+.hero-hud-time {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.hero-hud-scene { color: var(--accent); }
+
+.hero-hud-bar {
+  width: 84px;
+  height: 2px;
+  background: rgb(255 255 255 / 10%);
+  overflow: hidden;
+}
+
+.hero-hud-bar span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* --------------------------------------------------------------- the cuts
+   intro.js toggles .cut for ~160ms on every scene boundary; the canvas owns the
+   flash and the shutter bands, this owns the two-frame chromatic hop. */
+html.cut .hero-scenes { animation: cut-jitter 0.16s steps(2, end) both; }
+
+@keyframes cut-jitter {
+  0%   { transform: translate3d(-3px, 1px, 0) }
+  50%  { transform: translate3d(3px, -1px, 0) }
+  100% { transform: none }
+}
+
+html.cut .kicker-n { border-color: var(--accent); color: var(--accent); }
 
 .scene-line {
   margin: 0;
@@ -969,6 +1089,8 @@ body.cover {
   .cards { grid-template-columns: minmax(0, 1fr); }
   .vocab li { grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
   .scene { padding: 5rem 1.1rem 8rem; }
+  /* the copy needs the width more than the instrumentation does */
+  .hero-hud { display: none; }
 }
 
 @media (max-width: 620px) {
@@ -978,6 +1100,7 @@ body.cover {
   .mini-row { grid-template-columns: 1rem 2.2rem minmax(0, 1fr) 2.2rem; }
   .mini-actor { display: none; }
   .hero-clock { display: none; }
+  .hero-hud { display: none; }
   .journey-rail { grid-template-columns: minmax(0, 1fr); }
   .cover-skip { font-size: 0.66rem; padding: 0.4rem 0.7rem; }
   .tool { font-size: 0.6rem; padding: 0.3rem 0.55rem; }
@@ -993,7 +1116,14 @@ body.cover {
 @media (prefers-reduced-motion: reduce) {
   html:not(.force-motion) .cover-canvas,
   html:not(.force-motion) .cover-grid,
-  html:not(.force-motion) .cover-grain { display: none; }
+  html:not(.force-motion) .cover-grain,
+  html:not(.force-motion) .hero-hud { display: none; }
+
+  /* no cuts, no jitter, no blinking caret: the storyboard holds still */
+  html:not(.force-motion) .hero-scenes { animation: none; }
+  html:not(.force-motion) .kicker-n::after,
+  html:not(.force-motion) .hero-hud-dot { animation: none; }
+  html:not(.force-motion) .kicker-n::after { opacity: 1; }
 
   html:not(.force-motion) .hero,
   html:not(.force-motion) .hero-scenes { min-height: 0; }

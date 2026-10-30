@@ -726,7 +726,10 @@ def test_landing_page_carries_the_argument_below_the_sequence(tmp_path):
         assert 'id="vocabulary"' in body
         assert 'id="limits"' in body
         assert "Anyone can show you a red badge" in body
-        assert "Seven steps".lower() or "seven steps" in body.lower()
+        # This used to read `assert "Seven steps".lower() or "seven steps" in
+        # body`, which is a tautology: a non-empty string is always truthy, so
+        # the check never ran. Assert the copy that is actually on the page.
+        assert "seven steps" in body.lower()
 
         # Every journey step links somewhere real, and every link resolves.
         rail = re.findall(r'<ol class="journey-rail">(.*?)</ol>', body, re.S)[0]
@@ -754,8 +757,8 @@ def test_landing_assets_are_local_and_agree_on_the_runtime(tmp_path):
 
         # One runtime, declared in both files; the countdown cannot drift from
         # the animation if these stay equal.
-        assert "--run: 18s" in css
-        assert "RUN_MS = 18000" in script
+        assert "--run: 15s" in css
+        assert "RUN_MS = 15000" in script
         # Every scene delay lives in the stylesheet, not inline.
         assert body_has_no_inline_style(client.get("/").text)
         assert ".scene-1     { --sd:" in css
@@ -929,12 +932,14 @@ def test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay(tmp_pa
     canary) never got a moment on screen. Every static URL now carries a content
     fingerprint, and the document itself is never stored.
     """
-    from canarygate.ui.templating import ASSET_VERSION
-
     with _client(tmp_path) as client:
         page = client.get("/")
         assert page.headers["cache-control"] == "no-store, max-age=0"
-        assert page.headers["x-asset-version"] == ASSET_VERSION
+        # The header and the URLs must agree, or "which build am I on?" is
+        # unanswerable.
+        stamp = page.headers["x-asset-version"]
+        assert re.fullmatch(r"[0-9a-f]{12}", stamp)
+        assert f"?v={stamp}" in page.text
 
         for template_path in ("/", "/ui/", "/ui/scans"):
             body = client.get(template_path).text
@@ -976,9 +981,113 @@ def test_the_canary_holds_the_opening_long_enough_to_be_seen(tmp_path):
     assert opening, "the opening scene lost its timed window"
     start, duration = float(opening.group(1)), float(opening.group(2))
     assert 0 <= start < 0.5
-    assert duration >= 3.0, f"the canary is only on screen for {duration}s"
+    # A 15s reel; the bird still gets the longest single window (1/6 of the run).
+    assert duration >= 2.4, f"the canary is only on screen for {duration}s"
 
     # The next cut must not start before the bird has had that time.
     following = re.search(r"\.scene-words\s*\{\s*--sd:\s*([\d.]+)s", css)
     assert following
     assert start + duration >= float(following.group(1))
+
+
+def test_all_four_copies_of_the_runtime_agree(tmp_path):
+    """The runtime is declared in four places, and they have drifted before.
+
+    ``--run`` (CSS), ``RUN_MS`` (JS), the visible countdown text (markup) and
+    the ``<noscript>`` refresh (markup). A redesign that moves one and forgets
+    another produces a sequence that ends at one moment while the page
+    announces another, so they are asserted against each other rather than
+    against literals.
+    """
+    with _client(tmp_path) as client:
+        page = client.get("/").text
+        css = client.get("/ui/static/css/intro.css").text
+        script = client.get("/ui/static/js/intro.js").text
+
+    run = re.search(r"--run:\s*(\d+)s", css)
+    run_ms = re.search(r"RUN_MS\s*=\s*(\d+)", script)
+    countdown = re.search(r"entering the interface in (\d+)s", page)
+    noscript = re.search(r'http-equiv="refresh" content="(\d+); url=/ui/"', page)
+
+    assert run and run_ms and countdown and noscript, "a runtime declaration is missing"
+    seconds = int(run.group(1))
+    assert seconds == 15                      # the showreel brief: fifteen seconds
+    assert int(run_ms.group(1)) == seconds * 1000
+    assert int(countdown.group(1)) == seconds
+    # The no-JS hand-off waits for the sequence to finish, then a beat longer.
+    assert int(noscript.group(1)) == seconds + 2
+
+
+def test_the_canvas_is_decoration_and_cannot_drift_from_the_css(tmp_path):
+    """The reel engine must stay decorative, and must not keep its own clock."""
+    with _client(tmp_path) as client:
+        page = client.get("/").text
+        script = client.get("/ui/static/js/intro.js").text
+        css = client.get("/ui/static/css/intro.css").text
+
+    assert 'data-intro-canvas aria-hidden="true"' in page
+    # The cut times are read from the stylesheet, never re-declared in JS.
+    assert 'getPropertyValue("--sd")' in script
+    assert ".scene-words" in script
+    # Reduced motion still skips the canvas entirely.
+    assert "if (canvasStarted || !canvas || !motionAllowed()) return;" in script
+    assert "html:not(.force-motion) .cover-canvas" in css
+    # No 2D context (jsdom, or an old browser) must not throw.
+    assert "try { ctx = canvas.getContext(\"2d\"); } catch (error) { ctx = null; }" in script
+    # The cut flash is shared between the canvas and the stylesheet.
+    assert "html.cut .hero-scenes" in css
+    assert 'root.classList.add("cut")' in script
+
+
+def test_the_reel_hud_reports_time_and_cut_never_a_result(tmp_path):
+    """The HUD is instrumentation for the film, not a fake scan readout."""
+    with _client(tmp_path) as client:
+        page = client.get("/").text
+        css = client.get("/ui/static/css/intro.css").text
+
+    hud = re.search(r'<p class="hero-hud"[^>]*>(.*?)</p>', page, re.S)
+    assert hud, "the reel HUD is missing"
+    assert 'aria-hidden="true"' in hud.group(0)
+    for hook in ("data-intro-hud-time", "data-intro-hud-scene", "data-intro-hud-bar"):
+        assert hook in hud.group(0), hook
+    # It reports the film's own state only: a timecode and a cut counter.
+    assert "cut 01 / 09" in hud.group(1)
+    assert "00:00.00" in hud.group(1)
+    for forbidden in ("CONFIRMED", "SUSPECTED", "vulnerab", "risk", "score"):
+        assert forbidden not in hud.group(1), forbidden
+    # Hidden for reduced motion, where there is no reel to report on.
+    assert "html:not(.force-motion) .hero-hud { display: none; }" in css
+
+
+def test_every_cut_is_numbered_against_the_whole_sequence(tmp_path):
+    """Nine bookended chips, so the viewer always knows where they are."""
+    with _client(tmp_path) as client:
+        page = client.get("/").text
+
+    chips = re.findall(r'<span class="kicker-n"><b>(\d{2})</b><i>/&nbsp;(\d{2})</i></span>', page)
+    assert len(chips) == 9, chips
+    numbers = [int(n) for n, _ in chips]
+    assert sorted(numbers) == list(range(1, 10)), numbers   # no duplicate cut
+    assert {total for _, total in chips} == {"09"}          # one denominator
+
+
+def test_the_build_stamp_follows_an_edit_on_a_long_running_server(tmp_path):
+    """The stamp is recomputed from stat, not frozen at import.
+
+    Hashing the static tree once at import would defeat the whole point: a
+    server that stays up (as this one does during a demo) would keep handing out
+    the version it started with, so an edited stylesheet would be served under a
+    URL the browser had already cached — the original bug, wearing a new hat.
+    """
+    import os
+
+    from canarygate.ui.templating import current_asset_version
+
+    (tmp_path / "intro.css").write_text("body { color: red }")
+    first = current_asset_version(tmp_path)
+    assert current_asset_version(tmp_path) == first        # stable while unchanged
+
+    (tmp_path / "intro.css").write_text("body { color: blue }")
+    # force a distinct mtime so the stat watch is what is being tested
+    os.utime(tmp_path / "intro.css", ns=(1, 2_000_000_000))
+    assert current_asset_version(tmp_path) != first

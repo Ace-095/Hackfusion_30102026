@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from canarygate.api.app import create_app as create_backend_app
 from canarygate.ui.routes import router as ui_router
-from canarygate.ui.templating import ASSET_VERSION, STATIC_ROOT
+from canarygate.ui.templating import STATIC_ROOT, current_asset_version
 
 #: How long a *fingerprinted* asset URL may be cached. A changed file gets a
 #: changed URL, so this never hides an update.
@@ -64,7 +64,7 @@ def add_cache_policy(application: FastAPI) -> None:
         else:
             # JSON and the rest: revalidate, never serve blind.
             response.headers.setdefault("Cache-Control", "no-cache")
-        response.headers["X-Asset-Version"] = ASSET_VERSION
+        response.headers["X-Asset-Version"] = current_asset_version()
         return response
 
 
