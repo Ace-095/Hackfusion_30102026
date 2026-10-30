@@ -339,8 +339,9 @@ The redacted enum case and sample count survive persistence. The normal fixture
 sends 16 requests within its budget of 20. The local full test suite passed: 176
 tests with one third-party Starlette/AnyIO deprecation warning. The real Uvicorn
 demo was run; old and new reports were retrieved, and the new result survived a
-restart. The wheel includes the fixture schema and exact scope. Live scanning
-and full generic OpenAPI/validation execution remain unimplemented.
+restart. The wheel includes the fixture schema and exact scope. GitHub Actions
+passed on Linux and Windows for code commit `a3db65f` (run 41041165887). Live
+scanning and full generic OpenAPI/validation execution remain unimplemented.
 
 ## Outstanding checkpoints
 
