@@ -31,9 +31,15 @@
         <td class="mono small">{{ run.created_at }}</td>
         <td class="mono">{{ run.endpoint }} <span class="dim">· {{ run.id|short_id }}</span></td>
         <td>{{ verdict_badge(run.verdict) }}</td>
-        <td><a href="/api/reports/{{ run.id }}?format=html" target="_blank" rel="noopener">open</a></td>
+        <td class="small">
+          <a href="/api/reports/{{ run.id }}?format=html" target="_blank" rel="noopener">open</a>
+          <span class="dim">·</span>
+          <a href="/api/reports/{{ run.id }}?format=html"
+             download="canarygate-{{ run.id }}.html">download</a>
+        </td>
         <td class="small">
           <a href="/api/reports/{{ run.id }}" target="_blank" rel="noopener">run</a>
+          <a href="/api/reports/{{ run.id }}" download="canarygate-{{ run.id }}.json">↓</a>
           <span class="dim">·</span>
           <a href="/api/reports/{{ run.id }}?view=sections" target="_blank" rel="noopener">sections</a>
           <span class="dim">·</span>

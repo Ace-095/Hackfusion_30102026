@@ -304,3 +304,75 @@ def test_backend_application_is_unmodified_and_ui_is_additive(tmp_path):
     with TestClient(ui) as client:
         assert client.get("/ui/").status_code == 200
         assert client.get("/api/health").json()["mode"] == "fixture"
+
+
+def test_findings_page_groups_only_backend_verdicts(tmp_path):
+    with _client(tmp_path) as client:
+        empty = client.get("/ui/findings")
+        assert empty.status_code == 200
+        assert "No findings yet" in empty.text
+        assert "Severity is not part of the backend contract" in empty.text
+
+        run = client.post("/ui/actions/fixture-scan", follow_redirects=False)
+        run_id = run.headers["location"].rsplit("/", 1)[-1]
+        api_run = client.get(f"/api/scan/{run_id}").json()
+        body = client.get("/ui/findings").text
+
+        assert api_run["verdict"] == "CONFIRMED"
+        assert "Confirmed findings" in body
+        assert api_run["reason"] in body
+        assert api_run["remediation"] in body
+        assert api_run["verified_owner"] in body
+        # Counts shown are derived from the same runs the API returns.
+        runs = client.get("/api/findings").json()["findings"]
+        assert f"<span class=\"stat-value\">{len(runs)}</span>" in body
+        # No invented severity *values*: the page may state that severity is absent,
+        # but it must never render a severity badge or score of its own.
+        assert re.search(r"badge[^>]*>\s*(CRITICAL|HIGH|MEDIUM|LOW|INFO)\s*<", body) is None
+        assert "Severity:" not in body and "severity:" not in body
+        # The disclaimer is the only place the word may appear.
+        assert body.lower().count("severity") == 2
+
+
+def test_configure_page_is_read_only_and_redacts_secrets(tmp_path):
+    with _client(tmp_path) as client:
+        page = client.get("/ui/configure")
+        assert page.status_code == 200
+        body = page.text
+        # Real bundled configuration is shown (read from backend package files).
+        assert "scope.yaml" in body and "recipe.json" in body and "fixture.yaml" in body
+        assert "fixture.invalid" in body
+        assert "known_owner_canary" in body
+        # The canary value itself must be redacted on screen.
+        assert "synthetic-bob-private-canary" not in body
+        assert "[REDACTED]" in body
+        # Editing is disabled, and the page says why.
+        assert "This page is read-only, deliberately." in body
+        assert 'disabled' in body
+        assert "no backend endpoint accepts this" in body
+        # And nothing was configured by viewing it.
+        assert client.get("/api/findings").json()["findings"] == []
+
+
+def test_matrix_grid_marks_unassessed_cells_instead_of_guessing(tmp_path):
+    with _client(tmp_path) as client:
+        empty = client.get("/ui/matrix").text
+        assert "No grid yet" in empty
+
+        client.post("/ui/actions/fixture-scan")
+        runs = client.get("/api/findings").json()["findings"]
+        endpoints = client.get("/api/endpoints").json()["endpoints"]
+        body = client.get("/ui/matrix").text
+
+        # Columns are the accounts the backend demonstrated, not just the acting one.
+        actors = sorted({name for run in runs for name in run["setup"]["accounts"]})
+        assert "not assessed" in body
+        # Every inventory endpoint appears as a row, and every exercised actor as a column.
+        for endpoint in endpoints:
+            assert f"{endpoint['method']} {endpoint['path']}" in body
+        for actor in actors:
+            assert f'class="mono">{actor}<' in body
+        # Assessed count equals recorded cells, not the full grid.
+        assessed = len(runs)
+        total = len(endpoints) * len(actors)
+        assert f"{assessed} / {total}" in body

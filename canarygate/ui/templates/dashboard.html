@@ -43,12 +43,16 @@
   <div class="stat">
     <span class="stat-label">Stored fixture runs</span>
     <span class="stat-value">{{ run_count }}</span>
-    <span class="stat-foot">local SQLite, survives restarts</span>
+    <span class="stat-foot">
+      <a href="/ui/scans">open scan list</a> · {{ suite_count }} bundled suites
+    </span>
   </div>
   <div class="stat">
-    <span class="stat-label">Bundled offline scenarios</span>
-    <span class="stat-value">{{ suite_count }}</span>
-    <span class="stat-foot">read-BOLA and authentication transcripts</span>
+    <span class="stat-label">Open findings</span>
+    <span class="stat-value">{{ counts.CONFIRMED + counts.SUSPECTED }}</span>
+    <span class="stat-foot">
+      <a href="/ui/findings">confirmed {{ counts.CONFIRMED }} · suspected {{ counts.SUSPECTED }}</a>
+    </span>
   </div>
 </section>
 

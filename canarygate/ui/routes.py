@@ -14,8 +14,10 @@ Design rules enforced here:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import urllib.parse
+from importlib import resources
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -25,6 +27,7 @@ from canarygate.scan.auth_scenarios import SCENARIO_IDS as AUTHENTICATION_SCENAR
 from canarygate.scan.auth_scenarios import build_auth_scenario
 from canarygate.scan.models import ScenarioScanRequest
 from canarygate.scan.scenarios import SCENARIO_IDS as READ_BOLA_SCENARIO_IDS
+from canarygate.offline.scan import fixture_recipe
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from canarygate.ui.templating import templates
 
@@ -41,12 +44,14 @@ _UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-
 #: Navigation is a flat list because the UI is deliberately small.
 NAV = (
     ("dashboard", "/ui/", "Dashboard"),
-    ("endpoints", "/ui/endpoints", "Endpoint inventory"),
-    ("setup", "/ui/setup", "Setup & readiness"),
+    ("findings", "/ui/findings", "Findings"),
+    ("endpoints", "/ui/endpoints", "API inventory"),
+    ("matrix", "/ui/matrix", "Authorization matrix"),
     ("scans", "/ui/scans", "Read-BOLA scans"),
     ("suites", "/ui/suites", "Test suites"),
-    ("matrix", "/ui/matrix", "Authorization matrix"),
     ("reports", "/ui/reports", "Reports"),
+    ("configure", "/ui/configure", "Scan configuration"),
+    ("setup", "/ui/setup", "Setup & readiness"),
     ("spec", "/ui/spec", "Spec inspection"),
 )
 
@@ -210,6 +215,120 @@ def _suite_catalog() -> dict[str, list[dict]]:
     return {"read_bola": read_bola, "authentication": authentication}
 
 
+def _known_actors(runs: list[dict]) -> list[str]:
+    """Actors the backend has actually demonstrated, newest run first."""
+    actors: list[str] = []
+    for run in reversed(runs):
+        for name in (run.get("setup", {}).get("accounts") or {}):
+            if name not in actors:
+                actors.append(name)
+        actor = run.get("actor")
+        if actor and actor not in actors:
+            actors.append(actor)
+    return actors
+
+
+def _matrix_grid(endpoints: list[dict], runs: list[dict]) -> dict:
+    """Endpoint × actor grid built only from backend data.
+
+    Rows come from the backend inventory (plus any endpoint a run recorded), and
+    columns from accounts the backend has actually used. A combination with no
+    stored run is rendered as ``not assessed`` — it is never assumed safe.
+    """
+    actors = _known_actors(runs)
+    labels: list[str] = []
+    for endpoint in endpoints:
+        label = f"{endpoint['method']} {endpoint['path']}"
+        if label not in labels:
+            labels.append(label)
+    for run in reversed(runs):
+        if run["endpoint"] not in labels:
+            labels.append(run["endpoint"])
+
+    latest: dict[tuple[str, str], dict] = {}
+    for run in runs:  # oldest → newest, so later runs win
+        latest[(run["endpoint"], run["actor"])] = run
+
+    rows = []
+    for label in labels:
+        cells = []
+        for actor in actors:
+            run = latest.get((label, actor))
+            cells.append({"actor": actor, "run": run})
+        rows.append({"endpoint": label, "cells": cells,
+                     "assessed": sum(1 for cell in cells if cell["run"] is not None)})
+    return {"actors": actors, "rows": rows,
+            "assessed": sum(row["assessed"] for row in rows),
+            "total": len(rows) * len(actors)}
+
+
+def _bundled_configuration() -> list[dict]:
+    """The bundled files the backend actually loads, shown read-only.
+
+    Reading backend files is allowed; changing them is not. Values that would be
+    credentials or canaries are redacted for display.
+    """
+    package = resources.files("canarygate.offline")
+    entries = [
+        ("scope.yaml", "Scope file: exact host/port, allowed methods, budget and the "
+                       "operation allow-list the guard enforces."),
+        ("recipe.json", "Setup recipe: login operation, supplied accounts, resource "
+                        "discovery, id/ownership fields and the ownership model."),
+        ("fixture.yaml", "OpenAPI document the parser turns into the endpoint inventory "
+                         "with expected access and provenance."),
+    ]
+    shown = []
+    for name, purpose in entries:
+        text = package.joinpath(name).read_text(encoding="utf-8")
+        if name == "recipe.json":
+            text = _redact_json_secrets(text)
+        shown.append({"name": name, "purpose": purpose, "text": text})
+    return shown
+
+
+def _redact_json_secrets(text: str) -> str:
+    """Hide canary/credential-like values in a JSON document for display."""
+    try:
+        document = json.loads(text)
+    except ValueError:
+        return text
+    return json.dumps(_walk_redact(document), indent=2)
+
+
+def _walk_redact(value):
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            if any(word in key.lower() for word in ("canary", "secret", "token", "password")):
+                cleaned[key] = "[REDACTED]"
+            else:
+                cleaned[key] = _walk_redact(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_walk_redact(item) for item in value]
+    return value
+
+
+def _check_findings(runs: list[dict]) -> list[dict]:
+    """Per-check findings across all stored runs (CONFIRMED/SUSPECTED only)."""
+    found = []
+    for run in reversed(runs):
+        for check in run.get("checks", []):
+            if check.get("verdict") in {"CONFIRMED", "SUSPECTED"}:
+                found.append({"run": run, "check": check})
+    return found
+
+
+def _check_gaps(runs: list[dict]) -> dict[str, int]:
+    gaps = {"SKIPPED": 0, "INCONCLUSIVE": 0, "SAFE": 0}
+    for run in runs:
+        for check in run.get("checks", []):
+            verdict = check.get("verdict")
+            if verdict in gaps:
+                gaps[verdict] += 1
+    return gaps
+
+
 # --------------------------------------------------------------------------- #
 # Pages
 # --------------------------------------------------------------------------- #
@@ -309,12 +428,53 @@ def evidence_page(request: Request, run_id: str):
 def matrix_page(request: Request):
     def build():
         api = _api()
-        return api.matrix(store=_store(request))["cells"]
+        return (api.matrix(store=_store(request))["cells"],
+                api.endpoints()["endpoints"],
+                _newest_first(api.findings(store=_store(request))["findings"]))
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
+        return result
+    cells, endpoints, runs = result
+    return _page(request, "matrix.html", "matrix", cells=cells,
+                 grid=_matrix_grid(endpoints, runs), run_count=len(runs))
+
+
+@router.get("/ui/findings")
+def findings_page(request: Request):
+    def build():
+        return _newest_first(_runs(request))
 
     result = _guard(request, build)
     if not isinstance(result, list):
         return result
-    return _page(request, "matrix.html", "matrix", cells=_newest_first(result))
+    runs = result
+    grouped: dict[str, list[dict]] = {"CONFIRMED": [], "SUSPECTED": [], "SAFE": [],
+                                      "INCONCLUSIVE": [], "SKIPPED": []}
+    for run in runs:
+        grouped.setdefault(run["verdict"], []).append(run)
+    return _page(
+        request, "findings.html", "findings",
+        runs=runs,
+        grouped=grouped,
+        check_findings=_check_findings(runs),
+        coverage=_check_gaps(runs),
+        findings_count=len(grouped["CONFIRMED"]) + len(grouped["SUSPECTED"]),
+    )
+
+
+@router.get("/ui/configure")
+def configure_page(request: Request):
+    def build():
+        return fixture_recipe()
+
+    result = _guard(request, build)
+    if not isinstance(result, dict):
+        return result
+    return _page(request, "configure.html", "configure",
+                 files=_bundled_configuration(),
+                 recipe_summary=_walk_redact(result),
+                 live_config_allowed=False)
 
 
 @router.get("/ui/reports")

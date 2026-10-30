@@ -399,3 +399,32 @@ pre.json {
   body { background: #fff; color: #111; }
   .card, .stat { border-color: #ccc; background: #fff; box-shadow: none; }
 }
+
+/* ------------------------------------------------- findings / matrix pass */
+.badge-empty {
+  background: transparent; color: var(--dim);
+  border: 1px dashed var(--border-strong);
+}
+.compact-list { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+.compact-list li {
+  font-size: 0.84rem; color: var(--muted);
+  padding: 0.28rem 0; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+}
+.compact-list li:last-child { border-bottom: none; }
+.numbered { margin: 0; padding-left: 1.15rem; }
+.numbered li { font-size: 0.87rem; color: var(--muted); margin-bottom: 0.35rem; }
+.finding { border-left: 3px solid var(--border-strong); }
+.finding-confirmed { border-left-color: var(--danger); }
+.field-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.field small { color: var(--dim); font-size: 0.74rem; }
+.field input:disabled, .field select:disabled {
+  color: var(--muted); background: #0a1016; cursor: not-allowed;
+}
+.matrix-table td, .matrix-table th { white-space: nowrap; }
+.matrix-table tbody th {
+  position: sticky; left: 0; background: var(--bg-raised); z-index: 1;
+}
+@media (max-width: 980px) {
+  .field-row { grid-template-columns: minmax(0, 1fr); }
+}

@@ -38,7 +38,9 @@ canarygate/ui/
 ├── templates/
 │   ├── base.html          # shell: banner, navigation, footer, local assets
 │   ├── _macros.html       # badges, key/value rows, evidence card, constraints panel, report links
-│   ├── dashboard.html     # health, gates, latest verdict, verdict distribution, recent runs
+│   ├── dashboard.html     # health, posture, gates, latest verdict, distribution, recent runs
+│   ├── findings.html      # verdict-grouped findings, check-level findings, coverage gaps
+│   ├── configure.html     # read-only bundled scope/recipe/spec + disabled config form
 │   ├── endpoints.html     # inventory: expected access + provenance + declared auth
 │   ├── setup.html         # three readiness gates + account states + BOLA coverage
 │   ├── scans.html         # stored fixture runs (Verifiable list from /api/findings)
@@ -149,7 +151,9 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
 | `/ui/scans` | Stored fixture runs | per run: time, endpoint, actor, target, verified owner, expected access, ownership gate, verdict | `GET /api/findings` | run fixture scan, filter table | "No fixture run stored yet" |
 | `/ui/scans/{id}` | The evidence page for one run | verdict + reason, remediation, run metadata, expected access vs outcome, setup gates, ownership evidence, disclosure evidence, 10-key checklist, all checks, constraint counters, inventory snapshot | `GET /api/scan/{id}` | open backend report, open observations | 404 page; "Checklist not recorded for this run"; "No evidence was recorded for this part" |
 | `/ui/scans/{id}/evidence` | Minimized observations behind the verdict | coverage, per-observation phase/actor/request/response summary/assertions/SHA-256 | `GET /api/scan/{id}/observations` | JSON bundle | `NOT_RECORDED` banner; "No observations to show" |
-| `/ui/matrix` | Run-derived authorization cells | endpoint, actor, target, expected access + source, verdict, run link | `GET /api/matrix` | — | "The matrix is empty" + explicit "partial matrix" warning |
+| `/ui/findings` | One place for every conclusion | open-finding count, CONFIRMED findings with reason + remediation + evidence flags, SUSPECTED, check-level findings (AUTHN/INPUT/DISC), SAFE list, coverage gaps | `GET /api/findings` (grouping only) | run fixture scan, drill into run/evidence/report | "No findings yet"; explicit "severity is not in the contract" note |
+| `/ui/configure` | What the backend is configured to do | bundled `scope.yaml`, `recipe.json`, `fixture.yaml`, recipe returned by `fixture_recipe()` (canary redacted), disabled config form with reasons | none (reads backend package files + recipe function) | none — read-only by design | empty state if package files are missing |
+| `/ui/matrix` | Actor × endpoint access | grid: inventory rows × accounts the backend demonstrated, each cell a verdict or **not assessed**; plus the recorded cell table | `GET /api/matrix` + `GET /api/endpoints` + `GET /api/findings` | open run from a cell | "No grid yet"; assessed/total coverage; explicit partial-coverage warning |
 | `/ui/reports` | Canonical reports | stored runs with links to HTML, JSON run, JSON sections, JSON + observations | `GET /api/findings` (links go to `/api/reports/...`) | open suite run by id | "No reports yet"; documented missing list endpoints |
 | `/ui/suites` | Bundled offline transcripts | scenario ids from backend registries (auth titles come from the plans) | `POST /api/scenario-scans`, `POST /api/authentication-scans` | run read-BOLA / authentication scenario | inline 404/422 fragment; empty catalog state |
 | `/ui/suites/read-bola/{id}` | Scenario detail | verdict, reason, remediation, scope, recipe, policy, both evidence parts, 10-key checklist, constraints, inventory, limitations | `GET /api/scenario-scans/{id}` | backend HTML/JSON report | 404 page; "No evidence recorded for this phase" |
@@ -173,6 +177,12 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
    `redirects_followed`, `out_of_scope_requests_executed`, …), including zeroes.
 7. There is no mock-data mode. Nothing in the UI reads from a fixture file that
    the backend did not serve.
+8. A matrix combination with no stored run is rendered **not assessed**, never as
+   SAFE. The grid shows `assessed / total`, so partial coverage is unmistakable.
+9. Severity ranking (CVSS/critical/high/…) does not exist in the backend contract,
+   so `/ui/findings` ranks by verdict only and says so on the page (gap R6).
+10. Configuration is displayed, not simulated: `/ui/configure` shows the real
+    bundled files, disables the inputs it cannot save, and links the gap.
 
 ## 6. Backend gaps this frontend ran into
 
@@ -192,12 +202,14 @@ feature; none of them are faked.
 | G8 | No API authentication or user model | all pages | Local single-user UI, stated on every page | Out of scope while the server is local-only; adding auth is a product decision |
 | G9 | Evidence is minimized by design (no raw traffic) | `/ui/scans/{id}` | Shows redacted summaries + hashes, explains what is absent | No change proposed — this is a safety property, not a gap to close |
 | G10 | No CSRF token for UI form posts | all forms | None needed while the API is unauthenticated and local; adding cookies/sessions later would require CSRF protection | Add CSRF tokens together with any authentication work |
+| G11 | Severity/risk ranking absent from the contract | `/ui/findings` | Ranks by verdict only, with an on-page explanation | Add `severity: Literal["critical","high","medium","low","info"] \| None` + `severity_source` to `SecurityCheck`/`FixtureRun`. Must stay `None` when the backend has no basis for it — an invented severity is worse than none |
+| G12 | No configuration submission path | `/ui/configure` | Shows bundled config read-only, form disabled with reasons | Same as G3/G4: a validated config object plus a scan-job contract, only after guard + authorization work |
 
 Contract changes to the frozen models or the existing routes were **not** made.
 
 ## 7. Tests
 
-`tests/integration/test_ui_pages.py` (14 tests, run with the rest of the suite):
+`tests/integration/test_ui_pages.py` (17 tests, run with the rest of the suite):
 
 | Test | What it actually proves |
 | --- | --- |
@@ -214,6 +226,9 @@ Contract changes to the frozen models or the existing routes were **not** made.
 | `test_ui_fixture_scan_needs_no_network` | A UI scan completes with `socket.connect` and `getaddrinfo` patched to fail |
 | `test_ui_suite_lookup_redirects_to_stored_runs[read-bola/authentication]` | Lookup validation and redirect to a stored run |
 | `test_backend_application_is_unmodified_and_ui_is_additive` | The backend factory still produces an app with **no** `/ui` routes (404 alone), its API answers identically, and the UI entrypoint only adds routes |
+| `test_findings_page_groups_only_backend_verdicts` | Empty state before data; after a run the reason/remediation/verified owner are the API's own; counts derived from `/api/findings`; no severity badge, value or label is invented |
+| `test_configure_page_is_read_only_and_redacts_secrets` | Bundled scope/recipe/spec are shown, the canary value is redacted, `Save`/`Start` are disabled with the reason, and viewing stores nothing |
+| `test_matrix_grid_marks_unassessed_cells_instead_of_guessing` | Grid renders inventory rows × demonstrated accounts, unassessed combinations are labelled, and `assessed / total` equals recorded runs vs. the full grid |
 
 Not covered yet: real-browser rendering (no headless browser in this environment),
 accessibility audit with a screen reader, JavaScript-disabled manual pass, and
@@ -308,3 +323,53 @@ cannot make under the read-only rule.
 
 Until R1–R5 are approved, the UI shows the workaround (open-by-id) and documents
 the gap in place, rather than inventing an endpoint or faking the capability.
+
+
+## 11. Creating the `fa1b` branch from this work
+
+The current branch is the backend baseline plus two frontend-only commits, so it is
+already exactly the content `fa1b` should hold. It was not renamed because this
+workspace is bound to one branch name; the separation you asked for is preserved
+through *content*, not through the branch label.
+
+Known good refs:
+
+| Ref | Meaning |
+| --- | --- |
+| `27fd836` | verified backend baseline (`origin/arena/aa67fa1b-hackfusion-30102026`) |
+| `3674b40` | basic frontend, pushed and verified (reference/backup) |
+| this branch head | backend baseline + frontend-only commits (current frontend) |
+
+Safe transition for the repository owner or the frontend developer (no reset, no
+clean, nothing lost):
+
+```bash
+git fetch origin
+
+# 1. Preserve the current frontend as its own reference branch (optional but cheap).
+git branch frontend-reference arena/a1fe3757-hackfusion-30102026
+
+# 2. Create fa1b from the verified backend baseline.
+git switch -c fa1b 27fd836
+git push -u origin fa1b
+
+# 3. Either start clean on fa1b …
+#    (nothing else to do — fa1b is now the untouched backend)
+
+#    … or bring the reference frontend across as a starting point:
+git checkout arena/a1fe3757-hackfusion-30102026 -- \
+    canarygate/ui tests/integration/test_ui_pages.py docs/UI.md
+git commit -m "chore(ui): import reference frontend onto fa1b"
+git push
+```
+
+Verification after switching (same commands as section 10):
+
+```bash
+git diff --stat 27fd836 -- canarygate/api canarygate/guard canarygate/runner \
+  canarygate/oracles canarygate/accounts canarygate/seed canarygate/scope \
+  canarygate/spec canarygate/network canarygate/evidence canarygate/report \
+  canarygate/database canarygate/models canarygate/scan canarygate/offline \
+  pyproject.toml README.md tests/unit tests/security   # expected: no output
+python -m pytest -q                                    # expected: 626 passed
+```

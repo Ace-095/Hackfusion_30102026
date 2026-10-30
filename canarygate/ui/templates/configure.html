@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Scan configuration{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Scan configuration</h1>
+    <p class="page-sub">
+      What the backend is actually configured to do: the bundled scope file, setup
+      recipe and OpenAPI document it loads, shown read-only. Changing these requires a
+      backend change and a new authorization decision — this build does not expose
+      editing.
+    </p>
+  </div>
+</section>
+
+<div class="alert alert-warn">
+  <strong>This page is read-only, deliberately.</strong>
+  The backend exposes no configuration endpoint: <span class="mono">POST /api/scan</span>
+  takes no body, and the fixture scope, recipe and specification are bundled files.
+  The controls below are disabled and labelled with the reason, so the interface never
+  pretends you can configure a target it cannot test.
+</div>
+
+<section class="card">
+  <header class="card-head"><h2>Configuration form (disabled)</h2></header>
+  <form class="form" aria-describedby="config-disabled-note">
+    <div class="field-row">
+      <label class="field">
+        <span>Target host</span>
+        <input type="text" value="fixture.invalid" disabled>
+        <small id="config-disabled-note">Fixed by the bundled scope file.</small>
+      </label>
+      <label class="field">
+        <span>Port</span>
+        <input type="number" value="443" disabled>
+        <small>Fixed by the bundled scope file.</small>
+      </label>
+      <label class="field">
+        <span>Allowed methods</span>
+        <input type="text" value="GET, POST" disabled>
+        <small>Only exact scoped operations pass the guard.</small>
+      </label>
+    </div>
+    <div class="field-row">
+      <label class="field">
+        <span>Request budget</span>
+        <input type="number" value="20" disabled>
+        <small>Per-run cap enforced centrally.</small>
+      </label>
+      <label class="field">
+        <span>Accounts</span>
+        <input type="text" value="alice, bob" disabled>
+        <small>Supplied accounts; passwords come from the environment only.</small>
+      </label>
+      <label class="field">
+        <span>Ownership model</span>
+        <input type="text" value="private" disabled>
+        <small>From the setup recipe.</small>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="btn" type="button" disabled>Save configuration</button>
+      <button class="btn" type="button" disabled>Start configured scan</button>
+      <span class="note dim">Unavailable: no backend endpoint accepts this
+        configuration (docs/UI.md, gaps G3/G4).</span>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <header class="card-head">
+    <h2>Recipe as the backend loads it</h2>
+    <span class="dim small mono">canarygate.offline.fixture_recipe()</span>
+  </header>
+  <p class="note">Returned by the backend's own recipe function, with canary- and
+    credential-like values redacted for display.</p>
+  <pre class="json">{{ recipe_summary|pretty_json }}</pre>
+</section>
+
+{% for file in files %}
+<section class="card">
+  <header class="card-head">
+    <h2 class="mono">{{ file.name }}</h2>
+    <span class="dim small">canarygate/offline/{{ file.name }}</span>
+  </header>
+  <p class="note">{{ file.purpose }}</p>
+  <details class="disclosure"{% if loop.first %} open{% endif %}>
+    <summary>Show file content</summary>
+    <pre class="json">{{ file.text }}</pre>
+  </details>
+</section>
+{% endfor %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <header class="card-head"><h2>What is enforced for every request</h2></header>
+    <ul class="bullets">
+      <li>Exact host and port only — no wildcard, no redirects, no external traffic.</li>
+      <li>Only operations listed in the scope file with the exact query string pass.</li>
+      <li>DELETE is always blocked; PUT/PATCH are blocked by default.</li>
+      <li>Request budget and sequential execution are enforced before connection.</li>
+      <li>Requests and responses are size-limited; DNS is validated and pinned.</li>
+      <li>Credentials are read from the environment and redacted everywhere.</li>
+    </ul>
+    <p class="note dim">Source of truth: backend scope loader and central guard. This
+      page only describes them.</p>
+  </section>
+
+  <section class="card">
+    <header class="card-head"><h2>To make this page editable</h2></header>
+    <ol class="numbered">
+      <li>A validated configuration object in the backend (scope + recipe + spec),
+        rejected if it violates the safety rules.</li>
+      <li>A <span class="mono">POST /api/scan-jobs</span> contract that accepts it and
+        returns a job id.</li>
+      <li>A written authorization decision for every new target — the guard cannot
+        infer permission from a form.</li>
+      <li>Then this form becomes live and the disabled controls are removed.</li>
+    </ol>
+    <p class="note">Requested as gaps G3/G4 in <span class="mono">docs/UI.md</span>;
+      awaiting backend-owner approval.</p>
+  </section>
+</div>
+
+{% if not files %}
+  {{ empty_state("No bundled configuration found",
+     "The backend package did not expose the expected fixture files.") }}
+{% endif %}
+{% endblock %}
