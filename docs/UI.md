@@ -450,8 +450,8 @@ git diff c36dda1 -- canarygate/api/app.py
 
 # 2. Everything outside canarygate/ui is documentation, tests or build data
 git diff --stat c36dda1 -- . ":(exclude)canarygate/ui"
-# expected: canarygate/api/app.py, docs/*.md, README.md, pyproject.toml,
-#           tools/p0_audit.py, tests/integration/test_ui_*.py
+# expected: .env.example, canarygate/api/app.py, docs/*.md, README.md,
+#           pyproject.toml, tools/p0_audit.py, tests/integration/test_ui_*.py
 
 # 3. The whole suite passes, backend tests included and unmodified
 python -m pytest -q          # 1016 passed
