@@ -29,11 +29,3 @@ addopts = "-ra"
 [tool.setuptools.package-data]
 "canarygate.offline" = ["*.yaml", "*.json"]
 "canarygate.report" = ["templates/*.html"]
-# Frontend addition: templates, CSS, JS and the locally vendored HTMX build.
-"canarygate.ui" = [
-  "templates/*.html",
-  "templates/partials/*.html",
-  "static/css/*.css",
-  "static/js/*.js",
-  "static/vendor/*",
-]

@@ -10,7 +10,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from canarygate.api.app import create_app
+from canarygate.api.app import create_app as create_backend_app
+from canarygate.ui.app import create_ui_app
 
 PATHS = ["/ui/", "/ui/endpoints", "/ui/setup", "/ui/scans", "/ui/matrix",
          "/ui/reports", "/ui/suites", "/ui/spec"]
@@ -18,7 +19,7 @@ EXTERNAL_REFERENCE = re.compile(r"""(?:src|href)\s*=\s*["'](?:https?:)?//""", re
 
 
 def _client(tmp_path, name="ui.sqlite3"):
-    return TestClient(create_app(tmp_path / name))
+    return TestClient(create_ui_app(tmp_path / name))
 
 
 def test_every_page_renders_before_any_run_without_sample_data(tmp_path):
@@ -282,3 +283,24 @@ def test_ui_suite_lookup_redirects_to_stored_runs(tmp_path, family):
         assert lookup.status_code == 303
         assert lookup.headers["location"] == f"/ui/suites/{family}/{run_id}"
         assert client.get(lookup.headers["location"]).status_code == 200
+
+
+def test_backend_application_is_unmodified_and_ui_is_additive(tmp_path):
+    """The frontend must not change the backend app; it only extends it in memory."""
+    backend = create_backend_app(tmp_path / "backend-only.sqlite3")
+    backend_paths = {getattr(route, "path", "") for route in backend.routes}
+    assert not any(path.startswith("/ui") for path in backend_paths)
+    with TestClient(backend) as client:
+        # The backend alone does not serve the UI, and its own API is unchanged.
+        assert client.get("/ui/").status_code == 404
+        assert client.get("/api/health").json() == {
+            "status": "ok", "mode": "fixture", "live_scanning": False}
+        assert len(client.get("/api/endpoints").json()["endpoints"]) == 4
+
+    ui = create_ui_app(tmp_path / "with-ui.sqlite3")
+    ui_paths = {getattr(route, "path", "") for route in ui.routes}
+    assert "/ui/" in ui_paths
+    assert "/api/health" in ui_paths  # backend routes are still mounted as-is
+    with TestClient(ui) as client:
+        assert client.get("/ui/").status_code == 200
+        assert client.get("/api/health").json()["mode"] == "fixture"

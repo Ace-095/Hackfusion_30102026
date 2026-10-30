@@ -93,12 +93,6 @@ scenario id; see [checkpoint 28](docs/checkpoints/28-generic-scan-integration.md
 Authentication checks are exposed at `POST /api/authentication-scans`; see
 [checkpoint 29](docs/checkpoints/29-authentication-checks.md).
 
-Open `http://127.0.0.1:8000/ui/` for the local frontend. It is server-rendered
-(Jinja2) with a locally vendored HTMX, serves all of its own assets and renders
-only what the JSON API returns. Every page states that this is a fixture-only
-build. See [docs/UI.md](docs/UI.md) for the page/endpoint map, the honesty rules
-and the list of backend contracts the frontend still needs.
-
 In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed
 [VS Code and judge demo guide](docs/VS_CODE_DEMO.md) has Windows/Linux steps.

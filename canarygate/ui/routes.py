@@ -73,7 +73,8 @@ def _api():
 
 
 def _store(request: Request, kind: str = "fixture"):
-    # States are created by create_app(); the UI reads them exactly like the API.
+    # States come from the backend factory (create_backend_app); the UI reads
+    # them exactly like the JSON API does.
     if kind == "scenario":
         return request.app.state.scenario_store
     if kind == "authentication":

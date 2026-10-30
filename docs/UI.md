@@ -32,6 +32,7 @@ redirects there.
 ```
 canarygate/ui/
 ├── __init__.py            # package docstring only
+├── app.py                 # FRONTEND ENTRYPOINT: backend app + UI mounted at runtime
 ├── routes.py              # HTML routes, form actions, view helpers
 ├── templating.py          # Jinja2 environment, filters (verdict/status badges, JSON, tri-state)
 ├── templates/
@@ -56,19 +57,32 @@ canarygate/ui/
     └── vendor/htmx.min.js, vendor/htmx.LICENSE
 ```
 
-The only change outside `canarygate/ui/` is four lines inside `create_app()` in
-`canarygate/api/app.py`:
+**No backend file is modified.** The UI is attached at runtime by
+`canarygate/ui/app.py`:
 
 ```python
-from canarygate.ui.routes import router as ui_router
-from canarygate.ui.templating import STATIC_ROOT
-application.mount("/ui/static", StaticFiles(directory=STATIC_ROOT), name="ui-static")
-application.include_router(ui_router)
+application = create_backend_app(database_path)          # untouched backend factory
+application.mount("/ui/static", StaticFiles(...))        # local assets
+application.include_router(ui_router)                    # HTML routes
 ```
 
-The import is inside the function on purpose. `canarygate/ui/routes.py` imports
-`canarygate.api.app` lazily (one helper, `_api()`), so the UI can call the API
-handlers without a circular import at module load time.
+`canarygate/api/app.py`, the guard, the runner, the oracles, the models, the
+database layer, the existing tests and `pyproject.toml` are byte-identical to the
+backend branch. Two servers are therefore possible from the same code:
+
+| Command | Serves |
+| --- | --- |
+| `uvicorn canarygate.api.app:app` | JSON API only, unchanged |
+| `uvicorn canarygate.ui.app:app` | JSON API **and** the UI at `/ui/` |
+
+Mounting in memory (rather than a sub-application) keeps the backend lifespan —
+the SQLite table creation — running exactly once, and keeps
+`request.app.state.store`, `.scenario_store`, `.auth_store` reachable, because it
+is the same application object.
+
+`canarygate/ui/routes.py` imports `canarygate.api.app` lazily (one helper,
+`_api()`), so the UI can call the API handlers without a circular import at
+module load time.
 
 ## 3. How the UI talks to the backend
 
@@ -183,7 +197,7 @@ Contract changes to the frozen models or the existing routes were **not** made.
 
 ## 7. Tests
 
-`tests/integration/test_ui_pages.py` (13 tests, run with the rest of the suite):
+`tests/integration/test_ui_pages.py` (14 tests, run with the rest of the suite):
 
 | Test | What it actually proves |
 | --- | --- |
@@ -199,6 +213,7 @@ Contract changes to the frozen models or the existing routes were **not** made.
 | `test_ui_pages_use_the_same_backend_handlers_as_the_json_api` | Counts on `/ui/scans` and `/ui/matrix` equal what the JSON API returns |
 | `test_ui_fixture_scan_needs_no_network` | A UI scan completes with `socket.connect` and `getaddrinfo` patched to fail |
 | `test_ui_suite_lookup_redirects_to_stored_runs[read-bola/authentication]` | Lookup validation and redirect to a stored run |
+| `test_backend_application_is_unmodified_and_ui_is_additive` | The backend factory still produces an app with **no** `/ui` routes (404 alone), its API answers identically, and the UI entrypoint only adds routes |
 
 Not covered yet: real-browser rendering (no headless browser in this environment),
 accessibility audit with a screen reader, JavaScript-disabled manual pass, and
@@ -207,13 +222,20 @@ visual regression. Those belong to the design pass.
 ## 8. Running it
 
 ```bash
-python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
+python -m uvicorn canarygate.ui.app:app --host 127.0.0.1 --port 8000
 ```
 
-Then open `http://127.0.0.1:8000/ui/`. Optional:
+Then open `http://127.0.0.1:8000/ui/`. Optional separate database:
 
 ```bash
-CANARYGATE_DB_PATH=/tmp/canarygate.sqlite3 python -m uvicorn canarygate.api.app:app --port 8000
+CANARYGATE_DB_PATH=/tmp/canarygate.sqlite3 python -m uvicorn canarygate.ui.app:app --port 8000
+```
+
+The backend entrypoint is untouched and still works on its own (JSON only, no
+`/ui/`):
+
+```bash
+python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 The server stays local-only, unauthenticated and fixture-only. Do not bind it to a
@@ -233,3 +255,56 @@ public interface, and do not present fixture verdicts as live-target results.
    contrast checks, keyboard-only run.
 7. Print stylesheet for the report view.
 8. Only after the core pipeline is frozen: an async scan with progress (G3).
+
+
+## 10. Backend read-only guarantee
+
+The backend is treated as a delivered dependency. The frontend may read, import
+and call it; it may not change it.
+
+| Allowed | Forbidden (and not done) |
+| --- | --- |
+| Read backend source, tests, schemas, `docs/API.md` | Edit any file under `canarygate/` outside `canarygate/ui/` |
+| Import `canarygate.api.app` and call its handlers | Change API routes, response models or status codes |
+| Use FastAPI objects the backend factory returns | Change `canarygate/models/`, the guard, runner, oracles, accounts/seed/scope logic |
+| Read the SQLite schema through the backend's stores | Touch `canarygate/database/`, migrations or stored payloads |
+| Add files under `canarygate/ui/`, `docs/UI.md`, `tests/integration/test_ui_pages.py` | Modify existing backend tests or `pyproject.toml` |
+
+### Verification (run these before handing the branch over)
+
+```bash
+# 1. No backend file differs from the backend branch
+git diff --stat origin/arena/aa67fa1b-hackfusion-30102026 -- \
+  canarygate/api canarygate/guard canarygate/runner canarygate/oracles \
+  canarygate/accounts canarygate/seed canarygate/scope canarygate/spec \
+  canarygate/network canarygate/evidence canarygate/report canarygate/database \
+  canarygate/models canarygate/scan canarygate/offline \
+  pyproject.toml README.md docs/API.md tests/unit tests/security
+# expected: no output
+
+# 2. Every change on this branch is frontend-only
+git diff --stat origin/arena/aa67fa1b-hackfusion-30102026
+# expected: canarygate/ui/** , docs/UI.md , tests/integration/test_ui_pages.py only
+
+# 3. The whole suite passes, backend tests included and unmodified
+python -m pytest -q
+
+# 4. The backend alone still has no UI routes
+python -m uvicorn canarygate.api.app:app --port 8001   # GET /ui/ -> 404
+```
+
+### Changes I would make outside the frontend, awaiting your approval
+
+These are **not applied**; each is a one-line-to-small change that the frontend
+cannot make under the read-only rule.
+
+| # | File | Proposed change | Why the frontend wants it | Risk |
+| --- | --- | --- | --- | --- |
+| R1 | `README.md` (line ~96) | Add "open `/ui/` for the local frontend; see `docs/UI.md`" next to the uvicorn command | Discoverability: the README currently mentions only the CLI demo | None (docs) |
+| R2 | `docs/VS_CODE_DEMO.md` (lines 4–5) | Replace "the frontend/dashboard … not yet implemented" with "a local frontend exists at `/ui/`" | The current sentence is now factually wrong for anyone reading it | None (docs) |
+| R3 | `pyproject.toml` `[tool.setuptools.package-data]` | Add `"canarygate.ui" = ["templates/*.html", "templates/partials/*.html", "static/css/*.css", "static/js/*.js", "static/vendor/*"]` | Templates/CSS/JS ship in a built wheel. Editable installs (`pip install -e .`, what CI uses) work without it | Build config only |
+| R4 | `canarygate/api/` — **new** route(s) | `GET /api/scenario-scans?limit=` and `GET /api/authentication-scans?limit=` returning `{mode, runs:[{id, created_at, scenario_id, verdict/status}]}` (gap G1/G2) | Without a list endpoint the suites/reports pages can only open a run by pasted id | New read-only route; no change to existing contracts |
+| R5 | `canarygate/api/` — **new** route | `POST /api/scan-jobs` + `GET /api/scan-jobs/{id}` (gap G3) | Progress/cancel for long runs. Not needed for the fixture demo, which returns in well under a second | New surface; defer |
+
+Until R1–R5 are approved, the UI shows the workaround (open-by-id) and documents
+the gap in place, rather than inventing an endpoint or faking the capability.
