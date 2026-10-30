@@ -448,7 +448,8 @@ checks, and login, DNS-only scopes, shared run budgets, absolute deadlines,
 production evidence and full live safety review are missing. The fixture scanner
 continues to use its separate in-process mock transport, not the live boundary.
 
-The full local suite passed 263 tests with one third-party warning. See
+The full local suite passed 263 tests with one third-party warning. GitHub Actions
+run `41044921428` passed Ubuntu and Windows for `c78a3f7`. See
 [judge demo](checkpoints/13-guarded-httpx.md). This is a conservative subset,
 not completion of P0 or authorization to scan a real target.
 
