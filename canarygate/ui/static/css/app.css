@@ -20,8 +20,11 @@
   /* text */
   --ink: #e8eef6;
   --ink-2: #a8b9c9;
-  --ink-3: #71879b;
-  --ink-4: #53687b;
+  /* ink-3/ink-4 are dimmer roles, not faint greys: both stay above 4.5:1 on
+     every surface (including --surface-2), so secondary text, "not
+     recorded" and "not assessed" cells remain readable. */
+  --ink-3: #93a8ba;
+  --ink-4: #7f94a7;
 
   /* semantics */
   --accent: #4cc2ff;
