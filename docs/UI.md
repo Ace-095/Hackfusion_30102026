@@ -334,6 +334,15 @@ screen-reader audit, a manual keyboard-only pass, and pixel-level visual
 regression. Everything above is asserted on the served HTML/CSS, which is the
 limit of what the test environment can prove.
 
+The nearest thing to a browser check is `tools/browser_smoke.py` (not part of
+pytest): it starts the app and the TLS lab, loads the real pages in jsdom with
+scripts enabled, submits the fixture and TargetLab forms **through HTMX**, and
+compares the DOM with the JSON API — 17 of 17 checks, including the nav toggle, the
+table filter, all six `LAB-BOLA` ids, the SCI 403/401/200 sequence, the reset
+proof's four checks and the matrix's four columns. It proves script execution and
+DOM state, not pixels: jsdom has no layout engine, and no real browser is
+installable here (no binary, missing NSS/ATK libraries, no root).
+
 ## 8. Running it
 
 Two terminals. The lab is a separate program, and only the TargetLab pages need

@@ -38,7 +38,15 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[test]"
 .venv/bin/python tools/p0_audit.py           # requirement audit; fails on drift
 .venv/bin/python tools/demo.py               # four-stage demonstration, clean start
 .venv/bin/python tools/consistency_audit.py --database <file.sqlite3>
+.venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+#   DOM-level journey (scripts + HTMX) against a real server and lab; needs node
+#   and `npm install --prefix /tmp/browser-harness jsdom`. Exit 2 = cannot run here.
 ```
+
+The interface is served by `python -m uvicorn canarygate.ui.app:app`; see
+[UI.md](UI.md) for the page map and
+[FRONTEND_BACKEND_INTEGRATION.md](FRONTEND_BACKEND_INTEGRATION.md) for the
+integration, its API map and the release checks.
 
 `tools/demo.py` and `tools/consistency_audit.py` import one shared library,
 `tools/demo_kit.py`, so the demonstration and the audit cannot drift apart. The

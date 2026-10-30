@@ -12,6 +12,7 @@ own. 1016 tests pass; the P0 audit is clean at 58 rows / 60 test files / 0 failu
 | Is security logic duplicated? | No. The UI has no oracle, no policy, no transport and no `httpx`/`socket` import. It renders fields and links to backend artefacts. Two static tests enforce this. |
 | Does the end-to-end flow work? | Yes: submit a scan from a page, land on the stored run, open its report and see the matrix update — without calling the API by hand. |
 | Is anything faked? | No. Where the backend has no capability (BFLA, live targets, listing endpoints, severity) the UI says so instead of inventing it. |
+| Is it release-verified? | CI green on Ubuntu and Windows at the PR head; the wheel installs and serves the UI from a clean venv; a DOM-level journey passes 17/17 against a real server and lab. Real-browser rendering is still unproven — see §14. |
 
 ---
 
@@ -443,3 +444,73 @@ branch was pushed as a new branch rather than rewritten.
    missing ones (`D11` BFLA, `D12` live validation). No page suggests otherwise.
 6. The matrix's `role` column only reflects what a role probe actually observed; it is
    not a BFLA assessment.
+
+## 14. Release readiness
+
+Feature work is frozen. Each row below is a check a reviewer can repeat.
+
+| Check | Result | How |
+| --- | --- | --- |
+| CI on the PR head | **green on both jobs** — `tests (ubuntu-latest, 3.11)` and `tests (windows-latest, 3.11)` completed success on `a589ba0` | checks tab of PR #4 |
+| Full local suite | 1016 passed | `.venv/bin/python -m pytest tests -q` |
+| Requirement audit | 58 rows, 0 failures; 47 implemented · 9 partial · 2 missing · 0 unreachable | `.venv/bin/python tools/p0_audit.py` |
+| Clean installation | wheel built and installed into a fresh venv outside the repo; UI and API launched from `site-packages` and served every page, both static bundles and the JSON API; a form scan stored a run whose page, report and `?view=run` JSON all answered 200; a lab scan without a CA answered 400 | commands below |
+| Browser-level journey | **17/17** checks in a DOM with scripts and HTMX, against a real uvicorn server and the real TLS lab | `.venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness` |
+| Demo rehearsal from clean state | `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` | `.venv/bin/python tools/demo.py` |
+
+### Clean installation
+
+```bash
+.venv/bin/python -m pip wheel . --no-deps -w /tmp/wheel
+python3 -m venv /tmp/clean-venv
+/tmp/clean-venv/bin/pip install /tmp/wheel/canarygate-0.1.0-py3-none-any.whl
+cd /tmp && CANARYGATE_DB_PATH=/tmp/clean.sqlite3 \
+  /tmp/clean-venv/bin/python -m uvicorn canarygate.ui.app:app --host 127.0.0.1 --port 8100
+```
+
+What that proved, beyond "it starts": the wheel carries 40 `canarygate/ui` files, so
+templates, CSS and the vendored HTMX load from `site-packages` rather than the
+source tree; the packaged app serves `/ui/`, `/ui/lab`, `/ui/matrix`, both static
+bundles, `/api/health` and `/openapi.json`; and the lab refusal is intact in the
+wheel (400, nothing stored). **The wheel deliberately does not ship `targetlab`** —
+a deliberately vulnerable test API does not belong in an installed product, so lab
+workflows run from a source checkout. Before this branch the wheel shipped no
+interface at all.
+
+### Browser-level journey
+
+`tools/browser_smoke.py` starts its own TargetLab and app on free ports, drives the
+real pages in jsdom with scripts enabled, and then compares the DOM with what the
+API stored. It checks:
+
+* the dashboard renders, the local-evidence banner is present, no `src`/`href`
+  points at another origin, and htmx 2.0.4 has initialised;
+* the page's own JavaScript runs: the nav toggle flips `aria-expanded` true → false,
+  and the endpoint table filter hides all four non-matching rows;
+* the fixture form posts through HTMX, the returned fragment swaps into
+  `#scan-panel`, and the link it produces opens a stored run whose report page the
+  browser then loads;
+* the three TargetLab forms post through HTMX and the pages they lead to carry all
+  six `LAB-BOLA` ids, a summary **equal** to `/api/lab-bola-scans/{id}`'s summary,
+  the SCI evidence at 403 / 401 / 200 with `interaction_induced`, and `proven` with
+  RESET-01…04;
+* the matrix page shows partial coverage and all four column labels;
+* no page emits a script error.
+
+Limits, stated plainly: jsdom has no layout or paint step, so this proves script
+execution, DOM state, HTMX round-trips and link wiring — not pixels, CSS cascade,
+focus rings or print output. A real browser is not installable in this environment:
+there is no Chromium or Firefox binary, `libnss3`, `libnspr4`, `libnssutil3`,
+`libatk-1.0` and `libcups` are absent, and there is no root to install them. The
+script treats a missing node/jsdom as "cannot run here" (exit 2 with instructions),
+never as a pass.
+
+### What remains unproven
+
+1. Rendering, layout, focus and print across real browsers.
+2. Detection against any API the team did not write (`D12`).
+3. BFLA (`D11`).
+4. Concurrency: the server is single-user, scans are synchronous, and nothing has
+   been load-tested or run in parallel.
+5. Anything about a deployed environment — there is no authentication, no TLS
+   termination and no CSRF protection, by design and by statement.
