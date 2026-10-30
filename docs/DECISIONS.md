@@ -1227,3 +1227,19 @@ body", which describes our plumbing to someone trying to use the product. The
 status now maps to a sentence ("That configuration was rejected") while the HTTP
 code stays in a badge and the backend's own detail string is printed unchanged:
 friendlier words, identical facts.
+
+### Checkpoint 44 follow-up: a command that cannot say what went wrong is a bug
+
+Running the documented commands on a clean machine — rather than assuming they
+worked because they worked once — found three tools that failed badly in exactly
+the cases a judge hits. `demo.py --keep` printed a path into a `TemporaryDirectory`
+that had already been deleted, so the audit command suggested right after it could
+never work. `consistency_audit.py` answered a missing or empty database with a raw
+`sqlite3.OperationalError` traceback. `browser_smoke.py` answered a mistyped
+`--jsdom` path with `FileNotFoundError`.
+
+The fixes are small, but one of them encodes a rule this project keeps re-learning:
+**an empty database must not be reported as intact.** Zero runs is not "everything
+checks out"; it is "nothing was audited", so the tool exits 2 with a sentence
+saying exactly that. Reporting success there would have been the tooling version
+of calling an untested cell SAFE.

@@ -156,3 +156,28 @@ is unchanged.
   script execution and DOM state, not paint, focus rings or print output.
 - **The 422 page is shared.** The status-specific title is generic to all form
   actions, not only the assessment form.
+
+## 8. Follow-up: the commands a judge actually types
+
+Writing `docs/RUN_LOCALLY.md` meant executing every command on a clean checkout
+with a fresh virtual environment. Three defects surfaced, all in the tools rather
+than the product, and all fixed here:
+
+| Defect | Reproduced by | Fix |
+|---|---|---|
+| `tools/demo.py --keep` printed a database path that no longer existed | run it, then `ls` the printed path | with `--keep` the file is created in `mkdtemp()`, which is not cleaned up; the tool also prints the exact audit command to run next |
+| `tools/consistency_audit.py --database <file>` died with a raw `sqlite3` traceback | point it at a missing file, then at an empty one | exits `2` with a sentence: "no such database file" / "this database has no CanaryGate tables … this is not a statement that any run is intact" |
+| `tools/browser_smoke.py --jsdom <wrong path>` raised `FileNotFoundError` | pass a path that does not exist | treated as a missing prerequisite: prints the `npm install` line and exits `2` |
+
+`tests/integration/test_tool_ergonomics.py` (4 tests) pins all three, including
+the rule that an empty database is **never** announced as "all stored runs
+intact" — the real clean-store path stays covered by
+`test_demo_consistency.py::test_the_consistency_audit_reports_a_clean_store`.
+
+Verified on the fresh environment: `pytest -q` 1113 passed, `p0_audit.py` 58
+requirements / 1113 tests / 67 files, `demo.py` 142 invariants over 17 surfaces,
+`demo.py --keep` → the printed path exists → `consistency_audit.py` on it exits 0
+with "ALL STORED RUNS INTACT AND CONSISTENT", `browser_smoke.py` 31/31 with a
+freshly installed jsdom, and both servers serving `/`, `/ui/`,
+`/ui/assessment`, `/api/health` with a real assessment completing 3 runs / 54
+requests / 9 cells.

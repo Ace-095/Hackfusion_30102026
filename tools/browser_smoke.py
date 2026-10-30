@@ -89,6 +89,12 @@ def wait_for(url: str, *, insecure: bool = False, seconds: float = 30.0) -> None
 def node_available(jsdom_root: str | None) -> str | None:
     env = dict(os.environ)
     if jsdom_root:
+        # A wrong --jsdom path used to escape as a FileNotFoundError from subprocess.
+        # Treat it the same as "jsdom is not installed here": skip, and say how.
+        if not Path(jsdom_root).is_dir():
+            return None
+        if not (Path(jsdom_root) / "node_modules" / "jsdom").is_dir():
+            return None
         env["NODE_PATH"] = str(Path(jsdom_root) / "node_modules")
     node = shutil_which("node")
     if not node:

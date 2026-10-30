@@ -100,10 +100,19 @@ def main(argv=None) -> int:
     import targetlab.testing as lab_server
     from canarygate.api.app import create_app
 
-    holder = tempfile.TemporaryDirectory(prefix="canarygate-demo-")
-    database = Path(args.database) if args.database else Path(holder.name) / "demo.sqlite3"
-    if database.exists() and args.database:
-        parser.error("the demonstration needs a database that does not exist yet")
+    if args.database:
+        holder = None
+        database = Path(args.database)
+        if database.exists():
+            parser.error("the demonstration needs a database that does not exist yet")
+    elif args.keep:
+        # A TemporaryDirectory deletes itself when the interpreter exits, so --keep
+        # used to print a path that was already gone. mkdtemp stays where it is.
+        holder = None
+        database = Path(tempfile.mkdtemp(prefix="canarygate-demo-")) / "demo.sqlite3"
+    else:
+        holder = tempfile.TemporaryDirectory(prefix="canarygate-demo-")
+        database = Path(holder.name) / "demo.sqlite3"
     os.environ["CANARYGATE_TARGETLAB_CA"] = str(lab_server.TARGETLAB_CERT)
 
     print("CanaryGate — demonstration (checkpoint 38)")
@@ -148,7 +157,8 @@ def main(argv=None) -> int:
         print(f"summary written to {args.json}")
     if args.keep:
         print(f"database kept at {database}")
-    else:
+        print(f"  audit it with: python tools/consistency_audit.py --database {database}")
+    elif holder is not None:
         holder.cleanup()
     return status
 
