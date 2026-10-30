@@ -627,6 +627,11 @@ pre.text {
 .matrix td { background: var(--surface); }
 .matrix tbody tr:hover th { background: var(--surface-3); }
 .matrix .cell-unknown { color: var(--ink-4); }
+/* TargetLab asset matrix: the selected cell is marked in the row, never recoloured */
+.matrix td.is-selected { background: var(--accent-tint); box-shadow: inset 0 0 0 2px var(--accent); }
+.matrix td.cell-untested { background: var(--surface-2); }
+.matrix .cell-link { display: inline-flex; flex-direction: column; align-items: center; gap: 0.15rem; }
+.matrix .cell-meta { font-size: var(--fs-xs); color: var(--ink-4); display: block; }
 .matrix .assessment { text-align: right; color: var(--ink-3); font-family: var(--mono); font-size: var(--fs-xs); }
 
 /* tabs / subnav */

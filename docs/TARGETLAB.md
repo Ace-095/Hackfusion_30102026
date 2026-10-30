@@ -113,7 +113,24 @@ are declared, and it runs on the same machine. Reports must say so.
 | 35 | **Done.** Dedicated `local_lab` transport: literal `127.0.0.1`, pinned test CA with hostname checking, no DNS, no redirects, no retries, same `RunSafetyGuard`. See [checkpoint 35](checkpoints/35-targetlab-transport.md). |
 | 36 | **Done.** Real requests through the `local_lab` transport reach the shared read-BOLA oracle: `/records/{id}` is CONFIRMED in both directions and `/records/{id}/secure` is SAFE, matching the declared ground truth 6/6. See [checkpoint 36](checkpoints/36-targetlab-bola.md). |
 | 37 | **Done.** Real requests reproduce deny → rejected login → leak: `SCI-AUTHZ` and `SCI-AUTHN` pass alone, the combined read returns the owner's private marker and the SCI engine returns `CONFIRMED`/`interaction_induced`. A separate two-run scenario proves a successful login clears the condition. See [checkpoint 37](checkpoints/37-targetlab-sci.md). |
-| Playground | **In progress.** `GET /api/lab-catalog` publishes the demo tenant (accounts, assets, the nine combinations and the ordered pair to run for each). A BOLA run covers one pair and answers that combination's row; `actor`/`owner` on `/api/lab-bola-scans` and `/api/lab-sci-scans` select the pair. |
+| Playground | **Done.** `GET /api/lab-catalog` publishes the demo tenant (accounts, assets, the nine combinations, the ordered pair to run for each and the three `coverage_pairs` that answer all nine). A BOLA run covers one pair and answers that combination's row; `actor`/`owner` on `/api/lab-bola-scans` and `/api/lab-sci-scans` select the pair. |
+| 39 | **Done.** `GET /api/lab-matrix` and `/ui/lab/matrix` project the stored runs onto the nine combinations. Nothing is inferred: a tested cell carries its run id, check id and evidence hash, an untested cell has no verdict at all, and three coverage runs produce 9 tested / 6 CONFIRMED / 3 SAFE with 3 duplicated cells visible. `tools/consistency_audit.py` rebuilds the same matrix offline from the database. |
+
+### The nine combinations
+
+| Requester | Own asset (legitimate) | Cross-account attempts |
+|---|---|---|
+| `mallapa` | `MKT-2026-041` — owner baseline `LAB-BOLA-01` | `BRD-2026-018`, `ADS-2026-027` |
+| `sakshi` | `BRD-2026-018` — owner baseline `LAB-BOLA-02` | `MKT-2026-041`, `ADS-2026-027` |
+| `harsha` | `ADS-2026-027` — owner baseline | `MKT-2026-041`, `BRD-2026-018` |
+
+A cross-account cell is answered by the cross-account check of that pair's run on
+`/records/{id}` (200 + owner marker ⇒ CONFIRMED when ownership is verified) and its
+**secure** counterpart on `/records/{id}/secure` (403 ⇒ SAFE). One run answers four
+cells (two owner baselines, one cross direction and its secure twin), which is why
+three runs already cover all nine; running the other three ordered pairs re-answers
+the same cells from the other direction and those duplicates stay listed as
+superseded evidence rather than being hidden.
 
 The production guard stays as it is. A loopback mode is a separate, stricter
 path: it must accept **only** `127.0.0.1`/`localhost`, require TLS, keep every

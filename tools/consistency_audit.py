@@ -34,6 +34,11 @@ def main(argv=None) -> int:
           f"invariants: {report['invariants_checked']}")
     for run_id, verdict in sorted(report["summary"].items()):
         print(f"  {run_id}  {verdict}")
+    if report.get("asset_matrix"):
+        summary = report["asset_matrix"]["summary"]
+        print(f"asset matrix rebuilt offline: {summary['tested']} tested, "
+              f"{summary['untested']} untested, {summary['confirmed']} CONFIRMED, "
+              f"{summary['safe']} SAFE")
     print()
     if report["problems"]:
         print(f"PROBLEMS ({len(report['problems'])}):")

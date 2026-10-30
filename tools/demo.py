@@ -70,6 +70,7 @@ def _stage_4_lines(bundle):
     stages = {stage["id"]: stage for stage in bundle["stages"]}
     bola = stages["bola"]
     sci = stages["sci"]
+    asset = bundle["summary"].get("asset_matrix") or {}
     return [
         f"stage 1 stored run, sections, nine sections, HTML and matrix agree "
         f"({bola['requests_sent']}/{bola['request_budget']} requests)",
@@ -77,6 +78,9 @@ def _stage_4_lines(bundle):
         f"({sci['requests_sent']}/{sci['request_budget']} requests)",
         "matrix: GET /records/{id} red for another account's resource; "
         "GET /records/{id}/secure green; GET /records/{id}/guarded red",
+        f"asset matrix from the stored runs: {asset.get('tested')} cells tested "
+        f"({asset.get('confirmed')} CONFIRMED, {asset.get('safe')} SAFE), "
+        f"{asset.get('untested')} untested — untested is not SAFE",
         "ground truth is scored when the report is built, never before the verdict",
         "every surface states: controlled validation of the loopback lab, not live validation",
     ]

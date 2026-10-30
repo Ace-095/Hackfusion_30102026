@@ -436,6 +436,11 @@ it:
  "notes": ["..."]}
 ```
 
+It also publishes `coverage_pairs`: the minimum set of runs (three unordered
+pairs, `mallapa`→`sakshi`, `sakshi`→`harsha`, `harsha`→`mallapa`) that answers all
+nine combinations, because one run records both owner baselines and both
+cross-account directions. `pairs` stays the six ordered pairs the API accepts.
+
 It contains no credential, token, private marker, expected verdict or expected
 access, and it selects no target. `kind` describes the request
 (`legitimate_owner_request` or `cross_account_attempt`), never an outcome. The
@@ -464,7 +469,8 @@ of the run declare exactly the selected pair.
 
 A run exercises that pair in both directions and on both routes, so the nine
 combinations are answered by the six ordered pairs; the interface uses the
-catalog's `pair` for the selected combination.
+catalog's `pair` for the selected combination and reads the verdict back from
+`GET /api/lab-matrix` (below), never from the page.
 Requires `CANARYGATE_TARGETLAB_CA`; without it the API answers `400`. If the lab is
 unreachable, refuses TLS, or never returns a single response, the API answers
 `502` and stores nothing.
@@ -493,6 +499,77 @@ The run (`LabBolaRun`) contains:
 appears as a red `other_account_resource` cell and the secure route as a green one,
 both labelled `lab_bola:<scenario>[:route]` so they stay distinguishable from
 offline scenario and SCI cells.
+
+## TargetLab asset matrix (checkpoint 39)
+
+`GET /api/lab-matrix`
+
+The nine demo-tenant combinations (three accounts × three private assets),
+assembled **only** from stored read-BOLA runs. It opens no socket, reads no ground
+truth, runs no check and adds no verdict: it projects each stored
+`LAB-BOLA-0x` check onto the cell it answers and carries the run id, check id and
+evidence hash through. The same aggregation is available offline through
+`tools/consistency_audit.py`, which rebuilds it from the database alone.
+
+```json
+{"mode": "targetlab_matrix", "dataset": "demo_tenant",
+ "derived_from": "stored_lab_bola_runs", "generated_at": "2026-10-30T19:29:57Z",
+ "accounts": [{"account": "mallapa", "title": "Marketing Manager",
+               "role": "marketing_manager", "asset_id": "MKT-2026-041",
+               "asset_type": "campaign_artwork",
+               "asset_label": "Unreleased campaign artwork"}],
+ "cells": [{"requester": "mallapa", "asset_id": "BRD-2026-018", "owner": "sakshi",
+            "kind": "cross_account_attempt", "state": "tested",
+            "expected_access": "owner-only", "actual_access": "private_record_returned",
+            "verdict": "CONFIRMED", "reason": "...",
+            "evidence": {"run_id": "…", "check_id": "LAB-BOLA-03",
+                         "direction": "cross_account", "verdict": "CONFIRMED",
+                         "status": 200, "endpoint": "GET /records/{id}",
+                         "evidence_sha256": "…", "created_at": "…", "port": 8765,
+                         "requests_sent": 18, "checklist_true": 9, "checklist_total": 9,
+                         "private_disclosure": true, "verified_denial": false,
+                         "ownership_verified": true, "owner_baseline": false},
+            "secure": {"run_id": "…", "check_id": "LAB-BOLA-05", "verdict": "SAFE",
+                       "status": 403, "evidence_sha256": "…", "verified_denial": true},
+            "stale": false, "sources": 1, "superseded_runs": []}],
+ "summary": {"cells": 9, "tested": 9, "untested": 0, "confirmed": 6, "suspected": 0,
+             "safe": 3, "inconclusive": 0, "skipped": 0, "runs_considered": 3,
+             "ports": [8765], "stale_cells": 0, "duplicated_cells": 3},
+ "notes": ["..."]}
+```
+
+Cell states are `tested` and `untested`; they are not verdicts. An `untested`
+cell has `verdict: null`, `evidence: null`, `reason: null`, `sources: 0`,
+`actual_access: "no_evidence"` and `stale: false` — the contract refuses any other
+shape, so missing evidence cannot be rendered as `SAFE`, `SKIPPED` or
+`INCONCLUSIVE`. `expected_access` is always the literal `owner-only` and is never
+derived from a result. `actual_access` is derived only from the stored booleans of
+that check:
+
+| `actual_access` | Meaning |
+|---|---|
+| `private_record_returned` | the check recorded `private_disclosure` (cross-account) or the verified owner baseline read (owner cell) |
+| `denied` | the check recorded `verified_denial` |
+| `not_attempted` | the check was `SKIPPED` |
+| `unverified_response` | a response arrived but the evidence did not establish access or denial |
+| `no_evidence` | the cell is untested |
+
+`checklist_true` / `checklist_total` count only the four booleans a cell carries
+(`private_disclosure`, `verified_denial`, `ownership_verified`, `owner_baseline`),
+not the ten-key run checklist; the run's own facts stay on
+`GET /api/lab-bola-scans/{run_id}`.
+
+Duplicate and stale evidence stay visible rather than being silently resolved.
+`sources` counts the stored checks that answer the cell, `superseded_runs` lists
+the older runs whose answer was replaced by the newest one,
+`summary.duplicated_cells` counts cells answered more than once, and `stale`
+marks a cell whose selected run ran against a port that a later run did not use
+(`summary.stale_cells`, `summary.ports`). Ties on the second-precision timestamp
+are broken by storage order, so this endpoint and `/ui/lab/matrix` always select
+the same evidence.
+
+The response is read-only and stable: it changes only when a run is stored. It
+answers `200` with nine untested cells on an empty database.
 
 ## TargetLab control-interaction validation (checkpoint 37)
 

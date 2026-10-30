@@ -57,6 +57,9 @@ OWN_RECORD = {account: f"/records/{asset}" for account, asset in ASSET_IDS.items
 #: The fixed pair the checkpoint-34 evidence workflow reads. It is not a policy:
 #: the read-BOLA and SCI workflows take an explicit pair from the request.
 DEMO_PAIR = ("mallapa", "sakshi")
+#: The minimum set of runs that together answer all nine account x asset cells:
+#: each ordered pair here covers both directions of one unordered pair.
+DEMO_COVERAGE_PAIRS = (("mallapa", "sakshi"), ("sakshi", "harsha"), ("harsha", "mallapa"))
 OTHER_RECORD = {DEMO_PAIR[0]: OWN_RECORD[DEMO_PAIR[1]], DEMO_PAIR[1]: OWN_RECORD[DEMO_PAIR[0]]}
 SECURE_ENDPOINT = OWN_RECORD[DEMO_PAIR[1]] + "/secure"
 PROFILE_PATH = "/profile"
@@ -149,6 +152,12 @@ def build_lab_catalog() -> dict:
         "dataset": "demo_tenant",
         "accounts": accounts,
         "pairs": [{"actor": actor, "owner": owner} for actor, owner in demo_pairs()],
+        # Three runs are enough to answer all nine combinations: each run records both
+        # owner baselines and both cross-account directions, so the minimum coverage is
+        # one ordered pair per unordered pair. The six pairs above are every request the
+        # API accepts, not the minimum a judge has to run.
+        "coverage_pairs": [{"actor": actor, "owner": owner}
+                           for actor, owner in DEMO_COVERAGE_PAIRS],
         "combinations": combinations,
         "notes": [
             "Synthetic Digital Asset Management tenant: three colleagues, one private asset each.",
@@ -157,6 +166,8 @@ def build_lab_catalog() -> dict:
             "loopback TargetLab; this catalog only names which pair of accounts to run.",
             "The frozen offline fixture (alice/bob, scope.yaml) is a separate dataset and is "
             "labelled separately in the interface.",
+            "`coverage_pairs` is the minimum set of runs that answers all nine combinations; "
+            "`pairs` lists every ordered pair the API accepts.",
         ],
     }
 

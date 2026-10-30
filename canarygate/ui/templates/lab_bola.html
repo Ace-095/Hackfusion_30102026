@@ -101,7 +101,7 @@
       </thead>
       <tbody>
         {% for check in run.checks %}
-        <tr>
+        <tr id="{{ check.id }}">
           <th scope="row" class="mono nowrap">{{ check.id }}</th>
           <td class="mono small">{{ check.direction }}</td>
           <td class="mono small">{{ check.actor }} → {{ check.owner }}</td>

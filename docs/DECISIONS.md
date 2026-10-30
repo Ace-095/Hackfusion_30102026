@@ -1068,3 +1068,49 @@ Ground truth moved fully outside the stored artifact. In checkpoint 36 the
 comparison was stored inside the run, so corrupting the table changed the stored
 bytes even though the verdict held. Now the run is sealed first and the comparison
 is produced at report time, which makes "byte-identical" literally true.
+
+### Checkpoint 39: the matrix is a projection, not a second opinion
+
+The 3×3 matrix exists to answer one judge question — "did you really try every
+combination?" — without becoming a second detection engine. It therefore stores
+nothing and decides nothing. `build_lab_matrix()` walks the stored runs, maps each
+`LAB-BOLA-0x` check onto the annotation it answers, and copies the verdict, the
+evidence hash and the checklist booleans through. `actual_access` is *derived* from
+those booleans in a fixed order rather than recorded twice, so a label cannot drift
+away from the check that produced it. A strict pydantic contract (`lab_matrix_models.py`)
+then refuses an untested cell that carries a verdict, a tested cell whose verdict
+differs from its evidence, a secure twin from a different run, and a summary that
+does not add up.
+
+Two states, not five. The matrix has `tested` and `untested`, and untested is
+deliberately not one of the verdicts: the five verdicts describe a *check*, while
+"nothing was run" describes the *absence* of one. Rendering it as `SKIPPED` would
+have been tempting — the word is close — but a skipped check is evidence that a run
+reached the target and declined to attempt something, which is a different fact from
+a cell no run ever addressed. Missing evidence stays missing.
+
+Owner cells are not disclosures. The first version labelled a successful diagonal
+read `private_record_returned` via `private_disclosure`, which is wrong on the
+evidence: reading your own asset is the baseline the cross-account claim is measured
+against, not a leak. `actual_access_for()` now branches on the check's direction, so
+an owner cell reports a verified baseline read and an off-diagonal cell reports a
+disclosure.
+
+Ordering is storage order, not UUID order. Runs are stamped at second precision, so
+two runs in the same second are a real possibility in the demo; the aggregator
+breaks ties with the store's `rowid` order. Ordering by `run_id` looked equivalent
+and is not — UUIDs carry no chronology, which made the duplicate-selection and
+stale-port tests flap until the tie-break was fixed. The API reads the store
+oldest-first and the UI reverses its newest-first listing before aggregating, so
+both surfaces choose the same evidence.
+
+Stale and duplicated evidence are reported, not resolved away. When a later run
+re-answers a cell, the newest evidence is displayed and the older runs are listed as
+superseded; when the newest evidence came from a port a later run did not use, the
+cell is marked stale. Both counts stay in the summary because a matrix that quietly
+merges conflicting observations would be hiding exactly the thing a judge is
+looking for.
+
+The reset workflow is reachable from the matrix page, with the distinction stated on
+the page: the reset is a separate controlled two-run scenario, and what it clears is
+the lab's in-memory one-read state — not the stored evidence, which it preserves.

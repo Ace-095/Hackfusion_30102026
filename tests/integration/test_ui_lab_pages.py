@@ -360,3 +360,91 @@ def test_lab_pages_keep_the_structural_accessibility_contract(client, lab, actio
     for path in pages:
         body = client.get(path).text
         assert _structure_offenders(body) == [], path
+
+
+def _matrix_table(body: str) -> str:
+    start = body.index('<table class="matrix')
+    return body[start:body.index("</table>", start)]
+
+
+def test_the_matrix_page_is_untested_before_any_run(client):
+    body = _text(client.get("/ui/lab/matrix"))
+    assert "Asset matrix" in body
+    assert "Untested is not SAFE" in body
+    table = _matrix_table(body)
+    assert table.count("cell-link") == 9
+    assert table.count("badge-empty") == 9
+    assert "CONFIRMED" not in table and "SAFE<" not in table
+    assert "/ui/lab/bola/" not in table
+
+
+def test_the_matrix_fills_from_real_runs_and_links_each_cell(client, lab):
+    for actor, asset in (("mallapa", "MKT-2026-041"), ("sakshi", "BRD-2026-018"),
+                         ("harsha", "ADS-2026-027"), ("mallapa", "BRD-2026-018"),
+                         ("sakshi", "ADS-2026-027"), ("harsha", "MKT-2026-041")):
+        _run_through_ui(client, "lab-bola-scan", lab.port, actor=actor, asset=asset)
+    matrix = client.get("/api/lab-matrix").json()
+    body = _text(client.get("/ui/lab/matrix"))
+    table = _matrix_table(body)
+    assert table.count("cell-link") == 9
+    assert table.count("badge-empty") == 0
+    assert matrix["summary"]["tested"] == 9
+    assert matrix["summary"]["confirmed"] == 6 and matrix["summary"]["safe"] == 3
+    for item in matrix["cells"]:
+        # The cell names its check and the short id of the run that produced it.
+        assert item["evidence"]["check_id"] in table
+        assert item["evidence"]["run_id"][:8] in table
+    detail = _text(client.get("/ui/lab/matrix?cell=sakshi:ADS-2026-027"))
+    cross = next(item for item in matrix["cells"]
+                 if item["requester"] == "sakshi" and item["asset_id"] == "ADS-2026-027")
+    assert cross["evidence"]["run_id"] in detail
+    assert cross["evidence"]["evidence_sha256"] in detail
+
+
+def test_selecting_a_cell_shows_its_run_check_and_evidence(client, lab):
+    location = _run_through_ui(client, "lab-bola-scan", lab.port,
+                               actor="mallapa", asset="BRD-2026-018")
+    run = _api_run(client, "bola", location.rsplit("/", 1)[-1])
+    cross = next(check for check in run["checks"] if check["id"] == "LAB-BOLA-03")
+    secure = next(check for check in run["checks"] if check["id"] == "LAB-BOLA-05")
+    body = _text(client.get("/ui/lab/matrix?cell=mallapa:BRD-2026-018"))
+    assert 'aria-current="true"' in body
+    assert "is-selected" in body
+    assert "mallapa" in body and "BRD-2026-018" in body and "sakshi" in body
+    assert "owner-only" in body
+    assert "private_record_returned" in body
+    assert run["id"] in body and "LAB-BOLA-03" in body
+    assert cross["evidence_sha256"] in body
+    assert f"/ui/lab/bola/{run['id']}#LAB-BOLA-03" in body
+    assert secure["evidence_sha256"][:8] in body or "Secure-route counterpart" in body
+    assert "403" in body
+    assert cross["reason"] in body
+
+
+def test_an_untested_cell_stays_untested_and_offers_a_real_run(client, lab):
+    _run_through_ui(client, "lab-bola-scan", lab.port, actor="mallapa", asset="BRD-2026-018")
+    body = _text(client.get("/ui/lab/matrix?cell=harsha:ADS-2026-027"))
+    assert "No stored check answers this combination" in body
+    assert "It stays untested — not SAFE" in body
+    assert 'name="actor" value="harsha"' in body
+    assert 'name="asset" value="ADS-2026-027"' in body
+    assert "Run and store evidence" in body
+    # The untouched cells are still untested on the page, not silently safe.
+    matrix = client.get("/api/lab-matrix").json()
+    assert matrix["summary"]["untested"] == 5
+
+
+def test_the_matrix_page_explains_the_reset_and_what_it_preserves(client):
+    body = _text(client.get("/ui/lab/matrix"))
+    assert "What the reset clears" in body and "What it preserves" in body
+    assert "Every stored run, matrix cell, evidence hash, report and reset proof" in body
+    assert 'action="/ui/actions/lab-sci-reset"' in body
+    assert "A reset is evidence, not a cleanup" in body
+
+
+def test_no_lab_secret_reaches_the_matrix_page(client, lab):
+    _run_through_ui(client, "lab-bola-scan", lab.port, actor="mallapa", asset="BRD-2026-018")
+    for url in ("/ui/lab/matrix", "/ui/lab/matrix?cell=mallapa:BRD-2026-018"):
+        body = client.get(url).text
+        for secret in FORBIDDEN:
+            assert secret not in body, (url, secret)

@@ -50,6 +50,7 @@ from canarygate.scan.lab_generic import run_lab_evidence
 from canarygate.scan.lab_sci import run_lab_sci_reset, run_lab_sci_scan
 from canarygate.scan.lab_sci_models import (LabResetProof, LabSciScanRequest, LabSciSectionReport)
 from canarygate.scan.lab_sci_scenarios import build_sci_plan
+from canarygate.scan.lab_matrix_models import LabMatrix
 from canarygate.scan.lab_models import LabRun, LabScanRequest, LabSectionReport
 from canarygate.scan.lab_scenarios import build_lab_plan
 from canarygate.scan.validation_generic import run_offline_validation
@@ -516,6 +517,20 @@ def _lab_bola_call(method, *args):
     except EvidenceIntegrityError:
         raise HTTPException(status_code=500,
                             detail="Stored TargetLab BOLA data failed integrity verification") from None
+
+
+@router.get("/api/lab-matrix", response_model=LabMatrix)
+def lab_matrix(store: LabBolaStore = Depends(get_lab_bola_store)):
+    """The nine-cell demo-tenant matrix, assembled only from stored read-BOLA runs.
+
+    Read-only aggregation: it opens no socket, reads no ground truth and adds no
+    verdict. An untested cell has no verdict at all, and a tested cell carries the
+    run id, check id and evidence hash it came from.
+    """
+    from canarygate.scan.lab_matrix import build_lab_matrix
+
+    runs = _lab_bola_call(store.list)
+    return LabMatrix.model_validate(build_lab_matrix(runs))
 
 
 @router.post("/api/lab-bola-scans", status_code=201, response_model=LabBolaRun)

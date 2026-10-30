@@ -211,6 +211,7 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
 | `/ui/lab` | TargetLab validation entry | CA readiness (`CANARYGATE_TARGETLAB_CA`), transport, the three workflows with their ports and budget bounds (BOLA 16–40, SCI 8–40), every stored lab run, and the reset-proof links | none directly (reads the three lab stores and the CA environment) | run read-BOLA / control interaction / reset proof | refusal panel when the CA is unset; 422 for an invalid port or budget |
 | `/ui/lab/bola/{id}` | Read-BOLA evidence | six checks with direction, actors, endpoint, HTTP status, verdict, reason and evidence hash; summary counts; 10-key checklist; transport; constraints; ground truth scored after the verdicts; limitations | `GET /api/lab-bola-scans/{id}` | backend HTML/JSON report | 404 page; "no evidence stored" states |
 | `/ui/lab/sci/{id}` | Control-interaction evidence | both baselines with their own verdicts and statuses (403, 401), the combined action (200), attribution, 8-key checklist, ownership and disclosure evidence, constraints, limitations | `GET /api/lab-sci-scans/{id}` | backend HTML/JSON report; reset proofs on the same port | 404 page; a missing part is named, never filled in |
+| `/ui/lab/matrix` | The 3×3 demo-tenant asset matrix | nine rows×columns: requester × asset, each cell `tested` (verdict + the run/check it came from) or **untested**; a selected cell (`?cell=requester:asset`, unknown → 404) shows the requester, the resource owner, expected vs actual access, the verdict with its reason, the stored run id, check id, evidence SHA-256, status and request count, the secure-route counterpart with its 403, superseded runs and staleness; vulnerable-vs-secure comparison; the three coverage pairs; and the reset panel with what it clears and what it preserves | `GET /api/lab-matrix`, `GET /api/lab-catalog` (coverage pairs) | run one combination (`actor`+`asset`, posted to `/ui/actions/lab-bola-scan`), run the reset proof, jump to the run (`/ui/lab/bola/{id}#CHECK`) | "No stored check answers this combination. It stays untested — not SAFE", with the run form offered; an unknown cell answers 404 |
 | `/ui/lab/reset/{proof_id}` | Reset proof | `status`, RESET-01…04 with statuses, isolation (`runners`, `state`, `why`), disclosure, transport | `GET /api/lab-sci-resets/{proof_id}` | back to the lab index (the backend has **no** section report for this family, so none is offered) | 404 page; the page repeats that this is a separate controlled run |
 | `/ui/spec` | Inspect an OpenAPI document without scanning | document SHA-256, endpoint count, inventory with expected access/provenance | in-memory `parse_inventory` (same subset parser as `POST /api/spec/upload`) | paste or load file, inspect | 422 invalid, 413 too large, 415 wrong type |
 
@@ -243,7 +244,12 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
     including `production_networking: false`, and never reuse a verdict from a
     previous run. The browser never learns a lab credential: three tests assert
     that no password, token, private marker or key appears on any served page.
-12. A failed lab attempt (400 missing CA, 502 unreachable) is shown as a refusal
+12. The asset matrix has two states, not five: `tested` carries the verdict of a
+    stored check and every identifier needed to find it, while **untested** carries
+    no verdict at all and is worded "untested — not SAFE". The page never fills an
+    empty cell with a label, and the summary keeps untested, duplicated and stale
+    counts visible.
+13. A failed lab attempt (400 missing CA, 502 unreachable) is shown as a refusal
     with "no evidence was stored", and the dashboard keeps showing the previous
     run as the latest real evidence.
 

@@ -29,6 +29,7 @@ from canarygate.scan.interaction_models import InteractionScanRequest
 from canarygate.scan.interaction_scenarios import SCENARIO_IDS as INTERACTION_SCENARIO_IDS
 from canarygate.scan.interaction_scenarios import build_interaction_scenario
 from canarygate.scan.lab_bola_models import LabBolaScanRequest
+from canarygate.scan.lab_matrix import build_lab_matrix
 from canarygate.scan.lab_scenarios import build_lab_catalog
 from canarygate.scan.lab_sci_models import LabSciScanRequest
 from canarygate.scan.models import ScenarioScanRequest
@@ -61,6 +62,7 @@ NAV_GROUPS = (
     ("Analysis", (
         ("endpoints", "/ui/endpoints", "API inventory", "inventory"),
         ("matrix", "/ui/matrix", "Authorization matrix", "matrix"),
+        ("lab_matrix", "/ui/lab/matrix", "Asset matrix (TargetLab)", "shield"),
     )),
     ("Runs and evidence", (
         ("scans", "/ui/scans", "Read-BOLA scans", "scans"),
@@ -875,6 +877,44 @@ def _lab_readiness() -> dict:
         "live_target_contacted": False,
         "production_networking": False,
     }
+
+
+@router.get("/ui/lab/matrix")
+def lab_matrix_page(request: Request, cell: str = ""):
+    """The judge-facing 3x3 asset matrix, assembled only from stored read-BOLA runs."""
+    def build():
+        # Storage order, oldest first: the aggregator uses it to break timestamp ties so
+        # this page and GET /api/lab-matrix always select the same evidence.
+        return build_lab_matrix(list(reversed(_listed(_lab_store(request, "bola")))))
+
+    result = _guard(request, build)
+    if not isinstance(result, dict):
+        return result
+    rows = [(account["account"], account["title"],
+             [next(item for item in result["cells"]
+                   if item["requester"] == account["account"]
+                   and item["asset_id"] == column["asset_id"])
+              for column in result["accounts"]])
+            for account in result["accounts"]]
+    selected = None
+    if cell:
+        requester, _, asset = cell.partition(":")
+        selected = next((item for item in result["cells"]
+                         if item["requester"] == requester and item["asset_id"] == asset), None)
+        if selected is None:
+            return _error(request, 404, "Unknown matrix cell",
+                          "A matrix cell is an account and one of the three demo assets.")
+    comparisons = [item for item in result["cells"]
+                   if item["state"] == "tested" and item["kind"] == "cross_account_attempt"]
+    return _page(request, "lab_matrix.html", "lab_matrix", matrix=result, rows=rows,
+                 columns=result["accounts"], selected=selected, cell=cell,
+                 comparisons=comparisons, catalog=build_lab_catalog(),
+                 coverage=catalog_coverage_pairs())
+
+
+def catalog_coverage_pairs():
+    """The catalog's minimum set of runs that answers all nine cells."""
+    return build_lab_catalog()["coverage_pairs"]
 
 
 def _bola_comparison(run: dict) -> list[dict]:

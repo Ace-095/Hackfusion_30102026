@@ -261,5 +261,6 @@ class LabCatalog(BaseModel):
     dataset: Literal["demo_tenant"]
     accounts: list[LabCatalogAccount] = Field(min_length=3, max_length=3)
     pairs: list[LabCatalogPair] = Field(min_length=6, max_length=6)
+    coverage_pairs: list[LabCatalogPair] = Field(min_length=3, max_length=3)
     combinations: list[LabCatalogCombination] = Field(min_length=9, max_length=9)
     notes: list[str] = Field(min_length=1, max_length=8)

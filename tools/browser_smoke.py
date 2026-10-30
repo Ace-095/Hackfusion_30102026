@@ -255,7 +255,26 @@ async function submitAndWait(w, form, panelSelector, pattern, seconds = 120) {
     checks: ['RESET-01', 'RESET-02', 'RESET-03', 'RESET-04'].filter((c) => resetHtml.includes(c)),
   });
 
-  // 7. Matrix and the fixture report.
+  // 7a. The TargetLab asset matrix: nine cells, and a selected cell links real evidence.
+  const assetMatrix = await open(base + '/ui/lab/matrix');
+  const assetTable = assetMatrix.w.document.querySelector('table.matrix');
+  const cellLinks = assetTable ? [...assetTable.querySelectorAll('a.cell-link')] : [];
+  const selectedMatrix = await open(base + '/ui/lab/matrix?cell=mallapa:BRD-2026-018');
+  const selectedCell = selectedMatrix.w.document.querySelector('td.is-selected');
+  const runLink = selectedMatrix.w.document.querySelector('a[href*="/ui/lab/bola/"][href*="#LAB-BOLA-"]');
+  facts.pages.push({
+    path: '/ui/lab/matrix',
+    cells: cellLinks.length,
+    untested: assetTable ? assetTable.querySelectorAll('.badge-empty').length : -1,
+    verdicts: assetTable ? assetTable.querySelectorAll('.badge-confirmed').length : -1,
+    selected: selectedCell ? 1 : 0,
+    run_link: runLink ? runLink.getAttribute('href') : null,
+    detail_run: selectedMatrix.w.document.body.textContent.includes('Source run'),
+  });
+  assetMatrix.w.close();
+  selectedMatrix.w.close();
+
+  // 7b. Matrix and the fixture report.
   const matrix = await open(base + '/ui/matrix');
   const matrixHtml = matrix.w.document.body.innerHTML;
   facts.pages.push({
@@ -415,6 +434,16 @@ def main(argv: list[str] | None = None) -> int:
         check("matrix shows partial coverage and every column",
               matrix_page.get("partial") is True and len(matrix_page.get("columns", [])) == 4,
               str(matrix_page.get("columns")))
+        asset_matrix = pages["/ui/lab/matrix"]
+        check("asset matrix renders nine cells",
+              asset_matrix.get("cells") == 9,
+              f"cells={asset_matrix.get('cells')} untested={asset_matrix.get('untested')}")
+        check("selected asset cell links its stored run and check",
+              asset_matrix.get("selected") == 1
+              and "/ui/lab/bola/" in (asset_matrix.get("run_link") or "")
+              and "#LAB-BOLA-" in (asset_matrix.get("run_link") or "")
+              and asset_matrix.get("detail_run") is True,
+              str(asset_matrix.get("run_link")))
         check("matrix coverage matches the API",
               matrix["coverage"]["scope"] == "partial_offline",
               f"{matrix['coverage']['rows']}x{matrix['coverage']['cells']} tested={matrix['coverage']['tested']}")
