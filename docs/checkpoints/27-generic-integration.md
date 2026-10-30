@@ -169,8 +169,9 @@ Run the generic mocked proof path and all regressions with:
 - `git diff --check`: clean.
 - Isolated wheel build succeeded (`canarygate-0.1.0-py3-none-any.whl`, 65 files);
   the retired `pinned_reader.py` remains an inert `ImportError` tombstone.
-- Ubuntu/Windows CI: see the Actions run for this checkpoint's pushed commit in
-  the hand-off message. A green workflow is not P0 acceptance.
+- Ubuntu/Windows CI: [run 41055131622](https://github.com/Ace-095/Hackfusion_30102026/actions/runs/41055131622)
+  passed both jobs on code commit `976dad2`. A green workflow is not P0
+  acceptance; a later documentation-only commit may be the branch head.
 
 ## Remaining gaps (honest list)
 

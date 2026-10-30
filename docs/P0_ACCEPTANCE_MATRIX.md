@@ -16,6 +16,32 @@ classification/DNS details in the frozen document.
 Tests are named below so their assertions can be inspected; a test name alone
 is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_tests.py`.
 
+## Evidence and test-type convention
+
+| Label | What it means here |
+|---|---|
+| Fixture | In-process `FixtureRunner`/`FixtureTarget`; no socket is created. Used by R1/R2/R4/R5/R6/R7/R9/R10 and all persisted-report tests. |
+| Mocked HTTP | Disabled `GuardedHTTPXTransport` with fake HTTP/TLS/socket objects; DNS functions fail the test if called. Used by R3/R5/C1–C3/recipe/adversarial-17–21 and the generic proof-path tests. |
+| Real networking | **None.** No cited test opens a live connection, resolves a public name, scans VAmPI/crAPI or contacts an organizer target. |
+
+## Implementation index
+
+| Area | Primary source files | Test type |
+|---|---|---|
+| R1 inventory / R2 access provenance | `canarygate/spec/parser.py`, `canarygate/offline/scan.py` | Fixture; parser unit inputs |
+| R3 accounts/roles/login | `canarygate/accounts/*`, `canarygate/offline/target.py`, `canarygate/network/guarded_httpx.py` | Fixture; mocked HTTP for the guarded prototype |
+| R4 authentication | `canarygate/offline/auth_checks.py`, `canarygate/oracles/authentication.py` | Fixture; decode-only unit tests |
+| R5 read-BOLA | `canarygate/seed/registry.py`, `canarygate/oracles/read_bola.py`, `canarygate/seed/{discovery,ownership,extraction,recipe}.py` | Fixture; mocked HTTP (shared oracle) |
+| R6 input validation | `canarygate/offline/input_checks.py`, `canarygate/oracles/validation.py` | Fixture |
+| R7 disclosure | `canarygate/oracles/disclosure.py`, `canarygate/evidence/redaction.py` | Fixture; redaction unit inputs |
+| R8 evidence/storage | `canarygate/evidence/{redaction,observations}.py`, `canarygate/database/store.py` | Fixture; SQLite temp files |
+| R9/R10 verdicts and remediation | `canarygate/offline/scan.py`, `canarygate/report/fixture.py` | Fixture |
+| C1–C3 guard/limits/traffic | `canarygate/guard/{safety_guard,run_guard,authorized_preflight}.py`, `canarygate/network/guarded_httpx.py`, `canarygate/scope/*` | Fixture; mocked HTTP/fake sockets |
+| Recipe/ownership/pagination | `canarygate/seed/{recipe,registry}.py` | Fixture; mocked HTTP |
+| Reports | `canarygate/report/fixture.py`, `canarygate/report/templates/fixture.html`, `canarygate/api/{app,schemas}.py` | Fixture; API `TestClient` |
+| End-to-end | `canarygate/offline/scan.py`, `canarygate/api/app.py`, `canarygate/database/store.py` | Fixture; API `TestClient`; sockets/DNS blocked |
+
+
 ## Frozen section 4 / traceability requirements
 
 | Requirement | Status | Implementation and actual evidence / remaining gap |
@@ -36,8 +62,8 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 
 ## Individual authentication checks (§8)
 
-All statuses below are fixture-only and therefore **partial**, unless explicitly
-marked missing. AUTHN-07's scoped synthetic health helper is not present in the
+All statuses below are fixture-only (or decode-only unit tests) and therefore
+**partial**, unless explicitly marked missing. No row uses real networking. AUTHN-07's scoped synthetic health helper is not present in the
 bundled fixture inventory, so the default run honestly reports SKIPPED.
 
 | ID | Status | Executed and tested behavior / gap |
@@ -53,6 +79,8 @@ bundled fixture inventory, so the default run honestly reports SKIPPED.
 | AUTHN-08 | Missing | Explicitly SKIPPED; no missing/invalid API-key probe. |
 
 ## Input and disclosure (§9)
+
+Evidence type: synthetic fixture responses only; no row uses real networking.
 
 | ID | Status | Evidence and limitation |
 |---|---|---|
@@ -71,6 +99,8 @@ bundled fixture inventory, so the default run honestly reports SKIPPED.
 | DISC-06 | Partial | One predeclared synthetic existing/nonexistent pair, compare status, content type and body in memory; `test_resource_enumeration.py::test_known_synthetic_resource_comparison_uses_real_guarded_responses`. No generic enumeration, timing or arbitrary headers. |
 
 ## Nine HTML and JSON report sections (§12)
+
+Evidence type: fixture `TestClient`/SQLite only; no real networking.
 
 The opt-in JSON section view (`?view=sections`) and HTML now use one projection
 of the same stored, integrity-checked fixture run. The legacy default JSON and
@@ -92,6 +122,8 @@ budget test checks a safety-blocked report. A heading is not a complete feature:
 | 9 Constraint checklist | Partial: fixture counters and scope hash; production constraints unverified. |
 
 ## Frozen §15 adversarial tests and added checks 20–21
+
+Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 
 | # | Status | Real assertion / gap |
 |---|---|---|
