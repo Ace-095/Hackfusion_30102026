@@ -550,7 +550,8 @@ profiles yield `MATCHED_PAIR`, not a BOLA or ownership verdict; ambiguous data
 is inconclusive, missing/duplicate identities are skipped and clear mismatches
 halt the shared run. Responses and token values are not returned. Seven cases
 initially failed because the pair helper did not exist. The full local suite
-passed 315 tests with one third-party warning. See [judge demo](checkpoints/18-identity-pair.md).
+passed 315 tests with one third-party warning. GitHub Actions run `41046973754`
+passed Ubuntu and Windows for `6cd6aa8`. See [judge demo](checkpoints/18-identity-pair.md).
 
 These are observed profile controls, not proof of role, policy, resource
 privacy or ownership. The scanner/API remain disconnected. Resource discovery,
