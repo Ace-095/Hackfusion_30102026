@@ -215,6 +215,8 @@ the fixture redactor remains unsuitable for arbitrary credentials or live data.
 106 tests passed locally on Linux/Python 3.11 (one third-party deprecation warning).
 The CLI, stored JSON bundle and Jinja2 report were exercised against Uvicorn, then
 retrieved after a real restart; the packaged wheel contains the report template.
+GitHub Actions passed on Linux and Windows for code commit `f5bffbc`
+(run 41029679747).
 
 ## Outstanding checkpoints
 
