@@ -366,3 +366,99 @@ def test_streaming_request_body_fails_before_socket(mocked_wire):
                             extensions={'canary_actor': 'alice'})
     with pytest.raises(ValueError): transport.handle_request(request)
     assert not any(e[0] == 'socket' for e in mocked_wire[0])
+
+
+def test_shared_run_budget_across_two_httpx_runners(mocked_wire):
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    one = GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard)
+    two = GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard)
+    one.get('alice', '/items'); two.get('alice', '/items'); one.get('alice', '/items')
+    with pytest.raises(ValueError): two.get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 3
+    assert guard.remaining == 0
+
+
+def test_shared_run_guard_serializes_all_runners(mocked_wire, monkeypatch):
+    import threading
+    import time
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    clients = [GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard) for _ in range(3)]
+    active = maximum = 0
+    mutex = threading.Lock()
+    original = FakeHTTP.request
+    def tracked(self, method, path, *, headers):
+        nonlocal active, maximum
+        with mutex:
+            active += 1
+            maximum = max(active, maximum)
+        time.sleep(0.01)
+        try:
+            return original(self, method, path, headers=headers)
+        finally:
+            with mutex: active -= 1
+    monkeypatch.setattr(FakeHTTP, 'request', tracked)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        assert list(pool.map(lambda c: c.get('alice', '/items').status_code, clients)) == [200, 200, 200]
+    assert maximum == 1
+
+
+def test_rate_limit_halts_all_runners_in_same_run(mocked_wire):
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    one = GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard)
+    two = GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard)
+    mocked_wire[1].appendleft(FakeResponse(429, b''))
+    assert one.get('alice', '/items').status_code == 429
+    with pytest.raises(ValueError, match='halted'): two.get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+def test_run_guard_rejects_different_scope_before_network(mocked_wire):
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    original = load_authorized_scope(SCOPE)
+    different = load_authorized_scope(SCOPE.replace('203.0.113.12', '203.0.113.13'))
+    with pytest.raises(ValueError):
+        GuardedHTTPXRunner(different, {'alice': 'token-alice'}, run_guard=RunSafetyGuard(original))
+    assert not mocked_wire[0]
+
+
+def test_repeated_server_errors_across_runners_share_halt(mocked_wire):
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    clients = [GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard) for _ in range(2)]
+    mocked_wire[1].extendleft([FakeResponse(500, b''), FakeResponse(503, b'')])
+    for c in clients: assert c.get('alice', '/items').status_code >= 500
+    with pytest.raises(ValueError, match='halted'): clients[0].get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 2
+
+
+def test_failed_connection_halts_other_runners(mocked_wire, monkeypatch):
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    one, two = [GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard) for _ in range(2)]
+    def failure(self, address):
+        self.events.append(('connect', address))
+        raise OSError('failed')
+    monkeypatch.setattr(FakeSocket, 'connect', failure)
+    with pytest.raises(ValueError): one.get('alice', '/items')
+    with pytest.raises(ValueError, match='halted'): two.get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+def test_invalid_scope_copy_cannot_construct_run_guard():
+    from canarygate.guard.run_guard import RunSafetyGuard
+    bad = load_authorized_scope(SCOPE).model_copy(update={'request_budget': 0})
+    with pytest.raises(ValueError): RunSafetyGuard(bad)

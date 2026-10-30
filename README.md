@@ -64,7 +64,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 10 demo](docs/checkpoints/10-scope-validation.md), and
 [checkpoint 11 demo](docs/checkpoints/11-preflight.md), and
 [checkpoint 12 demo](docs/checkpoints/12-pinned-reader.md), and
-[checkpoint 13 demo](docs/checkpoints/13-guarded-httpx.md).
+[checkpoint 13 demo](docs/checkpoints/13-guarded-httpx.md), and
+[checkpoint 14 demo](docs/checkpoints/14-run-guard.md).
 
 ## Run the fixture API locally
 

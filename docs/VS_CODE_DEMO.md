@@ -135,3 +135,5 @@ For the offline preflight policy demonstration, see [checkpoint 11](checkpoints/
 For the experimental pinned-reader safety tests, see [checkpoint 12](checkpoints/12-pinned-reader.md).
 
 For the guarded HTTPX boundary tests, see [checkpoint 13](checkpoints/13-guarded-httpx.md).
+
+For shared run-guard verification, see [checkpoint 14](checkpoints/14-run-guard.md).

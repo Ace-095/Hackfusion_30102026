@@ -453,6 +453,24 @@ run `41044921428` passed Ubuntu and Windows for `c78a3f7`. See
 [judge demo](checkpoints/13-guarded-httpx.md). This is a conservative subset,
 not completion of P0 or authorization to scan a real target.
 
+## Checkpoint 14 — shared run guard state
+
+A test-first checkpoint introduced `RunSafetyGuard`, a validated-scope-bound,
+shared budget, sequential execution lock, halt state and server-error streak.
+Multiple guarded HTTPX runners can be explicitly given the same guard, so a
+request, rate limit, redirect or failure in one runner affects the entire shared
+run. Tests initially failed because the guard did not exist. Full local suite:
+270 passed, one third-party warning. See [judge demo](checkpoints/14-run-guard.md).
+
+This does not yet integrate a real scanner. A caller must explicitly share the
+same guard; creating a new guard creates a new independent run. An eventual scan
+orchestrator must create exactly one guard per scan and pass it through all
+outbound paths, including login and discovery. The current HTTPX boundary remains
+GET-only, cannot do login, does not support resolver-only scopes or an absolute
+wall-clock deadline, and is not exposed through the API. No external target or
+DNS service was contacted in testing. The independently validated live-target
+safety requirements remain outstanding.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

@@ -9,11 +9,10 @@ import ipaddress
 import re
 import socket
 import ssl
-import threading
 
 import httpx
 
-from canarygate.guard.authorized_preflight import AuthorizedPreflight
+from canarygate.guard.run_guard import RunSafetyGuard
 from canarygate.scope.authorized import AuthorizedScope
 
 MAX_RESPONSE_BYTES = 64 * 1024
@@ -26,7 +25,7 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
     GET-only until authentication, discovery and full live-run safety are
     implemented. No resolver, proxy, cookies, redirect, retries or raw headers.
     """
-    def __init__(self, scope: AuthorizedScope, bearer_tokens: dict[str, str]):
+    def __init__(self, scope: AuthorizedScope, bearer_tokens: dict[str, str], *, run_guard: RunSafetyGuard | None = None):
         if not isinstance(scope, AuthorizedScope):
             raise ValueError("validated scope required")
         scope = AuthorizedScope.model_validate(scope.model_dump())
@@ -41,16 +40,15 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 raise ValueError("invalid account credentials")
         self._tokens = dict(bearer_tokens)
         self._scope = scope
-        self._policy = AuthorizedPreflight(scope)
+        if run_guard is None:
+            run_guard = RunSafetyGuard(scope)
+        if not isinstance(run_guard, RunSafetyGuard) or run_guard.scope != scope:
+            raise ValueError("run guard scope mismatch")
+        self._run_guard = run_guard
         self._ip = ipaddress.ip_address(scope.organizer_ip)
-        self._lock = threading.Lock()
-        self._halted = False
-        self._server_error_streak = 0
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        with self._lock:
-            if self._halted:
-                raise ValueError("execution halted")
+        with self._run_guard.execution():
             actor = request.extensions.get("canary_actor")
             target = request.url
             try:
@@ -64,7 +62,7 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 raise ValueError("request outside scope")
             # The sole guard check is at the transport boundary, immediately before
             # socket creation; callers cannot override Host, auth or destination.
-            self._policy.check(actor, "GET", self._scope.origin + path)
+            self._run_guard.authorize(actor, "GET", self._scope.origin + path)
             sock = None
             connection = None
             try:
@@ -87,15 +85,12 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 content = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(content) > MAX_RESPONSE_BYTES:
                     raise ValueError("response exceeds size limit")
-                self._server_error_streak = self._server_error_streak + 1 if response.status >= 500 else 0
-                # No redirect is ever followed, even if someone wraps the transport
-                # in an HTTPX client configured with follow_redirects=True.
-                if self._server_error_streak >= 2 or response.status in (423, 429) or 300 <= response.status < 400:
-                    self._halted = True
+                # Halt is shared by all transports in this run.
+                self._run_guard.record_status(response.status)
                 # No unreviewed headers or cookies leave this prototype boundary.
                 return httpx.Response(status_code=response.status, content=content, request=request)
             except Exception:
-                self._halted = True
+                self._run_guard.halt()
                 raise ValueError("network request failed; execution halted") from None
             finally:
                 try:
@@ -104,14 +99,14 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                     elif sock is not None:
                         sock.close()
                 except Exception:
-                    self._halted = True
+                    self._run_guard.halt()
                     raise ValueError("network cleanup failed; execution halted") from None
 
 
 class GuardedHTTPXRunner:
     """Narrow client wrapper; every request goes through GuardedHTTPXTransport."""
-    def __init__(self, scope: AuthorizedScope, bearer_tokens: dict[str, str]):
-        self._transport = GuardedHTTPXTransport(scope, bearer_tokens)
+    def __init__(self, scope: AuthorizedScope, bearer_tokens: dict[str, str], *, run_guard: RunSafetyGuard | None = None):
+        self._transport = GuardedHTTPXTransport(scope, bearer_tokens, run_guard=run_guard)
         self._scope = self._transport._scope
         self._paths = frozenset(op.path for op in self._scope.operations
                                 if op.method == "GET" and op.classification == "READ_ONLY")
