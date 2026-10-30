@@ -615,7 +615,8 @@ This is a code-level safety hold, not a completed live scanner or production
 security boundary against code changes or monkeypatching. Enabling live traffic
 requires finishing and reviewing the outstanding guard, identity, ownership,
 evidence and integration work, plus written organizer authorization. Full local
-suite: 363 passed, one third-party warning. See [judge demo](checkpoints/21-live-disabled.md).
+suite: 363 passed, one third-party warning. GitHub Actions run `41048031705`
+passed Ubuntu and Windows for `c1586d7`. See [judge demo](checkpoints/21-live-disabled.md).
 
 ## Outstanding checkpoints
 
