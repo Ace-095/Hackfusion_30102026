@@ -15,6 +15,7 @@ class FixtureTarget:
     canary: str = "synthetic-bob-private-canary"
     cross_list_leak: bool = False
     alice_item_missing: bool = False
+    auth_behavior: str = "reject"  # reject, bypass, empty, redirect
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/login":
@@ -36,8 +37,14 @@ class FixtureTarget:
                     items.append({"id": "bob-item", "owner": "bob"})
                 return httpx.Response(200, json=items)
             return httpx.Response(200, json=[{"id": "bob-item", "owner": "bob"}])
-        if request.method == "GET" and request.url.path == "/items/alice-item" and actor == "alice":
-            return httpx.Response(200, json={"id": "alice-item", "owner": "alice", "private_note": "synthetic-alice-private-note"})
+        if request.method == "GET" and request.url.path == "/items/alice-item":
+            if actor == "alice" or (actor is None and self.auth_behavior == "bypass"):
+                return httpx.Response(200, json={"id": "alice-item", "owner": "alice", "private_note": "synthetic-alice-private-note"})
+            if actor is None and self.auth_behavior == "empty":
+                return httpx.Response(200, json={})
+            if actor is None and self.auth_behavior == "redirect":
+                return httpx.Response(302, headers={"Location": "https://elsewhere.invalid"})
+            return httpx.Response(401)
         if request.method == "GET" and request.url.path == "/items/bob-item":
             if actor == "bob":
                 value = self.canary if self.owner_sees_canary else "different-value"

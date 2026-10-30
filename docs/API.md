@@ -28,7 +28,10 @@ all runs. The fixture target is not exposed as a network service. The local CLI
 
 `FixtureRun` includes ID, time, status, actor/role, endpoint, target resource,
 verified owner, expected access and provenance, setup/readiness states, verdict,
-reason, remediation, scope hash and fixture-only counters. Evidence has separately
+reason, remediation, scope hash and fixture-only counters. `checks` contains
+per-test authentication verdicts, evidence and skip reasons; AUTHN-01/02/03
+run only after their prerequisites and when the fixture scope explicitly permits
+them. JWT-specific checks are skipped for opaque tokens. Evidence has separately
 named `ownership` and `disclosure` entries. Each is nullable and includes a
 redacted request/response summary, account, role, time, status, verification
 checklist and SHA-256 of the redacted summary. These are minimized summaries, not

@@ -115,3 +115,23 @@ def test_authentication_post_is_not_retried_on_error():
         assert len(calls) == 1
     finally:
         runner.close()
+
+
+def test_authentication_probes_require_explicit_scope_and_never_bypass_guard():
+    calls = []
+    runner = FixtureRunner(lambda req: calls.append(req) or httpx.Response(401))
+    try:
+        # The approved fixture operation accepts the fixed, explicitly scoped probes.
+        response = runner.request("alice", "GET", runner.scope.origin + "/items/alice-item", auth_probe="missing")
+        assert response.status_code == 401
+        assert len(calls) == 1 and "Authorization" not in calls[0].headers
+        for path, probe in (("/items/bob-item", "missing"), ("/items/alice-item", "unknown")):
+            with pytest.raises(GuardRejected):
+                runner.request("alice", "GET", runner.scope.origin + path, auth_probe=probe)
+        with pytest.raises(GuardRejected):
+            runner.request("mallory", "GET", runner.scope.origin + "/items/alice-item", auth_probe="missing")
+        with pytest.raises(GuardRejected):
+            runner.request("alice", "GET", runner.scope.origin + "/items/alice-item", auth_probe="malformed", token="fixture-token-bob")
+        assert len(calls) == 1
+    finally:
+        runner.close()

@@ -1,6 +1,7 @@
 """Load strict scope data. No DNS, network access, or credential storage."""
 from enum import Enum
 from importlib.resources import files
+from typing import Literal
 import re
 
 import yaml
@@ -21,6 +22,15 @@ class ScopedOperation(BaseModel):
     method: str
     path: str
     classification: OperationClass
+    auth_probes: tuple[Literal["missing", "malformed", "wrong_scheme"], ...] = ()
+
+    @model_validator(mode="after")
+    def safe_probes(self):
+        if self.auth_probes and (self.method != "GET" or self.classification != OperationClass.READ_ONLY):
+            raise ValueError("authentication probes require a classified read-only GET")
+        if len(set(self.auth_probes)) != len(self.auth_probes):
+            raise ValueError("duplicate authentication probe")
+        return self
 
     @field_validator("method")
     @classmethod

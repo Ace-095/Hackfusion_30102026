@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from .runner import FixtureRunner, GuardRejected
 from .target import FixtureTarget
+from .auth_checks import pending_checks, run_auth_checks
 from canarygate.seed.recipe import validate_fixture_recipe
 from canarygate.spec.parser import parse_inventory
 
@@ -35,7 +36,7 @@ def _summary(actor: str, role: str, response, matched: bool, **checklist) -> dic
     summary = {"timestamp": datetime.now(timezone.utc).isoformat(), "actor": actor, "role": role,
                "method": response.request.method, "path": response.request.url.path,
                "status_code": response.status_code, "private_canary_matched": matched,
-               "request": {"headers": {"Authorization": "[REDACTED]"}},
+               "request": {"headers": {"Authorization": "[REDACTED]"} if "Authorization" in response.request.headers else {}},
                "response": {"body": body}, "checklist": checklist}
     digest = hashlib.sha256(json.dumps(summary, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {**summary, "sha256": digest, "redacted": True}
@@ -82,7 +83,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
               "actor": account_a.username if account_a else "", "account_role": account_a.role if account_a else "",
               "target_resource": "", "verified_owner": "", "expected_access": policy.expected_access,
               "expected_source": policy.expected_source, "setup": setup_status,
-              "evidence": {"ownership": None, "disclosure": None},
+              "evidence": {"ownership": None, "disclosure": None}, "checks": pending_checks(),
               "verdict": "SKIPPED", "reason": "Setup incomplete", "remediation": None,
               "scope_hash": hashlib.sha256(scope_bytes).hexdigest(), "constraints": {}}
 
@@ -111,6 +112,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             tokens[account.username] = token
             setup_status["accounts"][account.username] = "SUCCESS"
         setup_status["authentication"] = "SUCCESS"
+        result["checks"] = pending_checks(token=tokens[account_a.username])
         if resource.ownership_model != "private":
             return skip("Resource is not private; read-BOLA check not applicable")
         if resource.private_field in {resource.id_field, resource.ownership_field, "id", "status", "owner"}:
@@ -176,6 +178,18 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             result["verdict"], result["reason"] = "SAFE", "The fixture denied the cross-user read"
         else:
             result["verdict"], result["reason"] = "INCONCLUSIVE", "No private baseline disclosure established"
+        # OpenAPI establishes authentication requirements, not ownership policy.
+        auth_required = any(e["path"] == resource.detail.path and e["method"] == resource.detail.method
+                            and e["expected_access"] == "authenticated" for e in inventory())
+        actor_private = baselines[account_a.username][1].get(resource.private_field)
+        if (auth_required and isinstance(actor_private, str) and actor_private and actor_private != private_value
+                and not any(value in actor_private for value in (ids[account_a.username], ids[account_b.username]))
+                and actor_private not in {account_a.username, account_b.username}):
+            actor_path = resource.detail.path.replace("{id}", ids[account_a.username])
+            result["checks"] = run_auth_checks(runner, actor=account_a.username, role=account_a.role,
+                                               path=actor_path, token=tokens[account_a.username],
+                                               private_field=resource.private_field, baseline=actor_private,
+                                               summary=_summary)
         return result
     except (GuardRejected, ValueError, KeyError, TypeError):
         result["status"] = "failed"

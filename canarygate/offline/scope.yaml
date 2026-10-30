@@ -8,5 +8,5 @@ accounts: [alice, bob]
 operations:
   - {method: POST, path: /login, classification: AUTHENTICATION}
   - {method: GET, path: /items, classification: READ_ONLY}
-  - {method: GET, path: /items/alice-item, classification: READ_ONLY}
+  - {method: GET, path: /items/alice-item, classification: READ_ONLY, auth_probes: [missing, malformed, wrong_scheme]}
   - {method: GET, path: /items/bob-item, classification: READ_ONLY}

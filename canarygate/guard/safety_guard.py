@@ -19,13 +19,13 @@ class SafetyGuard:
             raise ValueError("budget must be positive and cannot exceed scope")
         self.remaining = scope.request_budget if budget is None else budget
         self.blocked = 0
-        self._operations = {(op.method, op.path): op.classification for op in scope.operations}
+        self._operations = {(op.method, op.path): (op.classification, frozenset(op.auth_probes)) for op in scope.operations}
 
     def _reject(self, reason):
         self.blocked += 1
         raise GuardRejected(reason)
 
-    def authorize(self, actor: str, method: str, url: str) -> httpx.URL:
+    def authorize(self, actor: str, method: str, url: str, *, auth_probe: str | None = None) -> httpx.URL:
         try:
             target = httpx.URL(url)
         except (httpx.InvalidURL, ValueError, TypeError) as exc:
@@ -45,9 +45,12 @@ class SafetyGuard:
             path = target.raw_path.decode("ascii")
         except UnicodeError:
             self._reject("invalid operation path")
-        classification = self._operations.get((method, path))
-        if classification is None:
+        operation = self._operations.get((method, path))
+        if operation is None:
             self._reject("operation not classified or authorized")
+        classification, auth_probes = operation
+        if auth_probe is not None and auth_probe not in auth_probes:
+            self._reject("authentication probe not authorized for this operation")
         if classification == OperationClass.DESTRUCTIVE:
             self._reject("destructive operation blocked")
         if classification == OperationClass.STATE_CHANGING:

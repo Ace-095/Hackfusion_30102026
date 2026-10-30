@@ -62,6 +62,15 @@ class FixtureEvidence(BaseModel):
     disclosure: EvidenceSummary | None
 
 
+class AuthenticationCheck(BaseModel):
+    id: str
+    category: Literal["Authentication"]
+    verdict: Verdict
+    reason: str
+    evidence: EvidenceSummary | None
+    remediation: str | None
+
+
 class FixtureConstraints(BaseModel):
     mode: Literal["fixture"]
     scope: str
@@ -90,6 +99,7 @@ class FixtureRun(BaseModel):
     expected_source: str
     setup: FixtureSetup
     evidence: FixtureEvidence
+    checks: list[AuthenticationCheck]
     verdict: Verdict
     reason: str
     remediation: str | None

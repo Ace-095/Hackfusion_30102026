@@ -59,21 +59,23 @@ fixture tests, not proof of full v3.2 acceptance.
    ```
 
    This calls the local backend, prints the fixture endpoint inventory, runs one
-   synthetic scan, prints the setup gates, ownership/disclosure evidence and
-   verdict, then prints links to the JSON and HTML reports. The fixture HTTP
+   synthetic scan, prints the setup gates, ownership/disclosure evidence, BOLA
+   verdict and scoped authentication checks, then prints JSON and HTML links. The fixture HTTP
    requests are handled in-process; they do not reach any external service.
 3. Copy the printed **HTML fixture report** URL into your local browser. Show
    the fixture label, endpoint inventory, both owner/list checks, two evidence
-   summaries, verdict, remediation, and fixture constraint checklist. The report
-   explicitly identifies checks that are not implemented.
+   summaries, verdict, remediation, authentication results and fixture constraint
+   checklist. AUTHN-01/02/03 use real fixture responses; JWT-specific checks
+   say SKIPPED for opaque tokens. The report identifies unfinished checks.
 4. Optional: in another terminal run the focused safety tests:
 
    ```sh
-   python -m pytest -v tests/security tests/integration/test_offline_scan.py
+   python -m pytest -v tests/security tests/integration/test_offline_scan.py tests/integration/test_auth_checks.py tests/unit/test_authentication.py
    ```
 
    These test scope, dangerous/unknown operations, DNS isolation, no redirects,
-   missing identity, ownership failure, shared/public resources and secure behavior.
+   missing identity, ownership failure, shared/public resources, invalid-token
+   probes, opaque-token skips and secure behavior.
 5. Stop the backend with **Ctrl+C** in the first terminal. Data is in memory and
    disappears when the process stops. Restart it and rerun the demo to reproduce.
 
@@ -92,5 +94,8 @@ process first; the demo command deliberately connects only to port 8000.
   enough.”
 - “The guard checks the exact fixture scope, operation classification, identity
   and budget; all HTTP uses a mock transport with no DNS or outbound connection.”
+- “Missing, malformed and wrong-scheme credentials are checked only against an
+  explicitly authorized fixture operation. A 200 alone is not a confirmed bypass.
+  JWT-specific probes are skipped because the fixture tokens are opaque.”
 - “Live DNS pinning, real accounts, remaining security checks and persistence
   are pending; the report does not claim they passed.”

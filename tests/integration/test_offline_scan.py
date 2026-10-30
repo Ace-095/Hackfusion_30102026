@@ -29,8 +29,13 @@ def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch):
         assert run["setup"]["accounts"] == {"alice": "SUCCESS", "bob": "SUCCESS"}
         assert run["evidence"]["ownership"]["checklist"]["both_owner_baselines"]
         assert run["evidence"]["ownership"]["checklist"]["cross_list_isolation"]
-        assert run["constraints"]["requests_sent"] == 7
+        assert run["constraints"]["requests_sent"] == 10
         assert run["constraints"]["network_transport_enabled"] is False
+        checks = {item["id"]: item for item in run["checks"]}
+        assert [checks[name]["verdict"] for name in ("AUTHN-01", "AUTHN-02", "AUTHN-03")] == ["SAFE"] * 3
+        assert all(checks[name]["verdict"] == "SKIPPED" for name in ("AUTHN-04a", "AUTHN-04b", "AUTHN-05"))
+        assert "Token is not a supported JWT format" in checks["AUTHN-04a"]["reason"]
+        assert all(checks[name]["evidence"]["status_code"] == 401 for name in ("AUTHN-01", "AUTHN-02", "AUTHN-03"))
         assert run["evidence"]["ownership"]["private_canary_matched"] is True
         assert run["evidence"]["disclosure"]["private_canary_matched"] is True
         for evidence in run["evidence"].values():
@@ -47,7 +52,7 @@ def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch):
         assert client.get(f"/api/reports/{run['id']}").json() == run
         html = client.get(f"/api/reports/{run['id']}?format=html")
         assert html.status_code == 200 and "not live testing" in html.text and "CONFIRMED" in html.text
-        for section in ("Three setup gates", "ownership and disclosure evidence", "Secured endpoints", "constraint checklist"):
+        for section in ("Three setup gates", "ownership and disclosure evidence", "Authentication checks", "Secured endpoints", "constraint checklist"):
             assert section in html.text
         assert "fixture-token" not in html.text
         assert "synthetic-bob-private-canary" not in html.text

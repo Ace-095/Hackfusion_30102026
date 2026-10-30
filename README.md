@@ -1,8 +1,8 @@
 # CanaryGate — offline backend checkpoint
 
 CanaryGate is planned as an evidence-based API authorization testing system.
-This checkpoint implements **one synthetic offline read-BOLA pipeline**, exposed
-through a provisional FastAPI interface. It cannot scan live targets. It is not
+This checkpoint implements **a synthetic offline read-BOLA pipeline** and
+three scoped authentication probes, exposed through a provisional FastAPI interface. It cannot scan live targets. It is not
 a complete implementation of the frozen specification or a production safety
 guard. Fixture findings must never be represented as live-target results.
 

@@ -90,6 +90,34 @@ A built wheel contained all bundled fixture files. Windows CI for the current
 changes has not run. These tests do not constitute the full section 15
 acceptance suite or demonstrate live-target safety.
 
+## 2026-10-30 — fixture authentication checkpoint
+
+AUTHN-01 (missing token), AUTHN-02 (malformed token) and AUTHN-03 (wrong
+scheme) run against the synthetic protected resource only after a valid owner
+baseline and both-account readiness are available. Each specific probe must be
+explicitly authorized for that exact read-only operation by the fixture scope;
+the central guard validates it immediately before the in-process request. The
+fixture accepts only fixed synthetic probe values, not arbitrary token overrides.
+No live credentials or live network transport are enabled.
+
+A 401/403 yields SAFE. A 200 is CONFIRMED only if it contains the same private
+field established by the authenticated owner baseline; an empty/ambiguous 200,
+redirect or response too large is INCONCLUSIVE. A probe rejected by scope or
+budget is SKIPPED, never SAFE. Request/response summaries omit token values and
+hash the redacted summary. The fixture's tokens are opaque: AUTHN-04a/04b/05 are
+explicitly SKIPPED. JWT detection parses base64url JSON and the `alg` header only
+to determine applicability, not to verify identity or privileges. JWT tampering,
+logout, public endpoint and API-key checks remain unimplemented and SKIPPED.
+If setup gates fail, these three fixture probes are also skipped; they are not
+yet independently scheduled for partial setups.
+
+Automated tests exercise actual mock responses for denial, bypass with private
+disclosure, empty 200 and redirects; scoped and blocked probes; opaque versus JWT
+classification; no network/DNS; redaction and evidence hashing; and the
+executed-but-oversized distinction. 61 tests passed locally on Linux/Python 3.11
+with one third-party Starlette/AnyIO deprecation warning. These are fixture
+checks, not evidence of live-target safety or full section 15 acceptance.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
