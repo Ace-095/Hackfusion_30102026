@@ -100,7 +100,7 @@ def prepare_for_storage(report):
         evidence["response"] = {"body": body}
         # Only known fixture checklist keys and narrowly typed values survive.
         allowed_bools = {"both_owner_baselines", "cross_list_isolation", "matches_owner_private_baseline",
-                         "valid_control_observed"}
+                         "valid_control_observed", "responses_differ"}
         allowed_values = {"authentication_probe": {"missing", "malformed", "wrong_scheme"},
                           "input_case": {"valid_control", "missing_required_limit", "wrong_type", "out_of_range"},
                           "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header", "sensitive_field", "unexpected_top_level_field"}}
@@ -111,6 +111,8 @@ def prepare_for_storage(report):
         for key, permitted in allowed_values.items():
             if isinstance(source.get(key), str) and source[key] in permitted:
                 checklist[key] = source[key]
+        if type(source.get("baseline_status")) is int and 100 <= source["baseline_status"] <= 599:
+            checklist["baseline_status"] = source["baseline_status"]
         if type(source.get("inspected_fixture_responses")) is int and 0 <= source["inspected_fixture_responses"] <= 4:
             checklist["inspected_fixture_responses"] = source["inspected_fixture_responses"]
         evidence["checklist"] = checklist

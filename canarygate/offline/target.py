@@ -60,6 +60,9 @@ class FixtureTarget:
                     items.append({"id": "bob-item", "owner": "bob"})
                 return httpx.Response(200, json=items)
             return httpx.Response(200, json=[{"id": "bob-item", "owner": "bob"}])
+        if request.method == "GET" and request.url.path == "/items/nonexistent-item":
+            # Known absent synthetic ID. Denial is uniform for missing auth.
+            return httpx.Response(401 if actor is None else 404)
         if request.method == "GET" and request.url.path == "/items/alice-item":
             if actor == "alice" or (actor is None and self.auth_behavior == "bypass"):
                 return httpx.Response(200, json={"id": "alice-item", "owner": "alice", "private_note": "synthetic-alice-private-note"})

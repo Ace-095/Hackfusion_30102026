@@ -80,7 +80,16 @@ sensitive JSON field names with unmasked string values; DISC-04 compares only
 top-level fields against an explicitly closed fixture response schema. An
 undocumented field is SUSPECTED, not automatically a confirmed security weakness.
 Missing schemas, unsupported response types or partial coverage are INCONCLUSIVE.
-The remaining checks are explicitly SKIPPED. Evidence has separately
+DISC-06 separately compares the missing-auth response for Alice's verified fixture
+resource with one predeclared, known-absent synthetic ID. It compares only status,
+content type and body bytes in memory; differing responses are SUSPECTED, never
+a confirmed enumeration vulnerability. Other headers and timing are not checked.
+A missing baseline or blocked probe is SKIPPED; an oversized, redirect or server
+error response is INCONCLUSIVE. The comparison stores statuses and a Boolean,
+not raw error messages or response hashes. The fixture runner clears cookies
+between requests, and baselines with cookies or proxy authorization are rejected.
+No live resource guessing is enabled.
+The remaining unimplemented checks are explicitly SKIPPED. Evidence has separately
 named `ownership` and `disclosure` entries. Each is nullable and includes a
 redacted request/response summary, account, role, time, status, verification
 checklist and SHA-256 of the redacted summary. These are minimized summaries, not

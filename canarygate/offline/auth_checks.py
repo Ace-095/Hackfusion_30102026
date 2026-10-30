@@ -23,7 +23,7 @@ def pending_checks(reason="Authentication probe prerequisites were not met", tok
     return checks
 
 
-def run_auth_checks(runner, *, actor, role, path, token, private_field, baseline, summary):
+def run_auth_checks(runner, *, actor, role, path, token, private_field, baseline, summary, observations=None):
     checks = pending_checks(token=token)
     if not isinstance(baseline, str) or not baseline:
         return checks
@@ -37,6 +37,8 @@ def run_auth_checks(runner, *, actor, role, path, token, private_field, baseline
         except GuardRejected:
             checks[index]["reason"] = "Probe blocked by fixture scope or request budget; not executed"
             continue
+        if observations is not None and probe == "missing":
+            observations["missing"] = response
         try:
             body = response.json()
         except (ValueError, UnicodeError, RecursionError):

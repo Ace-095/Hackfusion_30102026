@@ -47,7 +47,7 @@ def test_normal_fixture_has_complete_sampled_disclosure_coverage():
     for check_id in ("DISC-03", "DISC-04"):
         assert checks[check_id]["verdict"] == "SAFE"
         assert checks[check_id]["evidence"]["checklist"]["inspected_fixture_responses"] == 4
-    assert run["constraints"]["requests_sent"] == 14  # Reuse the existing probes.
+    assert run["constraints"]["requests_sent"] == 15  # One separate enumeration probe was added.
 
 
 @pytest.mark.parametrize("scenario,disc03,disc04", [

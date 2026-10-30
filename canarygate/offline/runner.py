@@ -51,7 +51,13 @@ class FixtureRunner:
             self.requests_sent += 1
             if method == "POST":
                 self.authentication_requests += 1
-            response = self._client.request(method, target, json=json_body, headers=headers)
+            # HTTPX otherwise persists Set-Cookie from a prior response and can
+            # silently authenticate a later missing-auth probe as another user.
+            self._client.cookies.clear()
+            try:
+                response = self._client.request(method, target, json=json_body, headers=headers)
+            finally:
+                self._client.cookies.clear()
             if 300 <= response.status_code < 400:
                 self.redirects_observed += 1
             # Stop rather than retry on repeated server errors, account lockout,

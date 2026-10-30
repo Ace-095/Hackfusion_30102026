@@ -41,7 +41,7 @@ def test_input_verdicts_follow_actual_scoped_fixture_responses(behavior, verdict
         assert found[check_id]["evidence"]["status_code"] == status
         assert found[check_id]["evidence"]["checklist"]["valid_control_observed"] is True
     assert result["verdict"] == "CONFIRMED"  # The independent BOLA scenario remains vulnerable.
-    assert result["constraints"]["requests_sent"] == 14
+    assert result["constraints"]["requests_sent"] == 15
     assert result["constraints"]["redirects_followed"] == 0
     search = [(method, path, query) for method, path, query in target.requests if path == "/search"]
     assert search == [("GET", "/search", b"limit=1"), ("GET", "/search", b""),

@@ -9,6 +9,7 @@ from uuid import uuid4
 from .runner import FixtureRunner, GuardRejected
 from .target import FixtureTarget
 from .auth_checks import pending_checks, run_auth_checks
+from .enumeration import run_enumeration_check
 from .input_checks import pending_input_checks, run_input_checks
 from canarygate.evidence.observations import capture as capture_observation, seal as seal_observation
 from canarygate.seed.recipe import validate_fixture_recipe
@@ -225,6 +226,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
         # OpenAPI establishes authentication requirements, not ownership policy.
         auth_required = any(e["path"] == resource.detail.path and e["method"] == resource.detail.method
                             and e["expected_access"] == "authenticated" for e in fixture_inventory)
+        auth_observations = {}
         actor_private = baselines[account_a.username][1].get(resource.private_field)
         if (auth_required and isinstance(actor_private, str) and actor_private and actor_private != private_value
                 and not any(value in actor_private for value in (ids[account_a.username], ids[account_b.username]))
@@ -233,7 +235,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             result["checks"] = (run_auth_checks(runner, actor=account_a.username, role=account_a.role,
                                                 path=actor_path, token=tokens[account_a.username],
                                                 private_field=resource.private_field, baseline=actor_private,
-                                                summary=_summary) + pending_input_checks())
+                                                summary=_summary, observations=auth_observations) + pending_input_checks())
         # These bounded validation inputs are fixture-specific, read-only, and
         # separately allow-listed by the exact scoped path and query.
         auth_checks = result["checks"][:len(pending_checks())]
@@ -241,6 +243,11 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             runner, actor=account_a.username, role=account_a.role,
             token=tokens[account_a.username], endpoints=fixture_inventory, summary=_summary,
             spec_text=spec_bytes.decode("utf-8"))
+        enumeration = run_enumeration_check(runner, actor=account_a.username, role=account_a.role,
+                                            baseline=auth_observations.get("missing"),
+                                            owner_verified=setup_status["ownership_verification"] == "SUCCESS",
+                                            summary=_summary)
+        result["checks"] = [enumeration if check["id"] == "DISC-06" else check for check in result["checks"]]
         return result
     except (GuardRejected, ValueError, KeyError, TypeError):
         result["status"] = "failed"

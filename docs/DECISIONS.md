@@ -277,6 +277,40 @@ for code commit `6057db9` (run 41039218117). Live scanning, general secret
 detection, full JSON Schema validation and pattern-based detection remain unimplemented. API contracts remain
 provisional and the fixture redactor is not appropriate for arbitrary live data.
 
+## Checkpoint 8 — scoped fixture enumeration comparison
+
+Test-first integration cases for uniform responses, status/body differences,
+redirect, server error, oversized response, missing prerequisites, scope block
+and persistence were run before implementation: eight failed for the missing
+feature and one existing skip case passed. A subsequent test exposed an overly
+broad SAFE explanation; its assertion failed first and the explanation was made
+specific to the actual status, content type and body comparison. New pre-fix
+tests also revealed that HTTPX cookies could carry authentication into the
+missing-auth probe; the fixture runner now clears its cookie jar between requests,
+and comparisons reject baselines carrying cookies or proxy authorization. Existing request
+count and skipped-check assertions were updated only after verifying that one new
+exactly scoped request is actually sent.
+
+DISC-06 uses the already-executed missing-auth denial response for Alice's
+independently verified synthetic resource, then makes one guard-authorized,
+missing-auth GET to the known-absent fixture ID. It compares only status, content
+type and response body bytes in memory. A difference is SUSPECTED, not confirmed;
+matching values are SAFE only for those compared aspects and this synthetic pair.
+Other headers and timing are not measured, and a difference may be benign. A
+missing denial baseline, failed identity, scope rejection or exhausted budget
+prevents the request. Redirects, server errors and oversized responses are
+INCONCLUSIVE. Raw responses, values and hashes of the raw responses are not
+persisted. The normal fixture now sends 15 requests within its budget of 20.
+
+This is not a generic ID enumeration mechanism, not a live-target check and not
+proof of system-wide safety. The full local test suite passed: 159 tests with one
+third-party Starlette/AnyIO deprecation warning. Tests cover DNS/network isolation,
+missing prerequisites, authorization and budget blocks, actual fixture response
+variants, redaction, persistence and evidence hashes. A real Uvicorn demo was run,
+old and new reports were retrieved, and the new result survived a server restart;
+the wheel contains the enumeration module and its exact scope. Live scanning
+stays disabled.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
