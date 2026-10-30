@@ -343,7 +343,7 @@ def _check_gaps(runs: list[dict]) -> dict[str, int]:
 # Pages
 # --------------------------------------------------------------------------- #
 def _cover(request: Request):
-    """Render the ten-second cover sequence.
+    """Render the twenty-one second cover sequence.
 
     It is a real page, not a splash gate: the interface is one click away, the
     sequence is CSS so it plays without JavaScript, and the hand-off is done by
