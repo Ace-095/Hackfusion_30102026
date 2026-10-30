@@ -116,7 +116,17 @@ disclosure, empty 200 and redirects; scoped and blocked probes; opaque versus JW
 classification; no network/DNS; redaction and evidence hashing; and the
 executed-but-oversized distinction. 61 tests passed locally on Linux/Python 3.11
 with one third-party Starlette/AnyIO deprecation warning. These are fixture
-checks, not evidence of live-target safety or full section 15 acceptance.
+checks, not evidence of live-target safety or full section 15 acceptance. The
+CLI and HTML report were also exercised against a running local backend.
+
+The first Windows CI run failed because Windows asyncio creates an internal
+loopback socketpair when the test client starts; the blanket socket block was
+installed too early. The integration test now starts the client first and then
+blocks DNS and socket connections for all API calls. Separate fixture-only tests
+still block sockets before scanner execution. The failure was not suppressed:
+GitHub Actions subsequently passed on both Windows and Linux for commit `dff0db5`
+(run 41023826401). CI now publishes pytest failures as annotations and preserves
+pytest's actual exit code.
 
 ## Outstanding checkpoints
 
