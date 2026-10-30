@@ -26,6 +26,15 @@ class Inventory(BaseModel):
     endpoints: list[InventoryEndpoint]
 
 
+class SpecInspection(BaseModel):
+    mode: Literal["inventory_only"]
+    live_scanning: Literal[False]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    endpoint_count: int
+    endpoints: list[InventoryEndpoint]
+    message: str
+
+
 class FixtureSetup(BaseModel):
     strategy: str
     authentication: str

@@ -22,7 +22,7 @@ def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch, tmp_path):
         assert client.get("/api/health").json() == {"status": "ok", "mode": "fixture", "live_scanning": False}
         inventory = client.get("/api/endpoints").json()["endpoints"]
         assert any(e["path"] == "/items/{id}" and e["expected_access"] == "authenticated" for e in inventory)
-        assert client.post("/api/spec/upload").status_code == 501
+        assert client.post("/api/spec/upload").status_code == 415
         response = client.post("/api/scan")
         assert response.status_code == 201
         run = response.json()

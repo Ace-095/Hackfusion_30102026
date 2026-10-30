@@ -115,3 +115,5 @@ process first; the demo command deliberately connects only to port 8000.
   persistence are pending; the report does not claim they passed.”
 
 For the detailed observation and report demonstration, see [checkpoint 5](checkpoints/05-observations.md).
+
+For the separate, non-scanning OpenAPI upload demonstration, see [checkpoint 6](checkpoints/06-spec-inspection.md).

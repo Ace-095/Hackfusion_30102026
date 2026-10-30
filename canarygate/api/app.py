@@ -1,17 +1,20 @@
 """Local-only API with fixture-only SQLite persistence; no live targets."""
 from contextlib import asynccontextmanager
+import hashlib
 from pathlib import Path
 import sqlite3
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
 from canarygate.report.fixture import render_fixture_report
+from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
-                      ObservationSet, FixtureReportBundle)
+                      ObservationSet, FixtureReportBundle, SpecInspection)
 
 router = APIRouter()
 
@@ -34,9 +37,35 @@ def health():
     return {"status": "ok", "mode": "fixture", "live_scanning": False}
 
 
-@router.post("/api/spec/upload", status_code=501)
-def spec_upload():
-    return {"detail": "Spec upload is not implemented; only the bundled fixture is available."}
+@router.post("/api/spec/upload", response_model=SpecInspection)
+async def spec_upload(request: Request):
+    """Inspect a raw UTF-8 OpenAPI document; never select a target or start a scan."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type not in {"application/yaml", "application/x-yaml", "text/yaml", "text/plain",
+                          "application/json", "application/octet-stream"}:
+        raise HTTPException(status_code=415, detail="Send a raw YAML or JSON document")
+    if request.headers.get("content-encoding", "identity").lower() != "identity":
+        raise HTTPException(status_code=415, detail="Compressed documents are not supported")
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        if not content_length.isascii() or not content_length.isdigit():
+            raise HTTPException(status_code=400, detail="Invalid content length")
+        if len(content_length) > 10 or int(content_length) > MAX_SPEC_BYTES:
+            raise HTTPException(status_code=413, detail="Specification too large")
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_SPEC_BYTES:
+            raise HTTPException(status_code=413, detail="Specification too large")
+        body.extend(chunk)
+    try:
+        text = bytes(body).decode("utf-8-sig")
+        endpoints = await run_in_threadpool(parse_inventory, text)
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid or unsupported OpenAPI specification") from None
+    return {"mode": "inventory_only", "live_scanning": False,
+            "sha256": hashlib.sha256(body).hexdigest(), "endpoint_count": len(endpoints),
+            "endpoints": endpoints,
+            "message": "Inspection only; uploaded specifications are not saved or used by fixture scans."}
 
 
 @router.get("/api/endpoints", response_model=Inventory)

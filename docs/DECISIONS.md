@@ -218,6 +218,32 @@ retrieved after a real restart; the packaged wheel contains the report template.
 GitHub Actions passed on Linux and Windows for code commit `f5bffbc`
 (run 41029679747).
 
+## Checkpoint 6 — bounded in-memory OpenAPI inspection
+
+Add a raw-body UTF-8 YAML/JSON inspection endpoint with a 128 KiB streamed input
+limit and generic errors. The uploaded document is never saved or used to select
+the fixture or any live target. The existing `/api/endpoints` and `/api/scan`
+remain fixture-only, with unchanged response contracts. `servers` cannot override
+the scope file. Multipart and compressed uploads are not supported in this
+checkpoint; the provisional client contract must be reviewed with the frontend
+collaborator.
+
+Continue supporting the bounded OpenAPI 3.0/3.1 subset, local JSON-pointer refs,
+security inheritance and parameter overrides. Reject duplicate YAML/JSON keys,
+merge keys, unsafe/non-JSON scalars, remote/file refs, cycles, invalid security
+requirements and malformed or duplicate parameters. Limit expanded nodes,
+operations, parameters and serialized inventory size. Authentication declarations
+are not ownership policy or scope authorization. This is not full OpenAPI
+validation or production redaction; parameter metadata can echo user input.
+
+Tests cover YAML and JSON, stream and declared size limits, malicious refs, alias
+expansion, bad encodings and malformed declarations; they verify that inspection
+and the unchanged fixture run do not use network or DNS and that uploaded data is
+not written to SQLite. 129 tests passed locally on Linux/Python 3.11 with one
+third-party Starlette/AnyIO deprecation warning. A real Uvicorn upload and the
+existing demo were exercised, and the wheel was checked for parser and template.
+Live scanning remains disabled.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

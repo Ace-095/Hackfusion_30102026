@@ -7,7 +7,9 @@ at `/openapi.json`. Swagger/ReDoc are disabled because their default assets use
 external CDNs. The API is unauthenticated and uses a local fixture-only SQLite
 database: run only locally, never expose it as a multi-user service.
 
-All successful responses identify `mode: "fixture"`; they are not live results.
+Fixture scan responses identify `mode: "fixture"`; they are not live results.
+The separate specification-inspection response uses `mode: "inventory_only"` and
+never runs a scan.
 `POST /api/scan` takes no configuration or target, executes the bundled synthetic
 fixture synchronously, and returns the completed result (201). Runs persist
 across restarts in `.canarygate/fixture.sqlite3` by default, or the file specified
@@ -17,7 +19,7 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | Route | Current response / behavior |
 | --- | --- |
 | `GET /api/health` | `{"status":"ok","mode":"fixture","live_scanning":false}` |
-| `POST /api/spec/upload` | 501: not implemented; no uploaded spec is processed |
+| `POST /api/spec/upload` | Inspect raw UTF-8 YAML/JSON locally; returns `SpecInspection`, does not select a target or start a scan |
 | `GET /api/endpoints` | Fixture inventory, parameters, OpenAPI auth requirements/provenance |
 | `GET /api/setup/status` | Most recent fixture setup, or null before the first run |
 | `POST /api/scan` | Synchronously run bundled fixture, return `FixtureRun` |
@@ -28,6 +30,42 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/reports/{id}?format=json` | `FixtureRun`, or 404; `json` is the default |
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
+
+## Specification inspection (provisional)
+
+Send the file as the **raw HTTP body**, not multipart form data. Accepted content
+types are `application/yaml`, `application/x-yaml`, `text/yaml`, `text/plain`,
+`application/json` and `application/octet-stream`; only UTF-8 is supported.
+Compressed bodies are rejected. Example from the repository root (local API on
+port 8000):
+
+```sh
+curl -sS -H 'Content-Type: application/yaml' --data-binary @canarygate/offline/fixture.yaml http://127.0.0.1:8000/api/spec/upload
+```
+
+The response contains `mode: "inventory_only"`, `live_scanning: false`, the
+SHA-256 of the original bytes, `endpoint_count`, `endpoints` and a limitation
+message. Status 415 means unsupported content type or encoding, 413 means the
+128 KiB input limit was exceeded, and 422 means malformed or unsupported input.
+Error responses are generic and do not echo the document.
+
+This is a **bounded OpenAPI 3.0/3.1 subset**, not full OpenAPI validation: it
+requires a `paths` mapping, uses safe YAML, rejects duplicate keys, YAML merge
+keys, unsupported scalar types, cyclic aliases, remote/file references and
+unresolved references. Local JSON-pointer references and operation-level
+parameter/security overrides are supported. Expansion, parameter, endpoint and
+serialized-inventory sizes are bounded. YAML response status keys such as `200`
+are accepted. Authentication requirements are not ownership or role policy;
+none of this grants permission to contact a host. The spec's `servers` values
+are ignored as target authority.
+
+Uploads are processed in memory and are not persisted, selected for `/api/scan`,
+or used by `/api/endpoints`. That route and the scanner remain tied to the
+bundled offline fixture. Only send synthetic or authorized specifications; the
+response can include parameter details supplied in the document, and this is not
+a production secret-redaction system. API contracts remain provisional.
+
+## Fixture scan contracts
 
 `FixtureRun` includes ID, time, status, actor/role, endpoint, target resource,
 verified owner, expected access and provenance, setup/readiness states, verdict,
@@ -70,7 +108,7 @@ are not signatures or protection against a database writer who can recompute
 them. Stored evidence is a minimized fixture summary, not full raw traffic.
 
 The observation table is an additive, narrowly scoped migration, not a general
-database migration system. There is no real upload, authentication setup,
+database migration system. There is no scan configured from an uploaded spec, real authentication setup,
 asynchronous progress, live scan, general evidence viewer or complete report yet.
 Handle 501, 404, 500 and null states rather than presenting placeholder data as completed
 scans. The fixture redactor is not approved for live credentials or real data.
