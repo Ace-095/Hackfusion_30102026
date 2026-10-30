@@ -75,7 +75,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 21 demo](docs/checkpoints/21-live-disabled.md), and
 [checkpoint 22 demo](docs/checkpoints/22-verified-ownership.md), and
 [checkpoint 23 demo](docs/checkpoints/23-read-bola-oracle.md), and
-[checkpoint 24 demo](docs/checkpoints/24-independent-validation-plan.md).
+[checkpoint 24 demo](docs/checkpoints/24-independent-validation-plan.md), and
+[checkpoint 25 demo](docs/checkpoints/25-fixture-detection-pipeline.md).
 
 ## Run the fixture API locally
 

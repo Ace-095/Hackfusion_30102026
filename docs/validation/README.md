@@ -17,7 +17,7 @@ scope requirement applies to the competition API.
 | Milestone | Scope | Current status |
 | --- | --- | --- |
 | M2 | Read-BOLA oracle and evidence engine | Fixture-only oracle exists; general evidence/verdict engine remains outstanding. |
-| M3 | Generic pagination and remaining P0 checks | Outstanding. |
+| M3 | Generic pagination and remaining P0 checks | Fixture-only nested selectors and narrow bounded pagination added; general support and remaining P0 checks outstanding. |
 | M4 | HTML and JSON reports | Fixture reports exist; production reporting remains outstanding. |
 | M5 | Complete offline end-to-end validation | Existing synthetic vertical slice is partial; full acceptance remains outstanding. |
 | M6 | Independent VAmPI validation | Preparation only; approval and readiness required. |
@@ -73,7 +73,9 @@ The current scanner, registry and Read-BOLA oracle are fixture-specific; the
 oracle recognizes the bundled synthetic policy and denial body only. It does
 not accept these plans or operate generically against either application. Generic
 recipe binding, per-target policy and response interpretation, live ownership,
-pagination and production evidence storage/redaction remain incomplete. Planning
+general pagination and production evidence storage/redaction remain incomplete.
+The fixture registry now supports bounded object-key selectors and a narrow,
+explicitly scoped continuation-token mode; neither enables lab execution. Planning
 profiles contain no host, port, credentials, scope grant or execution entry
 point. No additional HTTP mechanism, lab dependency or frontend is introduced.
 The OpenAPI parser accepts a bounded subset; a successful static parse does not

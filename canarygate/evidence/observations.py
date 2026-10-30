@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from canarygate.api.schemas import FixtureObservation
 from canarygate.evidence.redaction import EvidenceIntegrityError, digest
+from canarygate.seed.extraction import MISSING, extract
 
 MAX_OBSERVATIONS = 20
 
@@ -14,11 +15,11 @@ MAX_OBSERVATIONS = 20
 def _item(value, *, id_field, owner_field, private_field):
     if not isinstance(value, dict):
         return None
-    item_id = value.get(id_field)
-    owner = value.get(owner_field)
+    item_id = extract(value, id_field, None)
+    owner = extract(value, owner_field, None)
     return {"id": item_id if item_id in ("alice-item", "bob-item", None) else "[REDACTED]",
             "owner": owner if owner in ("alice", "bob", None) else "[REDACTED]",
-            "private_field_present": private_field in value}
+            "private_field_present": extract(value, private_field) is not MISSING}
 
 
 def seal(observation):

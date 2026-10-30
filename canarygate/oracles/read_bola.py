@@ -3,14 +3,13 @@
 This module performs no requests. Inputs are transient responses from the
 fixture runner and the fixture registry, not live traffic or production evidence.
 """
-import re
-
 import httpx
 
 from canarygate.models.result import Result
 from canarygate.scope.loader import fixture_scope
 from canarygate.seed.recipe import Resource
 from canarygate.seed.registry import FixtureOwnershipResult, _json, _safe_id, _valid_detail
+from canarygate.seed.extraction import MISSING, extract, valid_selector
 
 CHECKLIST_KEYS = (
     'private_resource', 'distinct_accounts', 'ownership_verified', 'owner_baseline',
@@ -70,7 +69,8 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
         return result('INCONCLUSIVE', 'Verified private ownership evidence is missing')
     ids = {e.owner: e.resource_id for e in entries}
     if (ids[actor] == ids[owner] or ownership.ids != ids or not _valid_detail(resource.detail.path)
-            or resource.detail.method != 'GET' or resource.ownership_field in {resource.id_field, 'id'}):
+            or resource.detail.method != 'GET' or (resource.ownership_field.casefold() == resource.id_field.casefold()
+                or resource.ownership_field.split('.')[-1].casefold() == 'id')):
         return result('INCONCLUSIVE', 'Ownership evidence is inconsistent')
     checks['ownership_verified'] = True
     values = {}
@@ -84,14 +84,15 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
                 or len(baseline_response.content) > 64 * 1024 or not _request_matches(baseline_response, account, path)):
             return result('INCONCLUSIVE', 'Owner baseline request failed or used the wrong identity')
         body = _json(baseline_response)
-        if (not isinstance(body, dict) or body.get(resource.id_field) != ids[account]
-                or body.get(resource.ownership_field) != account):
+        if (not isinstance(body, dict) or extract(body, resource.id_field) != ids[account]
+                or extract(body, resource.ownership_field) != account):
             return result('INCONCLUSIVE', 'Owner baseline response is ambiguous')
-        values[account] = body.get(resource.private_field)
+        values[account] = extract(body, resource.private_field, None)
     checks['owner_baseline'] = True
     field = resource.private_field
-    if (not isinstance(field, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', field)
-            or field.casefold() in {'id', 'owner', 'status', 'user_id', resource.id_field.casefold(), resource.ownership_field.casefold()}
+    if (not valid_selector(field)
+            or field.split('.')[-1].casefold() in {'id', 'owner', 'status', 'user_id'}
+            or field.casefold() in {resource.id_field.casefold(), resource.ownership_field.casefold()}
             or not _private_marker(values[owner], tuple(ids.values()), (actor, owner))
             or values[actor] == values[owner]
             or (resource.known_owner_canary is not None and values[owner] != resource.known_owner_canary)):
@@ -109,9 +110,10 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
     if not isinstance(body, dict):
         return result('INCONCLUSIVE', 'Cross-account response body is empty or ambiguous')
     checks['response_checked'] = True
-    checks['private_disclosure'] = bool(response.status_code == 200 and body.get(resource.id_field) == ids[owner]
-                                        and body.get(resource.ownership_field) == owner
-                                        and body.get(field) == values[owner])
+    observed_id = extract(body, resource.id_field)
+    observed_owner = extract(body, resource.ownership_field)
+    marker_matches = response.status_code == 200 and extract(body, field) == values[owner]
+    checks['private_disclosure'] = bool(marker_matches and observed_id == ids[owner] and observed_owner == owner)
     # The fixture has exactly this denial contract. Status alone is insufficient.
     checks['verified_denial'] = (response.status_code == 403 and body == {'error': 'forbidden'}
                                  and values[owner] not in body['error'])
@@ -119,6 +121,10 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
         return result('INCONCLUSIVE', 'A reliable fixture owner-only policy is not established')
     if checks['private_disclosure']:
         return result('CONFIRMED', 'Verified fixture ownership and cross-user private baseline disclosure')
+    if (marker_matches and (observed_id is MISSING or observed_owner is MISSING)
+            and (observed_id is MISSING or observed_id == ids[owner])
+            and (observed_owner is MISSING or observed_owner == owner)):
+        return result('SUSPECTED', 'Private marker observed, but response identity is incomplete')
     if checks['verified_denial']:
         return result('SAFE', 'The fixture denied the cross-user read with a checked denial body')
     return result('INCONCLUSIVE', 'No verified private disclosure or checked denial was established')

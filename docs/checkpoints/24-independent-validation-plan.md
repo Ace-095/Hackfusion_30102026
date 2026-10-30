@@ -1,5 +1,8 @@
 # Checkpoint 24: independent validation planning
 
+Historical note: checkpoint 25 later added limited nested fixture selectors and
+bounded token pagination, but did not resolve crAPI compatibility or enable labs.
+
 This checkpoint prepares VAmPI and crAPI profiles and scenarios without running
 or contacting either lab application. Written organizer approval for each exact
 instance is required even if self-hosted. Production network execution remains

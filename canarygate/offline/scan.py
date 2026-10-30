@@ -12,6 +12,7 @@ from .enumeration import run_enumeration_check
 from .input_checks import pending_input_checks, run_input_checks
 from canarygate.evidence.observations import capture as capture_observation, seal as seal_observation
 from canarygate.seed.recipe import validate_fixture_recipe
+from canarygate.seed.extraction import extract
 from canarygate.seed import registry
 from canarygate.oracles import read_bola
 from canarygate.spec.parser import parse_inventory
@@ -157,7 +158,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             return skip(ownership.reason)
         ids, baselines = ownership.ids, ownership.baselines
         owner_response, owner_body = baselines[account_b.username]
-        private_value = owner_body.get(resource.private_field)
+        private_value = extract(owner_body, resource.private_field, None)
         if resource.known_owner_canary:
             update_observation(baseline_observations[account_b.username],
                                canary_matches_recipe=private_value == resource.known_owner_canary)
@@ -186,8 +187,8 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
         auth_required = any(e["path"] == resource.detail.path and e["method"] == resource.detail.method
                             and e["expected_access"] == "authenticated" for e in fixture_inventory)
         auth_observations = {}
-        actor_private = baselines[account_a.username][1].get(resource.private_field)
-        if (auth_required and isinstance(actor_private, str) and actor_private and actor_private != private_value
+        actor_private = extract(baselines[account_a.username][1], resource.private_field, None)
+        if (auth_required and "." not in resource.private_field and isinstance(actor_private, str) and actor_private and actor_private != private_value
                 and not any(value in actor_private for value in (ids[account_a.username], ids[account_b.username]))
                 and actor_private not in {account_a.username, account_b.username}):
             actor_path = resource.detail.path.replace("{id}", ids[account_a.username])

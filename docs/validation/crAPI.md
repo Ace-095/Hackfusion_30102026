@@ -21,9 +21,11 @@ concrete IDs, hosts, credentials or approved ownership/access policy are supplie
 The reviewed vehicle-list schema describes a UUID, an `owner` object with
 `email`, and nested `vehicleLocation`; location detail describes `carId`,
 `fullName`, and nested `vehicleLocation`, not a directly comparable owner field.
-The fixture registry requires flat owner fields and a matching owner-detail
-response, while the fixture oracle expects a flat string marker and bundled
-policy. Those contracts **cannot currently verify or test this candidate**.
+The fixture registry now supports bounded dotted object keys, but requires the
+same ID and owner selectors to match both list and owner-detail responses. The
+fixture oracle still requires a string marker and bundled fixture policy; the
+candidate location is a nested object and detail has different identity fields.
+These contracts **cannot currently verify or test this candidate**.
 The spec alone does not prove an identity mapping, list completeness, valid ID
 mapping, privacy policy, vulnerable behavior or a secure-mode counterpart.
 If those cannot be independently established from authorized sources and

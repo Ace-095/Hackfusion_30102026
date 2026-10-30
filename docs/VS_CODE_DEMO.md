@@ -157,3 +157,5 @@ For fixture verified ownership, see [checkpoint 22](checkpoints/22-verified-owne
 For the two-part fixture Read-BOLA oracle, see [checkpoint 23](checkpoints/23-read-bola-oracle.md).
 
 For independent validation planning, see [checkpoint 24](checkpoints/24-independent-validation-plan.md).
+
+For the bounded nested fixture detection pipeline, see [checkpoint 25](checkpoints/25-fixture-detection-pipeline.md).

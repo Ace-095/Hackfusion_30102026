@@ -1,5 +1,8 @@
 # Checkpoint 23: fixture Read-BOLA oracle
 
+Historical note: checkpoint 25 later added a narrow SUSPECTED case and limited
+nested fixture extraction; see [checkpoint 25](25-fixture-detection-pipeline.md).
+
 ## VS Code / judge demo
 
 Open this repository in VS Code, activate the Python 3.11 environment, and run:

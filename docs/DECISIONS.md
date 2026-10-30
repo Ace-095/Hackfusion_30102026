@@ -671,6 +671,27 @@ independent live validation has been performed, and network execution is still
 disabled. See [validation plan](validation/README.md) and
 [judge demo](checkpoints/24-independent-validation-plan.md).
 
+## Checkpoint 25 — fixture detection pipeline and bounded extraction
+
+Test-first work added bounded dotted object-key selectors to the existing
+fixture recipe, registry, oracle and minimized observations, and optional body
+continuation-token pagination with exact scoped queries, a four-page-per-account
+cap, 256 IDs/account, existing response and request budgets, explicit null
+termination, cycle detection and fail-closed ambiguity. Follow-up tests found a
+model-copy validation bypass and contradictory `has_more` metadata; both now
+fail before a false ownership result. Wrapped lists require explicit termination.
+This is not generic live pagination, and list/detail fields still must match.
+
+The fixture oracle now returns SUSPECTED only for a matching private marker with
+incomplete but noncontradictory identity, after verified ownership/baselines and
+a known denying fixture policy. Confirmed, safe, inconclusive and skipped cases
+remain independently tested. An end-to-end nested fixture exercises the same
+registry, guard, oracle, storage and JSON/HTML report. Credential/cookie/private
+sentinels were absent from tested fixture outputs, logs and SQLite; no claim is
+made about arbitrary live data. No independent lab was run, no live execution
+was enabled, and VAmPI/crAPI blockers remain. Full local suite: 471 passed,
+one third-party warning. See [judge demo](checkpoints/25-fixture-detection-pipeline.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
