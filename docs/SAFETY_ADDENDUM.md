@@ -8,7 +8,8 @@ precedence for implementation:
 
 1. **Scope is the sole target authority.** Recipe `base_url` and embedded
    passwords are rejected. The current fixture runner derives its origin from
-   its separate synthetic scope. Organizer-supplied live scope is not yet supported.
+   its separate synthetic scope. A provisional organizer-scope data validator
+   exists, but no live scope upload or execution is enabled.
 2. **Every operation requires an explicit classification:** `READ_ONLY`,
    `AUTHENTICATION`, `STATE_CHANGING` or `DESTRUCTIVE`. Unknown classifications
    and unlisted operations fail closed. A `GET` classified state-changing or

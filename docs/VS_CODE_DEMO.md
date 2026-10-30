@@ -127,3 +127,5 @@ For the sensitive-field and response-schema demonstration, see [checkpoint 7](ch
 For the fixture resource-enumeration comparison, see [checkpoint 8](checkpoints/08-enumeration.md).
 
 For the scoped enum-validation demonstration, see [checkpoint 9](checkpoints/09-enum-validation.md).
+
+For the offline organizer-scope validation demonstration, see [checkpoint 10](checkpoints/10-scope-validation.md).

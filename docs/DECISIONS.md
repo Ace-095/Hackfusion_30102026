@@ -343,6 +343,30 @@ restart. The wheel includes the fixture schema and exact scope. GitHub Actions
 passed on Linux and Windows for code commit `a3db65f` (run 41041165887). Live
 scanning and full generic OpenAPI/validation execution remain unimplemented.
 
+## Checkpoint 10 — organizer scope data validation, still offline
+
+After a 176-test baseline, test-first cases for exact host/IP, written reference,
+account/role and operation classifications, DNS isolation, bounds, unsafe YAML,
+credentials and scope ambiguity were added; they initially failed because the
+module did not exist. A later set of tests exposed that non-unicast addresses
+were accepted and were fixed before the full test run. The validator accepts only
+bounded, unique-key YAML without aliases, exact unencoded paths and literal IPs
+or an explicitly named organizer-approved system resolver. It does not resolve a
+hostname, open a socket, persist the scope or configure the fixture scanner.
+
+The immutable provisional scope model records written authorization references,
+accounts/roles, method allowlists, budgets and classified operations. State-changing
+POST entries require a separate written creation-authorization reference; this is
+metadata only and does not enable any write. Destructive classifications are also
+metadata, not executable permission. A reference cannot prove actual authorization.
+This is not the central live guard, DNS validation or a pinned transport; all live
+execution remains disabled. Limits and exact-literal-path restrictions are a
+conservative subset pending real organizer scope and team review.
+
+The full local suite passed: 214 tests, with one third-party Starlette/AnyIO
+warning. No credentials, private organizer scope or generated reports were added
+by this checkpoint. Scope contracts remain provisional.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
