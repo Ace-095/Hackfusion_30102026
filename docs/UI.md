@@ -1,10 +1,16 @@
 # Local frontend (Jinja2 + vendored HTMX)
 
-This document is the frontend handoff for the current backend checkpoint. It
-describes what the UI does, which backend route feeds every number on every page,
-what is deliberately missing, and which backend contracts would be needed to go
-further. Nothing here changes the backend's security posture: the API remains
-unauthenticated, fixture-only and local.
+This document is the frontend handoff. It describes what the UI does, which
+backend route feeds every number on every page, what is deliberately missing, and
+which backend contracts would be needed to go further. Nothing here changes the
+backend's security posture: the API remains unauthenticated and local, and the
+only network traffic it can produce is the guard's loopback TargetLab call.
+
+The UI now runs against the checkpoint-38 backend on this branch, including the
+three TargetLab workflows that postdate it. The integration itself — what was
+reused, what was added, how each page is fed, and what is still not connected — is
+recorded in [FRONTEND_BACKEND_INTEGRATION.md](FRONTEND_BACKEND_INTEGRATION.md);
+this file remains the page-by-page reference.
 
 The UI is a **view layer**. It owns no findings, no verdicts and no sample data.
 If the backend cannot establish something, the page says so.
@@ -22,10 +28,12 @@ If the backend cannot establish something, the page says so.
 | Assets | Served by the app itself at `/ui/static/...` | No CDN, no web fonts, no analytics, no external requests |
 | Data | `canarygate.api.app` handlers called **in-process** | The UI never re-implements a verdict or a counter |
 
-Pages: dashboard, endpoint inventory, setup & readiness, findings, read-BOLA scan
-list, scan detail, evidence/observations, report view, authorization matrix,
-reports, test suites, suite run detail, spec inspection, configuration, error
-page. The UI is mounted at `/ui/`; `/` redirects there.
+Pages: dashboard, endpoint inventory, setup & readiness, findings, fixture scan
+list, scan detail, evidence/observations, replay, report view, authorization
+matrix, reports, test suites (four offline families), suite run detail and its
+report, TargetLab validation (read-BOLA, control interaction, reset proof) with a
+detail and report page per family, spec inspection, configuration, error page.
+The UI is mounted at `/ui/`; `/` redirects there.
 
 Every page renders the same shell: a grouped sidebar (`NAV_GROUPS` in
 `routes.py`), a breadcrumb trail, and — on the core review pages — a numbered
@@ -55,15 +63,20 @@ canarygate/ui/
 │   ├── scans.html         # stored fixture runs (Verifiable list from /api/findings)
 │   ├── scan_detail.html   # verdict, two-part evidence, 10-key checklist, checks, constraints
 │   ├── evidence.html      # minimized observations behind the verdict
-│   ├── matrix.html        # run-derived authorization cells
+│   ├── matrix.html        # backend authorization matrix + run-derived cells
 │   ├── reports.html       # links to backend-generated HTML/JSON reports
 │   ├── report_view.html   # backend `?view=sections` rendered in-page, print-friendly
 │   ├── replay.html        # flight recorder: recorded events, step-through playback
-│   ├── suites.html        # read-BOLA + authentication scenario runners
-│   ├── suite_run.html     # scenario run / authentication run detail
+│   ├── suites.html        # four offline scenario runners + stored runs per family
+│   ├── suite_run.html     # scenario / authentication / validation / interaction detail
+│   ├── sections_report.html # a family's backend section projection, in-page
+│   ├── lab.html           # TargetLab validation: three real HTTPS workflows
+│   ├── lab_bola.html      # read-BOLA run: checks, evidence, ground truth
+│   ├── lab_sci.html       # control-interaction run: baselines, combined, reset link
+│   ├── lab_reset.html     # two-runner reset proof
 │   ├── spec.html          # in-memory OpenAPI inspection
 │   ├── error.html         # HTML error page (real HTTP status, no JSON body in the page)
-│   └── partials/          # HTMX fragments: fixtures scan result, suite result, spec result, error
+│   └── partials/          # HTMX fragments: fixture scan, suite, lab, spec results and error
 └── static/
     ├── css/app.css
     ├── css/replay.css      # recorder only (loaded by replay.html)
@@ -72,8 +85,8 @@ canarygate/ui/
     └── vendor/htmx.min.js, vendor/htmx.LICENSE
 ```
 
-**No backend file is modified.** The UI is attached at runtime by
-`canarygate/ui/app.py`:
+**The UI is attached at runtime** by `canarygate/ui/app.py`; the module itself
+does not patch or rewrite anything:
 
 ```python
 application = create_backend_app(database_path)          # untouched backend factory
@@ -81,9 +94,15 @@ application.mount("/ui/static", StaticFiles(...))        # local assets
 application.include_router(ui_router)                    # HTML routes
 ```
 
-`canarygate/api/app.py`, the guard, the runner, the oracles, the models, the
-database layer, the existing tests and `pyproject.toml` are byte-identical to the
-backend branch. Two servers are therefore possible from the same code:
+The guard, the runner, the oracles, the models, the database layer and the
+existing tests are byte-identical to `main`. `canarygate/api/app.py` differs in
+exactly one place: seven `…/report` routes were annotated `response_model=Run |
+SectionReport` because their documented default view (`view=run`) returns the
+stored run, and a single-model annotation turned every such call into a 500. No
+route, status code, rule or stored shape changed; the diff and its tests are
+listed in
+[FRONTEND_BACKEND_INTEGRATION.md §7](FRONTEND_BACKEND_INTEGRATION.md). Two servers
+are therefore possible from the same code:
 
 | Command | Serves |
 | --- | --- |
@@ -130,11 +149,13 @@ view-model code.
 | Backend result | UI behaviour |
 | --- | --- |
 | 200 / 201 | Render the page (or HTMX fragment) |
+| 400 (lab scan without `CANARYGATE_TARGETLAB_CA`, or an unreadable CA) | HTML error page with HTTP 400 stating that no evidence was stored |
 | 404 (`unknown run`, unknown scenario id) | HTML error page with HTTP 404, or a red inline fragment |
 | 422 (invalid selection / bad spec) | HTML error page with HTTP 422 |
 | 413 (oversized document) | HTML error page with HTTP 413 |
 | 415 (wrong content type) | HTML error page with HTTP 415 |
 | 500 (`integrity verification`, `storage unavailable`) | HTML error page with HTTP 500 explaining that the backend refused to use a corrupt record |
+| 502 (lab unreachable or the transport refused) | HTML error page with HTTP 502 carrying the backend's own message; nothing is written to any store |
 
 `_page(..., http_status=...)` sets the real response status, so an error page is
 never served as a misleading 200. Unexpected exceptions are not swallowed: they
@@ -147,6 +168,11 @@ surface as a server error and stay visible in logs.
 | `POST /ui/actions/fixture-scan` | `api.start_scan` | 303 → `/ui/scans/{id}` | fragment in `#scan-panel` |
 | `POST /ui/actions/scenario-scan` | `api.start_scenario_scan` | 303 → `/ui/suites/read-bola/{id}` | fragment in `#suite-panel` |
 | `POST /ui/actions/authentication-scan` | `api.start_authentication_scan` | 303 → `/ui/suites/authentication/{id}` | fragment in `#suite-panel` |
+| `POST /ui/actions/validation-scan` | `api.start_validation_scan` | 303 → `/ui/suites/validation/{id}` | fragment in `#suite-panel` |
+| `POST /ui/actions/interaction-scan` | `api.start_interaction_scan` | 303 → `/ui/suites/interaction/{id}` | fragment in `#suite-panel` |
+| `POST /ui/actions/lab-bola-scan` | `api.start_lab_bola_scan` | 303 → `/ui/lab/bola/{id}` | fragment in `#lab-panel` |
+| `POST /ui/actions/lab-sci-scan` | `api.start_lab_sci_scan` | 303 → `/ui/lab/sci/{id}` | fragment in `#lab-panel` |
+| `POST /ui/actions/lab-sci-reset` | `api.start_lab_sci_reset` | 303 → `/ui/lab/reset/{proof_id}` | fragment in `#lab-panel` |
 | `POST /ui/actions/spec-inspect` | `spec.parser.parse_inventory` | full `/ui/spec` page with result | fragment in `#spec-panel` |
 | `GET /ui/reports/lookup` | — (validates then redirects) | 303 to the suite run | same |
 | `GET /ui/scans/{id}/report` | `api.report(..., view="sections")` | full page, 9 backend sections | same |
@@ -167,18 +193,27 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
 | `/ui/scans/{id}/evidence` | Minimized observations behind the verdict | coverage, per-observation phase/actor/request/response summary/assertions/SHA-256 | `GET /api/scan/{id}/observations` | JSON bundle | `NOT_RECORDED` banner; "No observations to show" |
 | `/ui/findings` | One place for every conclusion | open-finding count, CONFIRMED findings with reason + remediation + evidence flags, SUSPECTED, check-level findings (AUTHN/INPUT/DISC), SAFE list, coverage gaps | `GET /api/findings` (grouping only) | run fixture scan, drill into run/evidence/report | "No findings yet"; explicit "severity is not in the contract" note |
 | `/ui/configure` | What the backend is configured to do | bundled `scope.yaml`, `recipe.json`, `fixture.yaml`, recipe returned by `fixture_recipe()` (canary redacted), disabled config form with reasons | none (reads backend package files + recipe function) | none — read-only by design | empty state if package files are missing |
-| `/ui/matrix` | Actor × endpoint access | grid: inventory rows × accounts the backend demonstrated, each cell a verdict or **not assessed**; plus the recorded cell table | `GET /api/matrix` + `GET /api/endpoints` + `GET /api/findings` | open run from a cell | "No grid yet"; assessed/total coverage; explicit partial-coverage warning |
+| `/ui/matrix` | Actor × endpoint access | **backend matrix**: rows × `anonymous` / `own_resource` / `other_account_resource` / `role`, five cell states, per-cell reason and `source_ref`, coverage statement and by-state counts; **fixture grid**: inventory rows × accounts the backend demonstrated, each cell a verdict or **not assessed**, plus the recorded cell table | `GET /api/authorization-matrix`, `GET /api/matrix`, `GET /api/endpoints`, `GET /api/findings` | open the run behind a cell | "no cell has been tested yet"; assessed/total coverage; explicit partial-coverage warning; the two tables are labelled so they cannot be confused |
 | `/ui/scans/{id}/report` | The backend's own report, re-rendered from `?view=sections` | the 9 sections (`executive_summary` … `constraint_checklist`) with their backend titles and values, plus a link to the backend HTML/JSON originals | `GET /api/reports/{id}?format=json&view=sections` | print (`window.print`), open HTML/JSON | 404 page if the report cannot be generated; a section the backend omits is simply absent, never filled in |
-| `/ui/reports` | Canonical reports | stored runs with links to HTML, JSON run, JSON sections, JSON + observations | `GET /api/findings` (links go to `/api/reports/...`) | open suite run by id | "No reports yet"; documented missing list endpoints |
-| `/ui/suites` | Bundled offline transcripts | scenario ids from backend registries (auth titles come from the plans) | `POST /api/scenario-scans`, `POST /api/authentication-scans` | run read-BOLA / authentication scenario | inline 404/422 fragment; empty catalog state |
+| `/ui/reports` | Canonical reports | fixture runs plus every stored run of the four offline families and the three lab workflows, each linked to its page and to the backend's HTML/JSON; the UUID lookup stays available | `GET /api/findings` plus the suite and lab stores (links go to `/api/.../report`) | open a run, open its report, paste a run id | "No reports yet"; a family with no run is listed as "no run", not omitted |
+| `/ui/suites` | Bundled offline transcripts | scenario ids from backend registries (auth titles come from the plans), plus every stored run per family | `POST /api/scenario-scans`, `/api/authentication-scans`, `/api/validation-scans`, `/api/interaction-scans` | run a scenario in any of the four families | inline 404/422 fragment; empty catalog state; a family with no run says so |
 | `/ui/suites/read-bola/{id}` | Scenario detail | verdict, reason, remediation, scope, recipe, policy, both evidence parts, 10-key checklist, constraints, inventory, limitations | `GET /api/scenario-scans/{id}` | backend HTML/JSON report | 404 page; "No evidence recorded for this phase" |
 | `/ui/suites/authentication/{id}` | Authentication detail | title, scheme, `claims_unverified`, `signature_verification`, summary counts, all 8 checks with evidence, scope, constraints, limitations | `GET /api/authentication-scans/{id}` | backend HTML/JSON report | 404 page; SKIPPED checks show their reason |
+| `/ui/suites/validation/{id}` | Input/disclosure detail | per-check verdicts (INPUT, DISC), evidence summaries, request accounting, scope, constraints, limitations | `GET /api/validation-scans/{id}` | backend HTML/JSON report | 404 page; "no run-level verdict in this family" is stated on the page |
+| `/ui/suites/interaction/{id}` | Control-interaction detail | both baselines, combined action, `interaction_induced` attribution, 8-key checklist, evidence, limitations | `GET /api/interaction-scans/{id}` | backend HTML/JSON report | 404 page; SKIPPED and INCONCLUSIVE keep their reason |
+| `/ui/suites/{family}/{id}/report` | A family's section projection, in-page | the backend's own sections and titles for read-bola, authentication, validation or interaction | `GET /api/…-scans/{id}/report?view=sections` | print, open backend HTML/JSON | 404 page; a section the backend omits stays absent |
+| `/ui/lab` | TargetLab validation entry | CA readiness (`CANARYGATE_TARGETLAB_CA`), transport, the three workflows with their ports and budgets, every stored lab run, and the reset-proof links | none directly (reads the three lab stores and the CA environment) | run read-BOLA / control interaction / reset proof | refusal panel when the CA is unset; 422 for an invalid port or budget |
+| `/ui/lab/bola/{id}` | Read-BOLA evidence | six checks with direction, actors, endpoint, HTTP status, verdict, reason and evidence hash; summary counts; 10-key checklist; transport; constraints; ground truth scored after the verdicts; limitations | `GET /api/lab-bola-scans/{id}` | backend HTML/JSON report | 404 page; "no evidence stored" states |
+| `/ui/lab/sci/{id}` | Control-interaction evidence | both baselines with their own verdicts and statuses (403, 401), the combined action (200), attribution, 8-key checklist, ownership and disclosure evidence, constraints, limitations | `GET /api/lab-sci-scans/{id}` | backend HTML/JSON report; reset proofs on the same port | 404 page; a missing part is named, never filled in |
+| `/ui/lab/reset/{proof_id}` | Reset proof | `status`, RESET-01…04 with statuses, isolation (`runners`, `state`, `why`), disclosure, transport | `GET /api/lab-sci-resets/{proof_id}` | backend report for the proof | 404 page; the page repeats that this is a separate controlled run |
 | `/ui/spec` | Inspect an OpenAPI document without scanning | document SHA-256, endpoint count, inventory with expected access/provenance | in-memory `parse_inventory` (same subset parser as `POST /api/spec/upload`) | paste or load file, inspect | 422 invalid, 413 too large, 415 wrong type |
 
 ## 5. Honesty rules encoded in the UI
 
-1. Every page carries the fixture banner and the footer states
-   `backend mode fixture · live scanning disabled`.
+1. Every page carries the local-evidence banner and the footer states
+   `backend mode fixture · loopback lab only · live scanning disabled`. The banner
+   separates offline fixtures and transcripts from the loopback lab's real HTTPS
+   results, and says neither is evidence about a live or organizer API.
 2. No page invents a finding, a score, a percentage or a verdict. Verdict names
    appear only where the backend returned them (the dashboard legend lists the
    five possible labels with zero counts — they are labels, not results).
@@ -198,20 +233,29 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
    so `/ui/findings` ranks by verdict only and says so on the page (gap R6).
 10. Configuration is displayed, not simulated: `/ui/configure` shows the real
     bundled files, disables the inputs it cannot save, and links the gap.
+11. Lab pages render the backend's `transport` and `constraints` blocks verbatim,
+    including `production_networking: false`, and never reuse a verdict from a
+    previous run. The browser never learns a lab credential: three tests assert
+    that no password, token, private marker or key appears on any served page.
+12. A failed lab attempt (400 missing CA, 502 unreachable) is shown as a refusal
+    with "no evidence was stored", and the dashboard keeps showing the previous
+    run as the latest real evidence.
 
 ## 6. Backend gaps this frontend ran into
 
-Each item below is a **proposal that needs backend-owner approval and
-implementation**. Until then the UI either shows a documented gap or omits the
+Each item below is a gap. Two are now closed inside the UI without touching the
+contract (G1, G2); one was partly answered by a backend route that already existed
+(G5); the rest are still proposals that need backend-owner approval and
+implementation. Until then the UI either shows a documented gap or omits the
 feature; none of them are faked.
 
 | # | Missing capability | Frontend component affected | Current behaviour | Proposed minimal contract |
 | --- | --- | --- | --- | --- |
-| G1 | No list endpoint for scenario runs | `/ui/suites`, `/ui/reports` | Only "open by run id" (`/ui/reports/lookup`) | `GET /api/scenario-scans?limit=50` → `{mode, runs: [{id, created_at, scenario_id, verdict, status}]}` |
-| G2 | No list endpoint for authentication runs | `/ui/suites`, `/ui/reports` | Only "open by run id" | `GET /api/authentication-scans?limit=50` → `{mode, runs: [{id, created_at, scenario_id, title, status, summary}]}` |
+| G1 | No list endpoint for scenario runs | `/ui/suites`, `/ui/reports` | **Closed in the UI:** the page enumerates the local store server-side and says so; the JSON API still has no list route | If a remote client ever needs one: `GET /api/scenario-scans?limit=50` → `{mode, runs: [{id, created_at, scenario_id, verdict, status}]}` |
+| G2 | No list endpoint for authentication runs | `/ui/suites`, `/ui/reports` | **Closed the same way**, for all four offline families and the three lab stores | If needed: `GET /api/authentication-scans?limit=50` → `{mode, runs: [{id, created_at, scenario_id, title, status, summary}]}` |
 | G3 | `POST /api/scan` runs synchronously and takes no configuration | dashboard, `/ui/scans` | Button blocks until the run completes; no progress, no cancel | Async job contract: `POST /api/scan-jobs` → 202 `{job_id}`, `GET /api/scan-jobs/{id}` → `{state, run_id?}`. Requires agreement; the fixture run is fast, so this is not urgent |
 | G4 | A run "configuration" (target, spec, accounts, recipe) cannot be set through the API | `/ui/suites`, `/ui/scans` | The fixture target and recipe are fixed in code | A validated config object + guarded runner, only after the safety guard and organizer inputs exist. Do not expose editing before that |
-| G5 | No full authorization matrix | `/ui/matrix` | Shows the backend's run-derived cells with an explicit "partial" warning | `GET /api/matrix?endpoint=…` with a full endpoint × actor grid once the matrix is implemented (P1) |
+| G5 | No *complete* authorization matrix | `/ui/matrix` | Shows the backend's real `GET /api/authorization-matrix` (scope `partial_offline`, untested cells hatched, per-cell `source_ref`) beside the fixture grid, both labelled | `GET /api/matrix?endpoint=…` with a full endpoint × actor grid once every combination can be tested; BFLA stays out of scope (`D11`) |
 | G6 | No human-in-the-loop path for `NEEDS_MANUAL_INPUT` | `/ui/setup` | Renders the state if it appears; there is nothing to submit | `POST /api/setup/manual-input` with a strict schema, only if the backend supports that flow |
 | G7 | No retention/export/delete API | `/ui/reports` | Links only to backend-generated reports | `DELETE /api/scans/{id}` (local DB only) and a bulk export. Out of scope for the demo |
 | G8 | No API authentication or user model | all pages | Local single-user UI, stated on every page | Out of scope while the server is local-only; adding auth is a product decision |
@@ -221,15 +265,45 @@ feature; none of them are faked.
 | G13 | Transcript runs expose no per-request capture time (deferred by product decision — not a demo blocker) | `/ui/suites/*/replay` | Renders them as a *sequence* in backend list order and says so | A `captured_at` per transcript entry (or an ordered `steps[]` on the run) would let scenario and authentication runs use the same timeline the fixture run already has |
 | G12 | No configuration submission path | `/ui/configure` | Shows bundled config read-only, form disabled with reasons | Same as G3/G4: a validated config object plus a scan-job contract, only after guard + authorization work |
 
-Contract changes to the frozen models or the existing routes were **not** made.
+Contract changes to the frozen models were **not** made. One annotation on seven
+existing report routes was widened, because those routes could not return their
+documented default view; see §10 and the integration document.
 
 ## 7. Tests
 
-`tests/integration/test_ui_pages.py` (24 tests, run with the rest of the suite):
+Four files, 100 tests, run with the rest of the suite and registered in
+`tools/p0_audit.py` (`in_process_api`, or `loopback_tls` for the lab file).
+
+`tests/integration/test_ui_backend_contract.py` (32 tests) covers the integration
+itself. For all four offline families it compares the action → stored run → page →
+section report chain field by field with the JSON API, and asserts the default
+`view=run` JSON report is 200 for every family (the defect this branch fixed). It
+compares the matrix page with `/api/authorization-matrix`, checks the reports and
+suites listings and the empty states, refuses a 413-oversized form, asserts every
+page references no external origin, asserts `/openapi.json` stays free of UI
+routes, and statically asserts that no template assigns or derives a verdict and
+that `routes.py` imports no HTTP client or socket, defines no `decide`, and reaches
+the lab only through `start_lab_bola_scan` / `start_lab_sci_scan`. A final test
+runs the same structural accessibility checks over each of the four suite run
+pages and their section reports.
+
+`tests/integration/test_ui_lab_pages.py` (24 tests) drives the three TargetLab
+workflows through the HTML forms against the real TLS lab (`lab_server.LabTlsServer`
+with `CANARYGATE_TARGETLAB_CA`) and compares every rendered verdict, status and
+count with the JSON API for the same stored run: LAB-BOLA-01…06, both SCI
+baselines at 403 and 401, the combined action at 200, RESET-01…04, the dashboard
+card and the reports listing. It also asserts 400 on a missing CA, 422 on an
+invalid port or budget, 502 on a closed port with nothing stored, HTML 404s, the
+HTMX fragment path, and that no lab secret reaches any surface. It also runs the
+shell's structural accessibility checks over the lab page, each run page and the
+two section-report pages, because they are not in the frontend's original page
+list.
+
+`tests/integration/test_ui_pages.py` (28 tests):
 
 | Test | What it actually proves |
 | --- | --- |
-| `test_every_page_renders_before_any_run_without_sample_data` | All 8 pages return 200 HTML with no stored run, show the fixture banner, render no verdict badge, reference no external origin, and include a viewport meta |
+| `test_every_page_renders_before_any_run_without_sample_data` | All 8 pages that render without a stored run return 200 HTML with no stored run, show the local-evidence banner ("Nothing here is evidence about a live or organizer-supplied API"), render no verdict badge, reference no external origin, and include a viewport meta |
 | `test_ui_scan_action_renders_the_same_run_the_api_returns` | A UI-triggered scan stores exactly one run, the detail page shows the API's own verdict/reason/owner/checklist/hashes/counters |
 | `test_ui_never_renders_credentials_or_raw_tokens` | No tokens, bearer headers or private fixture values appear on the run page, evidence page or backend HTML report; `[REDACTED]` does |
 | `test_ui_evidence_page_reports_recorded_coverage` | Coverage and every observation hash match `GET /api/scan/{id}/observations` |
@@ -262,11 +336,32 @@ limit of what the test environment can prove.
 
 ## 8. Running it
 
+Two terminals. The lab is a separate program, and only the TargetLab pages need
+it; every other page works without it.
+
+Terminal 1 — the deliberately vulnerable loopback lab:
+
 ```bash
+python -m targetlab --port 8765 \
+    --tls-cert tests/fixtures/tls/targetlab-cert.pem \
+    --tls-key tests/fixtures/tls/targetlab-key.pem
+```
+
+Terminal 2 — the application (interface and JSON API in one process):
+
+```bash
+CANARYGATE_TARGETLAB_CA=tests/fixtures/tls/targetlab-cert.pem \
+CANARYGATE_DB_PATH=.canarygate/canarygate.sqlite3 \
 python -m uvicorn canarygate.ui.app:app --host 127.0.0.1 --port 8000
 ```
 
-Then open `http://127.0.0.1:8000/ui/`. Optional separate database:
+Then open `http://127.0.0.1:8000/ui/` and enter `8765` in the TargetLab forms.
+`.env.example` lists both variables; there is no `.env` loader and no secret
+belongs in the file. Without `CANARYGATE_TARGETLAB_CA` the lab page renders a
+refusal panel and the three lab actions answer 400 — the rest of the UI is
+unaffected.
+
+An optional separate database is just the second variable:
 
 ```bash
 CANARYGATE_DB_PATH=/tmp/canarygate.sqlite3 python -m uvicorn canarygate.ui.app:app --port 8000
@@ -279,8 +374,9 @@ The backend entrypoint is untouched and still works on its own (JSON only, no
 python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-The server stays local-only, unauthenticated and fixture-only. Do not bind it to a
-public interface, and do not present fixture verdicts as live-target results.
+The server stays local-only and unauthenticated. Do not bind it to a public
+interface, and do not present fixture, transcript or loopback verdicts as
+live-target results.
 
 ## 9. Design system (shipped in this pass)
 
@@ -320,112 +416,87 @@ checkpoint). What exists now:
 
 Still open, and deliberately not faked:
 
-* Server-side pagination/sorting for very large run lists (needs the list
-  endpoints in G1/G2).
+* Server-side pagination/sorting for very large run lists (the pages enumerate the
+  local store; G1/G2).
 * An async scan with progress (needs G3).
 * A compare view for "same endpoint, different actors" — possible with today's
   data, but it needs a product decision about which two runs to compare.
 
-## 10. Backend read-only guarantee
+## 10. Backend boundary
 
-The backend is treated as a delivered dependency. The frontend may read, import
-and call it; it may not change it.
+The frontend started on its own branch under a "read-only backend" rule. That rule
+still holds for behaviour: no rule, oracle, guard, transport, store, verdict or
+status code was changed to make a page work. One change was needed, and it is a
+declaration fix rather than a behaviour change — seven `…/report` routes could not
+serve their documented default view at all (500), so their annotation was widened
+to the union of the values they already returned. The justification, the diff and
+the tests that pin the "before" symptom are in
+[FRONTEND_BACKEND_INTEGRATION.md §7](FRONTEND_BACKEND_INTEGRATION.md).
 
-| Allowed | Forbidden (and not done) |
+| Allowed (done) | Still forbidden (not done) |
 | --- | --- |
-| Read backend source, tests, schemas, `docs/API.md` | Edit any file under `canarygate/` outside `canarygate/ui/` |
-| Import `canarygate.api.app` and call its handlers | Change API routes, response models or status codes |
-| Use FastAPI objects the backend factory returns | Change `canarygate/models/`, the guard, runner, oracles, accounts/seed/scope logic |
-| Read the SQLite schema through the backend's stores | Touch `canarygate/database/`, migrations or stored payloads |
-| Add files under `canarygate/ui/`, `docs/UI.md`, `tests/integration/test_ui_pages.py` | Modify existing backend tests or `pyproject.toml` |
+| Read backend source, tests, schemas, `docs/API.md` | Change a route path, status code, schema field or stored payload |
+| Import `canarygate.api.app` and call its handlers | Change `canarygate/models/`, the guard, runner, oracles, accounts/seed/scope logic |
+| Use FastAPI objects the backend factory returns | Touch `canarygate/database/` or migrations |
+| Widen a `response_model` to include the value the handler already returned | Modify existing backend tests |
+| Add `canarygate.ui` package data so a built wheel ships templates and assets | Change other packaging or dependency settings |
 
 ### Verification (run these before handing the branch over)
 
 ```bash
-# 1. No backend file differs from the backend branch
-git diff --stat origin/arena/aa67fa1b-hackfusion-30102026 -- \
-  canarygate/api canarygate/guard canarygate/runner canarygate/oracles \
-  canarygate/accounts canarygate/seed canarygate/scope canarygate/spec \
-  canarygate/network canarygate/evidence canarygate/report canarygate/database \
-  canarygate/models canarygate/scan canarygate/offline \
-  pyproject.toml README.md docs/API.md tests/unit tests/security
-# expected: no output
+# 1. Only api/app.py differs from main outside the UI, and only in annotations
+git diff c36dda1 -- canarygate/api/app.py
+# expected: seven response_model lines, nothing else
 
-# 2. Every change on this branch is frontend-only
-git diff --stat origin/arena/aa67fa1b-hackfusion-30102026
-# expected: canarygate/ui/** , docs/UI.md , tests/integration/test_ui_pages.py only
+# 2. Everything outside canarygate/ui is documentation, tests or build data
+git diff --stat c36dda1 -- . ":(exclude)canarygate/ui"
+# expected: canarygate/api/app.py, docs/*.md, README.md, pyproject.toml,
+#           tools/p0_audit.py, tests/integration/test_ui_*.py
 
 # 3. The whole suite passes, backend tests included and unmodified
-python -m pytest -q
+python -m pytest -q          # 1016 passed
+python tools/p0_audit.py     # 58 rows, 0 failures
 
 # 4. The backend alone still has no UI routes
 python -m uvicorn canarygate.api.app:app --port 8001   # GET /ui/ -> 404
 ```
 
-### Changes I would make outside the frontend, awaiting your approval
+### Frontend requests to the backend owner, and their disposition
 
-These are **not applied**; each is a one-line-to-small change that the frontend
-cannot make under the read-only rule.
+| # | Request | Status |
+| --- | --- | --- |
+| R1 | Mention `/ui/` in `README.md` | **Applied** |
+| R2 | Correct `docs/VS_CODE_DEMO.md`, which still said the dashboard was not implemented | **Applied** |
+| R3 | Ship templates and assets in a built wheel (`pyproject.toml` package-data) | **Applied** — verified: the wheel now carries 40 `canarygate/ui` files including `lab.html`, `app.css` and the vendored HTMX |
+| R4 | List endpoints for scenario/authentication runs (G1/G2) | **Not needed for the local UI** — the pages read the stores server-side, so no route was added and the public contract is unchanged |
+| R5 | A scan-job contract with progress and cancel (G3) | **Deferred** — scans are synchronous and the local lab finishes in seconds; a job API would add a second state machine without adding evidence |
 
-| # | File | Proposed change | Why the frontend wants it | Risk |
-| --- | --- | --- | --- | --- |
-| R1 | `README.md` (line ~96) | Add "open `/ui/` for the local frontend; see `docs/UI.md`" next to the uvicorn command | Discoverability: the README currently mentions only the CLI demo | None (docs) |
-| R2 | `docs/VS_CODE_DEMO.md` (lines 4–5) | Replace "the frontend/dashboard … not yet implemented" with "a local frontend exists at `/ui/`" | The current sentence is now factually wrong for anyone reading it | None (docs) |
-| R3 | `pyproject.toml` `[tool.setuptools.package-data]` | Add `"canarygate.ui" = ["templates/*.html", "templates/partials/*.html", "static/css/*.css", "static/js/*.js", "static/vendor/*"]` | Templates/CSS/JS ship in a built wheel. Editable installs (`pip install -e .`, what CI uses) work without it | Build config only |
-| R4 | `canarygate/api/` — **new** route(s) | `GET /api/scenario-scans?limit=` and `GET /api/authentication-scans?limit=` returning `{mode, runs:[{id, created_at, scenario_id, verdict/status}]}` (gap G1/G2) | Without a list endpoint the suites/reports pages can only open a run by pasted id | New read-only route; no change to existing contracts |
-| R5 | `canarygate/api/` — **new** route | `POST /api/scan-jobs` + `GET /api/scan-jobs/{id}` (gap G3) | Progress/cancel for long runs. Not needed for the fixture demo, which returns in well under a second | New surface; defer |
-
-Until R1–R5 are approved, the UI shows the workaround (open-by-id) and documents
-the gap in place, rather than inventing an endpoint or faking the capability.
+The one change the frontend could not make under the original rule — the report
+`response_model` widening — was made deliberately by the integration owner and is
+recorded with its tests rather than hidden.
 
 
-## 11. Creating the `fa1b` branch from this work
+## 11. How this content reached the backend
 
-The current branch is the backend baseline plus two frontend-only commits, so it is
-already exactly the content `fa1b` should hold. It was not renamed because this
-workspace is bound to one branch name; the separation you asked for is preserved
-through *content*, not through the branch label.
-
-Known good refs:
+The frontend branch shares no merge base with the backend, so a merge would have
+been a rewrite of both trees. The integration instead copied the interface paths
+onto a branch cut from `main` and left the source branch untouched:
 
 | Ref | Meaning |
 | --- | --- |
-| `27fd836` | verified backend baseline (`origin/arena/aa67fa1b-hackfusion-30102026`) |
-| `3674b40` | basic frontend, pushed and verified (reference/backup) |
-| this branch head | backend baseline + frontend-only commits (current frontend) |
+| `origin/main` @ `c36dda1` | checkpoint-38 backend, the base of the integration |
+| `arena/a1fe3757-hackfusion-30102026` @ `14a8fd8` | the frontend as delivered, **unchanged** and still the recovery point |
+| this branch | `main` + `canarygate/ui/**` + the connectivity work below |
 
-Safe transition for the repository owner or the frontend developer (no reset, no
-clean, nothing lost):
-
-```bash
-git fetch origin
-
-# 1. Preserve the current frontend as its own reference branch (optional but cheap).
-git branch frontend-reference arena/a1fe3757-hackfusion-30102026
-
-# 2. Create fa1b from the verified backend baseline.
-git switch -c fa1b 27fd836
-git push -u origin fa1b
-
-# 3. Either start clean on fa1b …
-#    (nothing else to do — fa1b is now the untouched backend)
-
-#    … or bring the reference frontend across as a starting point:
-git checkout arena/a1fe3757-hackfusion-30102026 -- \
-    canarygate/ui tests/integration/test_ui_pages.py docs/UI.md
-git commit -m "chore(ui): import reference frontend onto fa1b"
-git push
-```
-
-Verification after switching (same commands as section 10):
+What was copied verbatim: `canarygate/ui/**`, `docs/UI.md`,
+`tests/integration/test_ui_pages.py`, `tests/integration/test_ui_replay_adapter.py`.
+What was then extended: the router, the shared macros, the suites/lab/report pages,
+the matrix page, the two new test files and four sections of this document. Because
+nothing was merged and nothing was reset, the frontend branch can still be diffed
+against this one at any time:
 
 ```bash
-git diff --stat 27fd836 -- canarygate/api canarygate/guard canarygate/runner \
-  canarygate/oracles canarygate/accounts canarygate/seed canarygate/scope \
-  canarygate/spec canarygate/network canarygate/evidence canarygate/report \
-  canarygate/database canarygate/models canarygate/scan canarygate/offline \
-  pyproject.toml README.md tests/unit tests/security   # expected: no output
-python -m pytest -q                                    # expected: 626 passed
+git diff --stat arena/a1fe3757-hackfusion-30102026 HEAD -- canarygate/ui
 ```
 
 ---
@@ -539,8 +610,9 @@ as recorded — the adapter copies the verdict, it never derives one.
 
 ## 13. Demonstration script (mapped to the UI)
 
-One confirmed Read-BOLA fixture run, seven clicks. Every step below lands on a
-page that already exists on this branch; nothing needs to be typed.
+One confirmed Read-BOLA fixture run, seven clicks. Click **Run fixture scan** on
+the dashboard once to store the run; from then on every step below is a click and
+nothing needs to be typed.
 
 | Step | Where | What the judge sees |
 | --- | --- | --- |
@@ -559,7 +631,7 @@ Two things to say out loud while presenting:
 * the evidence attached to each event is labelled with the matching rule
   (phase, identity, timestamp), so "why is this here?" has an answer on screen.
 
-### 12.5 Ambiguity is shown, never resolved silently
+### 13.1 Ambiguity is shown, never resolved silently
 
 The nearest-timestamp rule is a heuristic, so the page never presents it as
 proof. When two candidates are **equally** close (same millisecond distance), or
@@ -580,7 +652,7 @@ Thresholds: a candidate is usable inside 5000 ms of the evidence summary; ties a
 exact millisecond equality. Missing, empty and malformed timestamps are treated
 identically (no ordering, no disambiguation) and never raise.
 
-### 12.6 Validation log
+### 13.2 Validation log
 
 | Check requested | Result |
 | --- | --- |

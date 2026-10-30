@@ -265,3 +265,38 @@ def test_ui_is_not_in_the_json_schema_as_a_public_contract(client):
     schema = client.get("/openapi.json").json()
     assert not any(path.startswith("/ui") for path in schema["paths"])
     assert "/api/health" in schema["paths"]
+
+
+def _structure_offenders(body: str) -> list[str]:
+    """The same structural contract the frontend's own suite checks, restated.
+
+    The pages added during integration are not in that suite's page list, so they
+    are checked here against the shared shell they render through.
+    """
+    problems = []
+    if body.count("<h1") != 1:
+        problems.append(f"{body.count('<h1')} h1 elements")
+    if 'class="skip-link" href="#main"' not in body:
+        problems.append("no skip link")
+    if 'id="main"' not in body:
+        problems.append("no main landmark")
+    if 'lang="en"' not in body:
+        problems.append("no lang attribute")
+    if 'aria-label="Main navigation"' not in body:
+        problems.append("nav has no accessible name")
+    nav = body.split('id="site-nav"', 1)[1].split("</nav>", 1)[0]
+    if nav.count('aria-current="page"') != 1:
+        problems.append("navigation does not mark exactly one current page")
+    if "<img" in body:
+        problems.append("image without a text alternative")
+    if "style=" in body.replace('style="width:', ""):
+        problems.append("inline style")
+    return problems
+
+
+@pytest.mark.parametrize("family", sorted(ENDPOINTS))
+def test_suite_pages_keep_the_structural_accessibility_contract(client, family):
+    _, _, _, location = _start(client, family)
+    for path in (location, f"{location}/report"):
+        body = client.get(path).text
+        assert _structure_offenders(body) == [], path

@@ -1,9 +1,11 @@
 # Run the backend checkpoint in VS Code
 
 This is an **offline synthetic fixture demonstration**, not a scan of the
-organizer's API. The frontend/dashboard, live-target scanner, complete security
-checks and full production safety guard are not yet implemented. The backend
-server has no user authentication: use it locally and do not expose it publicly.
+organizer's API. The live-target scanner, complete security checks and full
+production safety guard are not implemented, and this walkthrough uses the
+backend alone; the local interface is documented separately in
+[UI.md](UI.md). The backend server has no user authentication: use it locally
+and do not expose it publicly.
 
 ## One-time setup (both operating systems)
 

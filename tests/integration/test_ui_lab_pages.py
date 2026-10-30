@@ -274,3 +274,37 @@ def test_no_lab_secret_reaches_the_browser(client, lab, action):
     text = "\n".join(bodies)
     for needle in FORBIDDEN:
         assert needle not in text, needle
+
+
+def _structure_offenders(body: str) -> list[str]:
+    """Structural contract for the shell the lab pages render through."""
+    problems = []
+    if body.count("<h1") != 1:
+        problems.append(f"{body.count('<h1')} h1 elements")
+    if 'class="skip-link" href="#main"' not in body:
+        problems.append("no skip link")
+    if 'id="main"' not in body:
+        problems.append("no main landmark")
+    if 'lang="en"' not in body:
+        problems.append("no lang attribute")
+    if 'aria-label="Main navigation"' not in body:
+        problems.append("nav has no accessible name")
+    nav = body.split('id="site-nav"', 1)[1].split("</nav>", 1)[0]
+    if nav.count('aria-current="page"') != 1:
+        problems.append("navigation does not mark exactly one current page")
+    if "<img" in body:
+        problems.append("image without a text alternative")
+    if "style=" in body.replace('style="width:', ""):
+        problems.append("inline style")
+    return problems
+
+
+@pytest.mark.parametrize("action", ["lab-bola-scan", "lab-sci-scan", "lab-sci-reset"])
+def test_lab_pages_keep_the_structural_accessibility_contract(client, lab, action):
+    location = _run_through_ui(client, action, lab.port)
+    pages = ["/ui/lab", location]
+    if action != "lab-sci-reset":
+        pages.append(f"{location}/report")
+    for path in pages:
+        body = client.get(path).text
+        assert _structure_offenders(body) == [], path

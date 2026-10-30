@@ -17,7 +17,7 @@ branch:
 
 Because the UI is mounted on the same FastAPI instance, the backend's lifespan
 (which creates the SQLite tables) still runs exactly once, `request.app.state`
-still holds the three stores, and the UI calls the same handler functions the
+still holds all nine stores, and the UI calls the same handler functions the
 JSON routes use. No backend file is imported for its side effects and none is
 patched.
 """

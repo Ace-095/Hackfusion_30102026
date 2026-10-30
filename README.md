@@ -93,6 +93,20 @@ and [checkpoint 32 P0 acceptance audit](docs/checkpoints/32-p0-acceptance-audit.
 python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
 ```
 
+The same handlers, with the HTML interface attached, served from one process:
+
+```sh
+CANARYGATE_TARGETLAB_CA=tests/fixtures/tls/targetlab-cert.pem \
+python -m uvicorn canarygate.ui.app:app --host 127.0.0.1 --port 8000
+```
+
+Open <http://127.0.0.1:8000/ui/>. Every page reads stored runs from the API; the
+TargetLab pages need the lab running in another terminal
+(`python -m targetlab --port 8765 --tls-cert ... --tls-key ...`) and that CA path.
+[docs/UI.md](docs/UI.md) maps pages to routes and
+[docs/FRONTEND_BACKEND_INTEGRATION.md](docs/FRONTEND_BACKEND_INTEGRATION.md)
+records what was connected, how it was tested and what is still missing.
+
 Generic offline scenarios are exposed at `POST /api/scenario-scans` with a bundled
 scenario id; see [checkpoint 28](docs/checkpoints/28-generic-scan-integration.md).
 Authentication checks are exposed at `POST /api/authentication-scans`; see
@@ -114,8 +128,9 @@ validation, not live scanning. `.venv/bin/python tools/demo.py` runs the complet
 four-stage demonstration from a clean start, and `docs/JUDGE_DEFENCE.md` explains
 every design decision: `.venv/bin/python -m targetlab` (loopback only, never deploy).
 See [docs/TARGETLAB.md](docs/TARGETLAB.md) and
-[checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is **not**
-implemented yet; the lab is a target, not a scanner transport.
+[checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is limited to
+the three controlled workflows above; the lab is a validation target, not a
+general scanner transport.
 
 In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed
