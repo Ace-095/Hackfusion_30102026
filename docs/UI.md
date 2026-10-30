@@ -300,10 +300,10 @@ documented default view; see §10 and the integration document.
 
 ## 7. Tests
 
-Four files, 125 tests, run with the rest of the suite and registered in
+Four files, 128 tests, run with the rest of the suite and registered in
 `tools/p0_audit.py` (`in_process_api`, or `loopback_tls` for the lab file):
 `test_ui_pages.py` (29), `test_ui_replay_adapter.py` (16),
-`test_ui_backend_contract.py` (33) and `test_ui_lab_pages.py` (47).
+`test_ui_backend_contract.py` (33) and `test_ui_lab_pages.py` (50).
 
 `tests/integration/test_ui_backend_contract.py` (33 tests) covers the integration
 itself. For all four offline families it compares the action → stored run → page →
@@ -318,7 +318,7 @@ the lab only through `start_lab_bola_scan` / `start_lab_sci_scan`. A final test
 runs the same structural accessibility checks over each of the four suite run
 pages and their section reports.
 
-`tests/integration/test_ui_lab_pages.py` (47 tests) drives the three TargetLab
+`tests/integration/test_ui_lab_pages.py` (50 tests) drives the three TargetLab
 workflows through the HTML forms against the real TLS lab (`lab_server.LabTlsServer`
 with `CANARYGATE_TARGETLAB_CA`) and compares every rendered verdict, status and
 count with the JSON API for the same stored run: LAB-BOLA-01…06, both SCI
@@ -337,7 +337,12 @@ routes with their own digests; an untested cell worded "untested — not SAFE"; 
 full-demonstration form and its reset explanation; the demonstration itself
 (stored pairs, "all nine cells have stored evidence", three ordinary runs behind
 it); a refused demonstration reporting "coverage is incomplete" and 0/3; four
-rejected ports answering 422 with nothing stored; and no lab secret on either
+rejected ports answering 422 with nothing stored; a demonstration interrupted
+after two pairs (the lab's listener closes mid-demo) that keeps both stored runs,
+leaves exactly the missing pair's two cells untested and prints the refusal; two
+demonstrations on one database where every cell cites the newest batch, lists the
+older run as superseded and answers identically twice; and a connection failure
+that leaves `tested: 0` and every verdict `null`. No lab secret reaches either
 surface.
 
 `tests/integration/test_ui_pages.py` (28 tests):

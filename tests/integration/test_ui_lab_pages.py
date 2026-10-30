@@ -497,6 +497,15 @@ def test_the_cell_detail_shows_the_run_check_and_both_routes(client, lab):
                   "owner-only", "403"):
         assert value in body, value
     assert item["evidence"]["endpoint"] in body
+    # Identity, asset and the oracle's own repair text, all from the API payload.
+    assert item["requester"] in body and item["owner"] in body
+    assert item["asset_id"] in body
+    assert item["evidence"]["evidence_id"] in body
+    assert item["evidence"]["remediation"] and item["evidence"]["remediation"] in body
+    if item["evidence"]["lab_instance"]:
+        assert item["evidence"]["lab_instance"] in body
+    for secret in FORBIDDEN:
+        assert secret not in body, secret
     # Both routes are shown with their own status and verdict.
     assert item["secure"]["check_id"] in body
     assert item["secure"]["evidence_sha256"][:8] in body
@@ -570,6 +579,84 @@ def test_the_demonstration_stores_ordinary_runs_of_the_scan_api(client, lab):
         assert detail["scope"]["request_budget"] > 0
         assert len(detail["checks"]) == 6
         assert detail["scope"]["port"] == lab.port
+
+
+def test_an_interrupted_demonstration_keeps_the_runs_it_already_stored(tmp_path, monkeypatch):
+    """The lab disappears after two pairs: the stored runs stay, the rest is untested."""
+    from targetlab.testing import GatedLabTlsServer
+
+    monkeypatch.setenv("CANARYGATE_TARGETLAB_CA", str(lab_server.TARGETLAB_CERT))
+    # 18 requests per run; the gate closes after the two completed runs.
+    with GatedLabTlsServer(cut_after=36) as gate:
+        with TestClient(create_ui_app(tmp_path / "interrupted.sqlite3")) as ui:
+            response = ui.post("/ui/actions/lab-demo-run", data={"port": gate.port})
+            assert response.status_code == 200, response.text
+            body = _text(response)
+            assert "Coverage is incomplete" in body
+            assert "2 / 3" in body
+            assert "All nine cells have stored evidence" not in body
+            assert "TargetLab could not be reached; no evidence was stored" in body
+            assert "harsha → mallapa" in body
+
+            matrix = ui.get("/api/lab-matrix").json()
+            assert matrix["summary"]["tested"] == 7 and matrix["summary"]["untested"] == 2
+            assert matrix["summary"]["runs_considered"] == 2
+            # The two untested cells are exactly the ones the missing pair answers.
+            untested = {(cell["requester"], cell["asset_id"]) for cell in matrix["cells"]
+                        if cell["state"] == "untested"}
+            assert untested == {("mallapa", "ADS-2026-027"), ("harsha", "MKT-2026-041")}
+            assert all(cell["verdict"] is None for cell in matrix["cells"]
+                       if cell["state"] == "untested")
+            # The runs that did succeed are ordinary, complete, retrievable runs.
+            for cell in matrix["cells"]:
+                if cell["state"] != "tested":
+                    continue
+                stored = ui.get(f"/api/lab-bola-scans/{cell['evidence']['run_id']}").json()
+                assert len(stored["checks"]) == 6
+                assert stored["constraints"]["requests_sent"] == 18
+            assert gate.cut and gate.connections == 36
+
+
+def test_running_the_demonstration_twice_keeps_history_and_selects_the_newest(client, lab):
+    first = _text(client.post("/ui/actions/lab-demo-run", data={"port": lab.port}))
+    first_ids = set(re.findall(r'/ui/lab/bola/([0-9a-f-]{36})', first))
+    second = _text(client.post("/ui/actions/lab-demo-run", data={"port": lab.port}))
+    second_ids = set(re.findall(r'/ui/lab/bola/([0-9a-f-]{36})', second))
+    assert len(first_ids) == 3 and len(second_ids) == 3 and not first_ids & second_ids
+
+    matrix = client.get("/api/lab-matrix").json()
+    assert matrix["summary"]["tested"] == 9 and matrix["summary"]["untested"] == 0
+    assert matrix["summary"]["runs_considered"] == 6
+    assert matrix["summary"]["duplicated_cells"] == 9
+    assert matrix["summary"]["stale_cells"] == 0
+    for cell in matrix["cells"]:
+        # Current evidence always comes from the newest batch ...
+        assert cell["evidence"]["run_id"] in second_ids
+        # ... and the older answer is listed, not silently dropped.
+        assert set(cell["superseded_runs"]) & first_ids
+
+    # Selection is deterministic: the same database answers the same way twice.
+    again = client.get("/api/lab-matrix").json()
+    assert [(cell["evidence"]["evidence_id"], cell["verdict"]) for cell in again["cells"]] == \
+           [(cell["evidence"]["evidence_id"], cell["verdict"]) for cell in matrix["cells"]]
+
+
+def test_a_connection_failure_is_never_reported_as_safe(client):
+    dead = socket.socket()
+    dead.bind(("127.0.0.1", 0))
+    port = dead.getsockname()[1]
+    dead.close()
+    response = client.post("/ui/actions/lab-demo-run", data={"port": port})
+    assert response.status_code == 200, response.text
+    body = _text(response)
+    assert "Coverage is incomplete" in body and "0 / 3" in body
+    assert "not stored" in body
+    assert "All nine cells have stored evidence" not in body
+    assert "Cells tested" in body and "0 / 9" in body
+    assert "Pairs run" in body and "0 / 3" in body
+    matrix = client.get("/api/lab-matrix").json()["summary"]
+    assert matrix["tested"] == 0 and matrix["safe"] == 0 and matrix["confirmed"] == 0
+    assert matrix["untested"] == 9
 
 
 def test_the_matrix_page_leaks_no_lab_secret(client, lab):

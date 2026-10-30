@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP40](#17-checkpoint-history-cp26cp40)
+- [§17 Checkpoint history CP26–CP41](#17-checkpoint-history-cp26cp41)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -2108,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP40
+## 17. Checkpoint history CP26–CP41
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2129,6 +2129,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 38 | Final integration | `tools/demo.py`, `tools/demo_kit.py`, `tools/p0_audit.py` | Froze features; proved every reporting surface agrees over one stored payload |
 | 39 | Demo asset matrix | `scan/lab_matrix.py`, `scan/lab_matrix_models.py`, `/api/lab-matrix`, `/ui/lab/matrix` | Projected stored checks onto the nine account × asset combinations; untested is a distinct state, never SAFE |
 | 40 | Judge experience | `/ui/actions/lab-demo-run`, `lab_demo_result.html`, `partials/matrix_grid.html`, `X-Lab-Instance` | One port fills all nine cells through three ordinary sequential runs; coverage is claimed only from stored evidence; instance ids replace the port heuristic |
+| 41 | Demonstration readiness | `GatedLabTlsServer`, three more interface tests, clean-wheel check | Proved the demonstration survives a lab that disappears mid-run: stored runs stay, the missing pair's cells stay untested, and a connection failure is never a verdict |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -3287,6 +3288,37 @@ demonstration and the cell panel, and +7 lab tests for the instance handshake. C
 That refresh changed: §14.9's staleness and traceability bullets, a new §14.10 on
 the demonstration flow, the §17 heading and CP40 row, and the counts above. Every
 other claim was re-read out of the code at `d221d8b`.
+
+### G.12 Refresh at CP41
+
+Checkpoint 41 validated the demonstration under failure and re-measured the
+release:
+
+```
+$ git log --oneline -1
+<the CP41 commit>
+$ .venv/bin/python -m pytest -q
+1082 passed, 1 warning in 135.73s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1082 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+```
+
+The three added tests are the interruption, repetition and connection-failure
+cases in `tests/integration/test_ui_lab_pages.py`; the helper they use is
+`targetlab/testing.py:GatedLabTlsServer`. A built wheel was installed into an empty
+virtualenv outside the checkout and served every page, asset and API route from
+`site-packages` — see §14.10 and `docs/checkpoints/41-demo-readiness.md`.
+
+One claim in this guide is deliberately narrowed at CP41: **no real browser was
+used**. jsdom executes the pages' scripts, but it has no layout engine, so nothing
+here asserts how the interface looks, and the guide does not claim it does.
 
 ---
 
