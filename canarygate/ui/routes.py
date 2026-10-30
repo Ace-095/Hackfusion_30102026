@@ -29,6 +29,7 @@ from canarygate.scan.interaction_models import InteractionScanRequest
 from canarygate.scan.interaction_scenarios import SCENARIO_IDS as INTERACTION_SCENARIO_IDS
 from canarygate.scan.interaction_scenarios import build_interaction_scenario
 from canarygate.scan.lab_bola_models import LabBolaScanRequest
+from canarygate.scan.lab_scenarios import build_lab_catalog
 from canarygate.scan.lab_sci_models import LabSciScanRequest
 from canarygate.scan.models import ScenarioScanRequest
 from canarygate.scan.scenarios import SCENARIO_IDS as READ_BOLA_SCENARIO_IDS
@@ -853,7 +854,8 @@ def lab_page(request: Request):
         return result
     history, readiness = result
     return _page(request, "lab.html", "lab", history=history,
-                 readiness=readiness, families=LAB_FAMILIES)
+                 readiness=readiness, families=LAB_FAMILIES,
+                 catalog=build_lab_catalog())
 
 
 def _lab_readiness() -> dict:
@@ -875,6 +877,28 @@ def _lab_readiness() -> dict:
     }
 
 
+def _bola_comparison(run: dict) -> list[dict]:
+    """Pair each cross-account check with its secure-route counterpart.
+
+    Presentation only: every value comes from the stored checks, and a direction
+    without a counterpart is omitted rather than filled in.
+    """
+    checks = run.get("checks") or []
+    secure = {(check["actor"], check["owner"]): check for check in checks
+              if check.get("direction") == "cross_account_secure"}
+    rows = []
+    for check in checks:
+        if check.get("direction") != "cross_account":
+            continue
+        counterpart = secure.get((check["actor"], check["owner"]))
+        if counterpart is None:
+            continue
+        rows.append({"actor": check["actor"], "owner": check["owner"],
+                     "vulnerable": check, "secure": counterpart,
+                     "differs": check["verdict"] != counterpart["verdict"]})
+    return rows
+
+
 @router.get("/ui/lab/{family}/{run_id}")
 def lab_run_page(request: Request, family: str, run_id: str):
     if family not in LAB_FAMILIES:
@@ -893,7 +917,8 @@ def lab_run_page(request: Request, family: str, run_id: str):
     template = {"bola": "lab_bola.html", "sci": "lab_sci.html",
                 "reset": "lab_reset.html"}[family]
     return _page(request, template, "lab", run=result, family=family,
-                 family_spec=LAB_FAMILIES[family], resets=resets)
+                 family_spec=LAB_FAMILIES[family], resets=resets,
+                 comparisons=_bola_comparison(result) if family == "bola" else [])
 
 
 @router.get("/ui/lab/{family}/{run_id}/report")
@@ -1025,11 +1050,43 @@ async def authentication_scan_action(request: Request):
     return RedirectResponse(f"/ui/suites/authentication/{result['id']}", status_code=303)
 
 
-async def _lab_payload(request: Request):
+def _selected_pair(actor: str, asset_id: str, *, interaction: bool) -> tuple[str, str]:
+    """Resolve the form's account and asset into the pair the catalog declares.
+
+    This is a lookup of published catalog data, not a security decision: the
+    catalog already names the ordered pair to run for every one of the nine
+    combinations, and the backend validates it again. Nothing here computes a
+    verdict, an expected access or a credential.
+    """
+    catalog = build_lab_catalog()
+    accounts = {item["account"] for item in catalog["accounts"]}
+    owners = {item["asset_id"]: item["account"] for item in catalog["accounts"]}
+    if actor not in accounts:
+        raise HTTPException(status_code=422,
+                            detail="Choose one of the provisioned demo accounts.")
+    if asset_id not in owners:
+        raise HTTPException(status_code=422,
+                            detail="Choose one of the declared demo assets.")
+    owner = owners[asset_id]
+    if not interaction:
+        combination = next(item for item in catalog["combinations"]
+                           if item["actor"] == actor and item["asset_id"] == asset_id)
+        return combination["pair"]["actor"], combination["pair"]["owner"]
+    if owner == actor:
+        raise HTTPException(
+            status_code=422,
+            detail="The interaction needs two different accounts: choose an asset "
+                   "owned by another account.")
+    return actor, owner
+
+
+async def _lab_payload(request: Request, *, interaction: bool = False):
     """Build a lab request model from the form, or explain why it is invalid."""
     fields = await _form_fields(request)
     port_text = (fields.get("port") or "").strip()
     budget_text = (fields.get("request_budget") or "").strip()
+    actor = (fields.get("actor") or "").strip()
+    asset_id = (fields.get("asset") or "").strip()
     if not port_text.isdigit():
         raise HTTPException(status_code=422,
                             detail="The TargetLab port must be a whole number between "
@@ -1040,6 +1097,9 @@ async def _lab_payload(request: Request):
             raise HTTPException(status_code=422,
                                 detail="The request budget must be a whole number.")
         values["request_budget"] = int(budget_text)
+    if actor or asset_id:
+        values["actor"], values["owner"] = _selected_pair(actor, asset_id,
+                                                          interaction=interaction)
     return values
 
 
@@ -1073,7 +1133,7 @@ async def lab_bola_scan_action(request: Request):
 async def lab_sci_scan_action(request: Request):
     htmx = _is_htmx(request)
     try:
-        values = await _lab_payload(request)
+        values = await _lab_payload(request, interaction=True)
         payload = LabSciScanRequest(**values)
     except HTTPException as exc:
         return _backend_error(request, exc, fragment=htmx)
@@ -1099,7 +1159,7 @@ async def lab_sci_scan_action(request: Request):
 async def lab_sci_reset_action(request: Request):
     htmx = _is_htmx(request)
     try:
-        values = await _lab_payload(request)
+        values = await _lab_payload(request, interaction=True)
         payload = LabSciScanRequest(**values)
     except HTTPException as exc:
         return _backend_error(request, exc, fragment=htmx)

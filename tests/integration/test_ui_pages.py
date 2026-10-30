@@ -668,3 +668,12 @@ def test_inconclusive_runs_are_rendered_as_inconclusive_everywhere(tmp_path):
         assert 'badge badge-danger">CONFIRMED' not in findings
         assert "stored fixture runs" in findings
         assert "Test suites" in findings
+
+
+def test_the_spec_page_is_labelled_inventory_only(tmp_path):
+    """The OpenAPI playground must not look like a scan surface."""
+    with _client(tmp_path) as client:
+        page = client.get("/ui/spec")
+        assert page.status_code == 200
+        assert "INVENTORY ONLY — NO SECURITY SCAN PERFORMED" in page.text
+        assert "no request is made and no verdict can be produced here" in page.text

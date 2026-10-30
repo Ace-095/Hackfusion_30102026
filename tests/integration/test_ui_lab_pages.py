@@ -74,8 +74,60 @@ def test_lab_page_states_readiness_and_offers_the_three_real_workflows(client):
         assert f'action="/ui/actions/{action}"' in body
     # The page says what it is, and what the browser may not do.
     assert "Controlled validation, not live-target validation" in body
-    assert "cannot choose a host, path, account" in body
+    assert "cannot name a host, a path, a credential or an expected" in body
     assert "No read-BOLA lab run stored yet" in body
+
+
+def test_the_lab_page_offers_the_three_accounts_and_their_assets(client):
+    body = _text(client.get("/ui/lab"))
+    for account, asset in (("mallapa", "MKT-2026-041"), ("sakshi", "BRD-2026-018"),
+                           ("harsha", "ADS-2026-027")):
+        assert f'value="{account}"' in body
+        assert f'value="{asset}"' in body
+    assert "Demo tenant — three accounts, three assets" in body
+    assert "9 combinations" in body and "3 legitimate owner request(s)" in body
+    assert "6 cross-account attempt(s)" in body
+    # The frozen offline fixture is named as a different dataset, not merged into this one.
+    assert "frozen offline fixture" in body and "scope.yaml" in body
+    for secret in FORBIDDEN:
+        assert secret not in body
+
+
+def test_the_bola_selector_runs_the_pair_the_catalog_names(client, lab):
+    location = _run_through_ui(client, "lab-bola-scan", lab.port,
+                               actor="harsha", asset="BRD-2026-018")
+    run_id = location.rsplit("/", 1)[-1]
+    run = _api_run(client, "bola", run_id)
+    assert {(check["actor"], check["owner"]) for check in run["checks"]} == {
+        ("harsha", "harsha"), ("sakshi", "sakshi"),
+        ("harsha", "sakshi"), ("sakshi", "harsha")}
+    page = _text(client.get(location))
+    assert "Vulnerable versus secure route" in page
+    comparison = run["checks"]
+    vulnerable = {check["id"]: check for check in comparison}["LAB-BOLA-03"]
+    assert vulnerable["actor"] == "harsha" and vulnerable["owner"] == "sakshi"
+    assert vulnerable["verdict"] == "CONFIRMED"
+    assert "harsha → sakshi" in page and "200" in page and "403" in page
+
+
+def test_a_legitimate_owner_selection_runs_the_owner_baseline(client, lab):
+    location = _run_through_ui(client, "lab-bola-scan", lab.port,
+                               actor="harsha", asset="ADS-2026-027")
+    run = _api_run(client, "bola", location.rsplit("/", 1)[-1])
+    own = [check for check in run["checks"]
+           if check["direction"] == "owner_baseline" and check["actor"] == "harsha"]
+    assert len(own) == 1
+    assert own[0]["verdict"] == "SAFE" and own[0]["status"] == 200
+
+
+def test_an_interaction_selection_without_two_accounts_is_refused(client, lab):
+    response = client.post("/ui/actions/lab-sci-scan",
+                           data={"port": lab.port, "actor": "harsha", "asset": "ADS-2026-027"},
+                           follow_redirects=False)
+    assert response.status_code == 422, response.text
+    assert "two different accounts" in response.text
+    body = _text(client.get("/ui/lab"))
+    assert "No interaction lab run stored yet" in body
 
 
 def test_missing_ca_is_reported_as_a_refusal_not_a_result(tmp_path, lab, monkeypatch):

@@ -70,8 +70,8 @@ canarygate/ui/
 │   ├── suites.html        # four offline scenario runners + stored runs per family
 │   ├── suite_run.html     # scenario / authentication / validation / interaction detail
 │   ├── sections_report.html # a family's backend section projection, in-page
-│   ├── lab.html           # TargetLab validation: three real HTTPS workflows
-│   ├── lab_bola.html      # read-BOLA run: checks, evidence, ground truth
+│   ├── lab.html           # TargetLab validation: demo tenant, three real HTTPS workflows
+│   ├── lab_bola.html      # read-BOLA run: checks, vulnerable-vs-secure comparison, evidence, ground truth
 │   ├── lab_sci.html       # control-interaction run: baselines, combined, reset link
 │   ├── lab_reset.html     # two-runner reset proof
 │   ├── spec.html          # in-memory OpenAPI inspection
@@ -174,6 +174,12 @@ surface as a server error and stay visible in logs.
 | `POST /ui/actions/lab-sci-scan` | `api.start_lab_sci_scan` | 303 → `/ui/lab/sci/{id}` | fragment in `#lab-panel` |
 | `POST /ui/actions/lab-sci-reset` | `api.start_lab_sci_reset` | 303 → `/ui/lab/reset/{proof_id}` | fragment in `#lab-panel` |
 | `POST /ui/actions/spec-inspect` | `spec.parser.parse_inventory` | full `/ui/spec` page with result | fragment in `#spec-panel` |
+
+The three lab forms post a port plus an account and an asset. `_selected_pair()`
+looks the pair up in `GET /api/lab-catalog` and posts the catalog's `pair` to the
+backend action; it computes no verdict and holds no credential. An interaction
+selection where the requester owns the chosen asset is refused with HTTP 422 and
+nothing is stored.
 | `GET /ui/reports/lookup` | — (validates then redirects) | 303 to the suite run | same |
 | `GET /ui/scans/{id}/report` | `api.report(..., view="sections")` | full page, 9 backend sections | same |
 

@@ -15,6 +15,16 @@
 <div class="alert alert-info">
   {{ icon("info") }}
   <div>
+    <b class="mono">INVENTORY ONLY — NO SECURITY SCAN PERFORMED</b>
+    <p class="mt-1">The document is parsed for an endpoint inventory. Nothing is sent to any
+      target, no request is made and no verdict can be produced here. Security scans live on
+      the TargetLab validation and fixture pages.</p>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  {{ icon("info") }}
+  <div>
     <b>Bounded parser.</b>
     This is not full OpenAPI validation. It requires a <span class="mono">paths</span>
     mapping, resolves local <span class="mono">$ref</span> pointers only, rejects remote

@@ -35,6 +35,41 @@
   {{ stat("Redirects / DNS", readiness.redirects, "DNS " ~ readiness.dns) }}
 </section>
 
+<section class="card" aria-label="Demo tenant">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Demo tenant — three accounts, three assets</h2>
+    <span class="hint mono">GET /api/lab-catalog</span>
+  </div>
+  <div class="card-body">
+    <p class="note">TargetLab serves a synthetic Digital Asset Management tenant: three
+      colleagues, one private asset each. Every combination you can pick below is one of
+      these accounts requesting one of these assets.</p>
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Account</th><th scope="col">Title</th>
+                   <th scope="col">Owns</th><th scope="col">Asset</th></tr></thead>
+        <tbody>
+          {% for account in catalog.accounts %}
+          <tr>
+            <td class="mono">{{ account.account }}</td>
+            <td>{{ account.title }}</td>
+            <td class="mono">{{ account.asset_id }}</td>
+            <td class="small">{{ account.asset_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% set legitimate = catalog.combinations|selectattr("kind", "equalto", "legitimate_owner_request")|list|length %}
+    {% set cross = catalog.combinations|selectattr("kind", "equalto", "cross_account_attempt")|list|length %}
+    <p class="note mt-1">{{ catalog.combinations|length }} combinations: {{ legitimate }} legitimate owner request(s) and {{ cross }} cross-account attempt(s). Labels come from the same constants the scans use.</p>
+    <p class="note"><b>Two datasets, never mixed:</b> this demo tenant is separate from the
+      frozen offline fixture (<span class="mono">alice</span> / <span class="mono">bob</span>
+      in <span class="mono">scope.yaml</span>), which is unchanged and shown on the fixture
+      pages. No credential, token or private marker is sent to the browser.</p>
+  </div>
+</section>
+
 {% if not readiness.ca_configured %}
 <div class="card">
   <div class="card-head"><h2>{{ icon("lock") }} The lab transport is not ready</h2></div>
@@ -67,6 +102,25 @@
           <input type="number" name="port" min="1024" max="65535" required
                  inputmode="numeric" placeholder="e.g. 8765">
         </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "MKT-2026-041" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">The backend answers the pair this selection names (for an asset you own, that is the owner baseline). One run also reads the same pair in the reverse direction and on the secure route, so the comparison on the run page is drawn from real checks only.</p>
         <div class="form-actions">
           <button class="btn btn-primary" type="submit">{{ icon("play") }} Run read-BOLA validation</button>
           <span id="bola-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
@@ -98,6 +152,25 @@
           <input type="number" name="port" min="1024" max="65535" required
                  inputmode="numeric" placeholder="e.g. 8765">
         </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "BRD-2026-018" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">The interaction needs two different accounts. The requester sets the lab condition and the asset must belong to the other account, whose private marker is the disclosure proof. A selection where both are the same account is refused, not simulated.</p>
         <div class="form-actions">
           <button class="btn btn-primary" type="submit">{{ icon("play") }} Run interaction validation</button>
           <span id="sci-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
@@ -129,6 +202,25 @@
           <input type="number" name="port" min="1024" max="65535" required
                  inputmode="numeric" placeholder="e.g. 8765">
         </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "BRD-2026-018" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">Same pair rules as the interaction run: the proof follows the pair you select, in a separate controlled execution.</p>
         <div class="form-actions">
           <button class="btn btn-primary" type="submit">{{ icon("play") }} Prove the reset</button>
           <span id="reset-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
@@ -187,8 +279,10 @@
   <div class="card-head"><h2>{{ icon("info") }} What the browser is allowed to do</h2></div>
   <div class="card-body">
     <ul class="bullets">
-      <li>The forms submit only a <b>port</b>. They cannot choose a host, path, account,
-        credential or expected result; the backend's request model rejects extra fields.</li>
+      <li>The forms submit a <b>port</b>, an <b>account</b> and an <b>asset</b>. The account
+        and asset are looked up in the published catalog and posted as the pair the backend
+        declares. The browser cannot name a host, a path, a credential or an expected
+        verdict, and the backend's request model rejects extra fields.</li>
       <li>The scope, credentials and plan are built by the backend. The lab's passwords,
         tokens and private markers are never sent to the browser.</li>
       <li>A refusal is shown as a refusal: HTTP 400 for a bad configuration, 502 when the lab

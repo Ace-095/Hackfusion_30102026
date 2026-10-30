@@ -118,6 +118,42 @@
   <div class="card-foot">{{ verdict_legend() }}</div>
 </section>
 
+<section class="card" aria-label="Vulnerable versus secure route">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Vulnerable versus secure route</h2>
+    <span class="hint">the same request, drawn from this run's checks</span>
+  </div>
+  {% if comparisons %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr><th scope="col">Actor → owner</th><th scope="col">Vulnerable route</th>
+            <th scope="col">HTTP</th><th scope="col">Verdict</th>
+            <th scope="col">Secure route</th><th scope="col">HTTP</th><th scope="col">Verdict</th></tr>
+      </thead>
+      <tbody>
+        {% for row in comparisons %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ row.actor }} → {{ row.owner }}</th>
+          <td class="mono small">{{ row.vulnerable.endpoint }}</td>
+          <td class="mono">{{ row.vulnerable.status if row.vulnerable.status is not none else "—" }}</td>
+          <td>{{ verdict_badge(row.vulnerable.verdict) }}</td>
+          <td class="mono small">{{ row.secure.endpoint }}</td>
+          <td class="mono">{{ row.secure.status if row.secure.status is not none else "—" }}</td>
+          <td>{{ verdict_badge(row.secure.verdict) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">Both columns are the lab's own answers to the identical request. A
+    CONFIRMED on the left and a SAFE on the right is the comparison; neither is inferred by
+    this page from a status code alone.</div>
+  {% else %}
+  <div class="card-body">{{ empty("No cross-account pair in this run") }}</div>
+  {% endif %}
+</section>
+
 <div class="grid grid-2">
   <section class="card">
     <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>

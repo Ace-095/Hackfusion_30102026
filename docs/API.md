@@ -414,6 +414,34 @@ verdict is produced at this checkpoint.
 Evidence is bounded to status codes and booleans. Credentials, tokens, headers
 and response bodies are never stored, returned or reported.
 
+## TargetLab demo catalog
+
+`GET /api/lab-catalog`
+
+The public demo tenant the interface renders: three accounts (`mallapa`,
+`sakshi`, `harsha`), their three private assets, the six ordered pairs and the
+nine combinations. Each combination names the ordered pair a scan must run for
+it:
+
+```json
+{"mode": "targetlab_demo", "dataset": "demo_tenant",
+ "accounts": [{"account": "mallapa", "title": "Marketing Manager",
+               "role": "marketing_manager", "asset_id": "MKT-2026-041",
+               "asset_type": "campaign_artwork",
+               "asset_label": "Unreleased campaign artwork"}],
+ "pairs": [{"actor": "mallapa", "owner": "sakshi"}],
+ "combinations": [{"actor": "mallapa", "asset_id": "BRD-2026-018",
+                   "owner": "sakshi", "kind": "cross_account_attempt",
+                   "pair": {"actor": "mallapa", "owner": "sakshi"}}],
+ "notes": ["..."]}
+```
+
+It contains no credential, token, private marker, expected verdict or expected
+access, and it selects no target. `kind` describes the request
+(`legitimate_owner_request` or `cross_account_attempt`), never an outcome. The
+frozen offline fixture (`alice`/`bob` in `scope.yaml`) is a separate dataset and
+does not appear here.
+
 ## TargetLab read-BOLA validation (checkpoint 36)
 
 These routes perform real HTTPS requests to a running TargetLab and reach a
@@ -423,12 +451,20 @@ against our own loopback lab, not live-organizer scanning.
 `POST /api/lab-bola-scans`
 
 ```json
-{"port": 8765, "request_budget": 20}
+{"port": 8765, "request_budget": 20, "actor": "mallapa", "owner": "harsha"}
 ```
 
 `port` is 1024–65535 and `request_budget` is 16–40 (the workflow needs 18
-requests). No host, path, account or credential may be supplied; the resource
-declarations and policy are constants in `canarygate/scan/lab_bola_scenarios.py`.
+requests). `actor` and `owner` select an ordered pair of the provisioned demo
+accounts, must differ, and default to `mallapa` → `sakshi`; an unknown or
+same-account pair answers `400` before any request. No host, path, credential or
+expected verdict may be supplied; the resource declarations and policy are
+constants in `canarygate/scan/lab_bola_scenarios.py`. The scope and credentials
+of the run declare exactly the selected pair.
+
+A run exercises that pair in both directions and on both routes, so the nine
+combinations are answered by the six ordered pairs; the interface uses the
+catalog's `pair` for the selected combination.
 Requires `CANARYGATE_TARGETLAB_CA`; without it the API answers `400`. If the lab is
 unreachable, refuses TLS, or never returns a single response, the API answers
 `502` and stores nothing.
@@ -466,12 +502,15 @@ Real HTTPS requests to a running TargetLab, decided by the existing SCI engine.
 `POST /api/lab-sci-scans`
 
 ```json
-{"port": 8765, "request_budget": 16}
+{"port": 8765, "request_budget": 16, "actor": "mallapa", "owner": "harsha"}
 ```
 
 `port` is 1024–65535 and `request_budget` is 8–40; the interaction needs 11
 requests, so a smaller budget degrades to `INCONCLUSIVE` rather than a verdict.
-No host, path, account or credential may be supplied. Requires
+`actor` sets the lab condition and `owner` names whose asset it discloses; they
+must be two different provisioned demo accounts and default to `mallapa` →
+`sakshi`. `POST /api/lab-sci-resets` takes the same fields and follows the same
+pair. No host, path, credential or expected verdict may be supplied. Requires
 `CANARYGATE_TARGETLAB_CA` (`400` without it); a refused, redirected or
 unreachable lab answers `502` and stores nothing.
 
