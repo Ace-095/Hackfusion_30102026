@@ -312,6 +312,36 @@ the wheel contains the enumeration module and its exact scope. GitHub Actions
 passed on Linux and Windows for code commit `8ee800e` (run 41040353076). Live
 scanning stays disabled.
 
+## Checkpoint 9 — bounded fixture enum validation
+
+The 159-test baseline passed before work. Nine test-first integration cases were
+added and run before implementation: eight failed because enum probing and its
+coverage were absent, while a missing-prerequisite case passed. A later test found
+that the fixture did not accept all values declared by its new enum; it failed
+first, and the fixture handler was corrected. Another test found that a Boolean
+minimum could be mistaken for integer `1`; strict integer-type checks now fail
+closed. Existing tests were updated after observing the additional guarded request
+and five-response disclosure coverage. No tests were made to pass artificially.
+
+The fixture declares integer enum `[1, 2, 3]` within range 1–10. INPUT-03 runs
+only after the existing `limit=1` control and an applicable enum; it sends exactly
+`GET /search?limit=9`, which is in numeric range but outside the enum. The scope
+contains that exact query and continues to block unspecified variants. A 400/422
+is SAFE only with a field-specific, non-internal error, acceptance is SUSPECTED,
+and ambiguous, oversized, redirect or lockout responses are INCONCLUSIVE. Missing
+schema/control, guard rejection, exhaustion or halt is SKIPPED. Lockout stops the
+later enumeration probe. No user-provided target or arbitrary fuzzer is enabled.
+
+Disclosure checks inspect all five applicable bounded fixture responses, including
+the enum response. If the enum is not applicable, they inspect the original four;
+if an applicable probe is blocked or oversized, absence cannot be reported as SAFE.
+The redacted enum case and sample count survive persistence. The normal fixture
+sends 16 requests within its budget of 20. The local full test suite passed: 176
+tests with one third-party Starlette/AnyIO deprecation warning. The real Uvicorn
+demo was run; old and new reports were retrieved, and the new result survived a
+restart. The wheel includes the fixture schema and exact scope. Live scanning
+and full generic OpenAPI/validation execution remain unimplemented.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

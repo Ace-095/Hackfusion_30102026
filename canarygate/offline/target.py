@@ -34,7 +34,7 @@ class FixtureTarget:
             if actor is None:
                 return httpx.Response(401)
             headers = {"X-Powered-By": "FixtureFramework/1.2.3"} if self.disclosure_behavior == "version" else {}
-            if request.url.query == b"limit=1":
+            if request.url.query in (b"limit=1", b"limit=2", b"limit=3"):
                 return httpx.Response(200, json={"results": []}, headers=headers)
             if self.validation_behavior == "accept":
                 return httpx.Response(200, json={"results": []}, headers=headers)

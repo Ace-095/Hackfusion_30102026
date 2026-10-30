@@ -65,7 +65,7 @@ def test_known_synthetic_resource_comparison_uses_real_guarded_responses(behavio
     result = check(run)
     assert result["verdict"] == verdict
     assert run["verdict"] == "CONFIRMED"  # Independent read-BOLA fixture remains unchanged.
-    assert run["constraints"]["requests_sent"] == 15
+    assert run["constraints"]["requests_sent"] == 16
     missing = [req for req in target.requests if req.url.path == "/items/nonexistent-item"]
     assert len(missing) == 1 and missing[0].method == "GET"
     assert "Authorization" not in missing[0].headers

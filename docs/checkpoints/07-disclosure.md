@@ -1,6 +1,7 @@
 # Checkpoint 7: fixture-only disclosure checks
 
-This checkpoint is **offline and synthetic**. It does not scan a live API or
+This historical checkpoint used four search responses; checkpoint 9 adds a fifth
+scoped response. This checkpoint is **offline and synthetic**. It does not scan a live API or
 implement general-purpose secret detection, production redaction or full JSON
 Schema validation. The unauthenticated backend must run locally only.
 

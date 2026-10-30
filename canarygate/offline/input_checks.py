@@ -1,6 +1,6 @@
 """Fixture-only read-only validation and disclosure probes.
 
-The four literal requests are independently approved in the fixture scope.
+The five literal requests are independently approved in the fixture scope.
 They are not a generic user-input fuzzing facility or a live-target scanner.
 """
 import yaml
@@ -14,6 +14,7 @@ INPUT_CASES = (
     ("INPUT-01", "/search", "missing_required_limit"),
     ("INPUT-02", "/search?limit=notanumber", "wrong_type"),
     ("INPUT-04", "/search?limit=999", "out_of_range"),
+    ("INPUT-03", "/search?limit=9", "invalid_enum_limit"),
 )
 DISC_CASES = (("DISC-01", "stack_trace"), ("DISC-02", "internal_error_detail"),
               ("DISC-05", "version_header"))
@@ -29,7 +30,6 @@ def pending_input_checks(reason="Fixture validation prerequisites were not met")
     checks += [_skipped(check_id, "Disclosure", reason) for check_id, _ in DISC_CASES]
     checks += [_skipped(check_id, "Disclosure", reason) for check_id in ("DISC-03", "DISC-04")]
     for check_id, category, why in (
-        ("INPUT-03", "Input validation", "Enum check not implemented"),
         ("INPUT-05", "Input validation", "Extra property check not implemented"),
         ("INPUT-06", "Input validation", "Malformed JSON check not implemented"),
         ("INPUT-07", "Input validation", "Special characters check not implemented"),
@@ -47,8 +47,28 @@ def _spec_supports_cases(endpoints):
             schema = parameter.get("schema")
             if (parameter.get("name") == "limit" and parameter.get("in") == "query"
                     and parameter.get("required") is True and isinstance(schema, dict)
-                    and schema.get("type") == "integer" and schema.get("minimum") == 1
+                    and schema.get("type") == "integer" and type(schema.get("minimum")) is int
+                    and type(schema.get("maximum")) is int and schema.get("minimum") == 1
                     and schema.get("maximum") == 10):
+                return True
+    return False
+
+
+def _spec_supports_enum(endpoints):
+    # The literal control (1) must be allowed and the probe (9) must be within
+    # the declared numeric range but outside the explicitly declared enum.
+    for endpoint in endpoints:
+        if endpoint["method"] != "GET" or endpoint["path"] != "/search" or endpoint["expected_access"] != "authenticated":
+            continue
+        for parameter in endpoint["parameters"]:
+            schema = parameter.get("schema")
+            if parameter.get("name") != "limit" or parameter.get("in") != "query" or not isinstance(schema, dict):
+                continue
+            choices = schema.get("enum")
+            if (schema.get("type") == "integer" and type(schema.get("minimum")) is int
+                    and type(schema.get("maximum")) is int and schema.get("minimum") == 1 and schema.get("maximum") == 10
+                    and isinstance(choices, list) and choices and all(type(value) is int for value in choices)
+                    and 1 in choices and 9 not in choices):
                 return True
     return False
 
@@ -80,6 +100,8 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_tex
     checks = pending_input_checks()
     if not _spec_supports_cases(endpoints):
         return checks
+    enum_applicable = _spec_supports_enum(endpoints)
+    expected_responses = 1 + len(INPUT_CASES) - (0 if enum_applicable else 1)
     observed = []  # (response, synthetic case label, signature names)
     incomplete = False
 
@@ -116,6 +138,9 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_tex
             checks[index]["reason"] = why
     else:
         for index, (check_id, path, label) in enumerate(INPUT_CASES):
+            if check_id == "INPUT-03" and not enum_applicable:
+                checks[index]["reason"] = "A compatible fixture enum was not declared; probe not executed"
+                continue
             response, error = execute(path, label)
             if error == "blocked":
                 checks[index]["reason"] = "Probe blocked by fixture scope, safety halt or budget; not executed"
@@ -141,11 +166,11 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_tex
                                   evidence=summary(actor, role, response, False, input_case=label,
                                                    disclosure_signature=signature),
                                   remediation="Return generic errors and suppress framework or version details.")
-        elif len(observed) == 4 and not incomplete:
+        elif len(observed) == expected_responses and not incomplete:
             response, label, _ = observed[-1]
-            checks[offset].update(verdict="SAFE", reason=f"No {signature} signature observed in the four fixture responses",
+            checks[offset].update(verdict="SAFE", reason=f"No {signature} signature observed in {expected_responses} fixture responses",
                                   evidence=summary(actor, role, response, False, input_case=label,
-                                                   inspected_fixture_responses=4, disclosure_signature=signature))
+                                                   inspected_fixture_responses=expected_responses, disclosure_signature=signature))
         elif observed:
             checks[offset].update(verdict="INCONCLUSIVE", reason="Fixture response coverage was incomplete; signature absence cannot establish safety")
         else:
@@ -166,11 +191,11 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_tex
             check.update(verdict=finding, reason=f"Fixture response contains {signature}; details are redacted",
                          evidence=summary(actor, role, response, False, input_case=label,
                                           disclosure_signature=signature), remediation=remediation)
-        elif len(inspected) == 4 and not incomplete and all(complete for _, _, _, complete in inspected):
+        elif len(inspected) == expected_responses and not incomplete and all(complete for _, _, _, complete in inspected):
             response, label, _, _ = inspected[-1]
-            check.update(verdict="SAFE", reason=f"No {signature} observed in the four bounded fixture responses",
+            check.update(verdict="SAFE", reason=f"No {signature} observed in {expected_responses} bounded fixture responses",
                          evidence=summary(actor, role, response, False, input_case=label,
-                                          inspected_fixture_responses=4, disclosure_signature=signature))
+                                          inspected_fixture_responses=expected_responses, disclosure_signature=signature))
         elif inspected:
             check.update(verdict="INCONCLUSIVE", reason="Fixture response inspection or coverage was incomplete")
         else:

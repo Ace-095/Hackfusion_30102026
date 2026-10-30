@@ -141,14 +141,14 @@ def test_only_exact_query_strings_in_fixture_scope_reach_transport():
     calls = []
     runner = FixtureRunner(lambda req: calls.append(req) or httpx.Response(200))
     try:
-        for path in ("/search", "/search?limit=1", "/search?limit=notanumber", "/search?limit=999"):
+        for path in ("/search", "/search?limit=1", "/search?limit=notanumber", "/search?limit=999", "/search?limit=9"):
             runner.request("alice", "GET", runner.scope.origin + path, token="fixture-token-alice")
-        assert len(calls) == 4
+        assert len(calls) == 5
         for path in ("/search?limit=2", "/search?limit=%31", "/search?limit=1&extra=1",
                      "/search?", "/search?limit=1#fragment", "/items/bob-item?limit=1"):
             with pytest.raises(GuardRejected):
                 runner.request("alice", "GET", runner.scope.origin + path, token="fixture-token-alice")
-        assert len(calls) == 4
+        assert len(calls) == 5
     finally:
         runner.close()
 

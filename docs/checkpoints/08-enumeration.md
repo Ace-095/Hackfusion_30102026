@@ -22,7 +22,8 @@ target is enabled. The backend is unauthenticated and should only run locally.
 - The fixture runner clears cookies between requests so a missing-auth probe
   cannot inherit a prior login cookie. Cookie- or proxy-authenticated baselines
   are rejected for the comparison.
-- The normal fixture uses 15 requests, below the configured budget of 20. All
+- At checkpoint 8 the normal fixture used 15 requests; checkpoint 9 adds one
+  separately scoped enum probe (16 total, below the budget of 20). All
   results remain fixture-only; real account setup and live scanning are pending.
 
 ## VS Code judge demo

@@ -102,7 +102,7 @@ def prepare_for_storage(report):
         allowed_bools = {"both_owner_baselines", "cross_list_isolation", "matches_owner_private_baseline",
                          "valid_control_observed", "responses_differ"}
         allowed_values = {"authentication_probe": {"missing", "malformed", "wrong_scheme"},
-                          "input_case": {"valid_control", "missing_required_limit", "wrong_type", "out_of_range"},
+                          "input_case": {"valid_control", "missing_required_limit", "wrong_type", "out_of_range", "invalid_enum_limit"},
                           "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header", "sensitive_field", "unexpected_top_level_field"}}
         source = evidence.get("checklist", {})
         if not isinstance(source, dict):
@@ -113,7 +113,7 @@ def prepare_for_storage(report):
                 checklist[key] = source[key]
         if type(source.get("baseline_status")) is int and 100 <= source["baseline_status"] <= 599:
             checklist["baseline_status"] = source["baseline_status"]
-        if type(source.get("inspected_fixture_responses")) is int and 0 <= source["inspected_fixture_responses"] <= 4:
+        if type(source.get("inspected_fixture_responses")) is int and 0 <= source["inspected_fixture_responses"] <= 5:
             checklist["inspected_fixture_responses"] = source["inspected_fixture_responses"]
         evidence["checklist"] = checklist
         evidence["redacted"] = True

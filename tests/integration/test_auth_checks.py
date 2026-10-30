@@ -31,7 +31,7 @@ def test_actual_probe_responses_determine_auth_verdicts(behavior, expected, stat
         assert check["evidence"]["private_canary_matched"] is (expected == "CONFIRMED")
         assert (check["remediation"] is not None) is (expected == "CONFIRMED")
     assert result["constraints"]["redirects_followed"] == 0
-    assert result["constraints"]["requests_sent"] == (15 if behavior == "reject" else 14)
+    assert result["constraints"]["requests_sent"] == (16 if behavior == "reject" else 15)
     assert "synthetic-alice-private-note" not in json.dumps(result)
     assert "fixture-token-" not in json.dumps(result)
     assert "malformed-fixture" not in json.dumps(result)

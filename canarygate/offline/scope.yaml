@@ -16,3 +16,4 @@ operations:
   - {method: GET, path: /search, query: limit=1, classification: READ_ONLY}
   - {method: GET, path: /search, query: limit=notanumber, classification: READ_ONLY}
   - {method: GET, path: /search, query: limit=999, classification: READ_ONLY}
+  - {method: GET, path: /search, query: limit=9, classification: READ_ONLY}
