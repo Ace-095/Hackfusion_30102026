@@ -50,6 +50,7 @@ from canarygate.scan.lab_generic import run_lab_evidence
 from canarygate.scan.lab_sci import run_lab_sci_reset, run_lab_sci_scan
 from canarygate.scan.lab_sci_models import (LabResetProof, LabSciScanRequest, LabSciSectionReport)
 from canarygate.scan.lab_sci_scenarios import build_sci_plan
+from canarygate.scan.lab_matrix_models import LabMatrix
 from canarygate.scan.lab_models import LabRun, LabScanRequest, LabSectionReport
 from canarygate.scan.lab_scenarios import build_lab_plan
 from canarygate.scan.validation_generic import run_offline_validation
@@ -57,8 +58,9 @@ from canarygate.scan.validation_models import (ValidationRun, ValidationScanRequ
                                                ValidationSectionReport)
 from canarygate.scan.validation_scenarios import build_validation_scenario, runner_for as validation_runner_for
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
-from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
-                      ObservationSet, FixtureReportBundle, FixtureSectionReport, SpecInspection)
+from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, LabCatalog,
+                      MatrixResponse, ObservationSet, FixtureReportBundle, FixtureSectionReport,
+                      SpecInspection)
 
 router = APIRouter()
 
@@ -260,7 +262,8 @@ def scenario_scan(run_id: str, store: ScenarioStore = Depends(get_scenario_store
     return _find_scenario(store, run_id)
 
 
-@router.get("/api/scenario-scans/{run_id}/report", response_model=ScenarioSectionReport,
+@router.get("/api/scenario-scans/{run_id}/report",
+            response_model=ScenarioRun | ScenarioSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def scenario_report(run_id: str, format: str = "json", view: str = "run",
                     store: ScenarioStore = Depends(get_scenario_store)):
@@ -309,7 +312,8 @@ def authentication_scan(run_id: str, store: AuthenticationStore = Depends(get_au
     return _find_auth_run(store, run_id)
 
 
-@router.get("/api/authentication-scans/{run_id}/report", response_model=AuthenticationSectionReport,
+@router.get("/api/authentication-scans/{run_id}/report",
+            response_model=AuthenticationRun | AuthenticationSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def authentication_report(run_id: str, format: str = "json", view: str = "run",
                           store: AuthenticationStore = Depends(get_auth_store)):
@@ -358,7 +362,8 @@ def validation_scan(run_id: str, store: ValidationStore = Depends(get_validation
     return _find_validation_run(store, run_id)
 
 
-@router.get("/api/validation-scans/{run_id}/report", response_model=ValidationSectionReport,
+@router.get("/api/validation-scans/{run_id}/report",
+            response_model=ValidationRun | ValidationSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def validation_report(run_id: str, format: str = "json", view: str = "run",
                       store: ValidationStore = Depends(get_validation_store)):
@@ -409,7 +414,8 @@ def interaction_scan(run_id: str, store: InteractionStore = Depends(get_interact
     return _find_interaction_run(store, run_id)
 
 
-@router.get("/api/interaction-scans/{run_id}/report", response_model=InteractionSectionReport,
+@router.get("/api/interaction-scans/{run_id}/report",
+            response_model=InteractionRun | InteractionSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def interaction_report(run_id: str, format: str = "json", view: str = "run",
                        store: InteractionStore = Depends(get_interaction_store)):
@@ -435,6 +441,18 @@ def _lab_call(method, *args):
         return method(*args)
     except EvidenceIntegrityError:
         raise HTTPException(status_code=500, detail="Stored TargetLab data failed integrity verification") from None
+
+
+@router.get("/api/lab-catalog", response_model=LabCatalog)
+def lab_catalog():
+    """Public demo-tenant catalog for the account and asset selectors.
+
+    Static, credential-free and verdict-free: it names the accounts, their assets and
+    the ordered pair a scan runs for each of the nine combinations.
+    """
+    from canarygate.scan.lab_scenarios import build_lab_catalog
+
+    return LabCatalog.model_validate(build_lab_catalog())
 
 
 @router.post("/api/lab-scans", status_code=201, response_model=LabRun)
@@ -475,7 +493,8 @@ def lab_scan(run_id: str, store: LabStore = Depends(get_lab_store)):
     return _find_lab_run(store, run_id)
 
 
-@router.get("/api/lab-scans/{run_id}/report", response_model=LabSectionReport,
+@router.get("/api/lab-scans/{run_id}/report",
+            response_model=LabRun | LabSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_report(run_id: str, format: str = "json", view: str = "run",
                store: LabStore = Depends(get_lab_store)):
@@ -500,6 +519,20 @@ def _lab_bola_call(method, *args):
                             detail="Stored TargetLab BOLA data failed integrity verification") from None
 
 
+@router.get("/api/lab-matrix", response_model=LabMatrix)
+def lab_matrix(store: LabBolaStore = Depends(get_lab_bola_store)):
+    """The nine-cell demo-tenant matrix, assembled only from stored read-BOLA runs.
+
+    Read-only aggregation: it opens no socket, reads no ground truth and adds no
+    verdict. An untested cell has no verdict at all, and a tested cell carries the
+    run id, check id and evidence hash it came from.
+    """
+    from canarygate.scan.lab_matrix import build_lab_matrix
+
+    runs = _lab_bola_call(store.list)
+    return LabMatrix.model_validate(build_lab_matrix(runs))
+
+
 @router.post("/api/lab-bola-scans", status_code=201, response_model=LabBolaRun)
 def start_lab_bola_scan(payload: LabBolaScanRequest,
                         store: LabBolaStore = Depends(get_lab_bola_store)):
@@ -509,7 +542,8 @@ def start_lab_bola_scan(payload: LabBolaScanRequest,
         raise HTTPException(status_code=400,
                             detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
     try:
-        plan = build_bola_plan(payload.port, budget=payload.request_budget)
+        plan = build_bola_plan(payload.port, budget=payload.request_budget,
+                               actor=payload.actor, owner=payload.owner)
         runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid TargetLab BOLA configuration") from None
@@ -540,7 +574,8 @@ def lab_bola_scan(run_id: str, store: LabBolaStore = Depends(get_lab_bola_store)
     return _find_lab_bola_run(store, run_id)
 
 
-@router.get("/api/lab-bola-scans/{run_id}/report", response_model=LabBolaSectionReport,
+@router.get("/api/lab-bola-scans/{run_id}/report",
+            response_model=LabBolaRun | LabBolaSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
                     store: LabBolaStore = Depends(get_lab_bola_store)):
@@ -561,12 +596,12 @@ def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
-def _open_targetlab_runner(port, *, budget, ca_file):
-    """Build the fixed plan and one guarded runner; 400 on invalid configuration."""
+def _open_targetlab_runner(port, *, budget, ca_file, actor=None, owner=None):
+    """Build the plan and one guarded runner; 400 on invalid configuration."""
     from canarygate.network.targetlab import TargetLabRunner
 
     try:
-        plan = build_sci_plan(port, budget=budget)
+        plan = build_sci_plan(port, budget=budget, actor=actor, owner=owner)
         return plan, TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid TargetLab SCI configuration") from None
@@ -581,7 +616,8 @@ def start_lab_sci_scan(payload: LabSciScanRequest,
         raise HTTPException(status_code=400,
                             detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
     plan, runner = _open_targetlab_runner(payload.port, budget=payload.request_budget,
-                                          ca_file=ca_file)
+                                          ca_file=ca_file, actor=payload.actor,
+                                          owner=payload.owner)
     try:
         run = run_lab_sci_scan(plan, runner)
     except (TargetLabRefused, OSError):
@@ -603,7 +639,8 @@ def lab_sci_scan(run_id: str, store: LabSciStore = Depends(get_lab_sci_store)):
     return run
 
 
-@router.get("/api/lab-sci-scans/{run_id}/report", response_model=LabSciSectionReport,
+@router.get("/api/lab-sci-scans/{run_id}/report",
+            response_model=InteractionRun | LabSciSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_sci_report(run_id: str, format: str = "json", view: str = "run", reset: str = "",
                    store: LabSciStore = Depends(get_lab_sci_store),
@@ -646,7 +683,8 @@ def start_lab_sci_reset(payload: LabSciScanRequest,
     runners = []
     try:
         plan, first = _open_targetlab_runner(payload.port, budget=payload.request_budget,
-                                             ca_file=ca_file)
+                                             ca_file=ca_file, actor=payload.actor,
+                                             owner=payload.owner)
         runners.append(first)
         from canarygate.network.targetlab import TargetLabRunner
         second = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)

@@ -17,8 +17,8 @@ from canarygate.database.lab_bola_store import LabBolaStore
 from canarygate.scan.lab_bola_scenarios import EXPECTED_VERDICTS
 from targetlab.app import create_lab_app
 
-FORBIDDEN = ("lab-token-alice", "lab-token-bob", "alice-lab-password", "bob-lab-password",
-             "targetlab-alice-private-marker", "targetlab-bob-private-marker")
+FORBIDDEN = ("lab-token-mallapa", "lab-token-sakshi", "mallapa-lab-password", "sakshi-lab-password",
+             "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker")
 
 
 class Recording:
@@ -96,9 +96,9 @@ def test_the_scanner_never_requests_the_lab_ground_truth(tmp_path, monkeypatch):
     assert "/lab/ground-truth" not in recording.paths
     assert not any(path.startswith("/lab/") for path in recording.paths)
     # The routes that were used are exactly the declared ones.
-    assert set(recording.paths) <= {"/login", "/profile", "/records", "/records/ra",
-                                    "/records/rb", "/records/rb/secure", "/records/ra/secure"}
-    assert "/records/rb" in recording.paths and "/records/rb/secure" in recording.paths
+    assert set(recording.paths) <= {"/login", "/profile", "/records", "/records/MKT-2026-041",
+                                    "/records/BRD-2026-018", "/records/BRD-2026-018/secure", "/records/MKT-2026-041/secure"}
+    assert "/records/BRD-2026-018" in recording.paths and "/records/BRD-2026-018/secure" in recording.paths
 
 
 def test_ground_truth_is_scored_after_the_verdicts_and_cannot_change_them(client, lab,
@@ -138,7 +138,7 @@ def test_p0_report_is_the_frozen_nine_sections_and_explains_the_finding(client, 
     assert confirmed["category"] == "Authorization"
     assert confirmed["remediation_key"] == "bola" and confirmed["remediation"]
     assert confirmed["expected"] and confirmed["observed"] and confirmed["expectation_source"]
-    assert confirmed["verified_owner"].startswith("bob")
+    assert confirmed["verified_owner"].startswith("sakshi")
     assert confirmed["curl"].count("$TOKEN_") == 1
     assert findings["LAB-BOLA-05"]["verdict"] == "SAFE"
     assert {item["id"] for item in sections["secured_endpoints"]} == {"LAB-BOLA-05", "LAB-BOLA-06"}
@@ -221,6 +221,8 @@ def test_budget_exhaustion_never_fabricates_a_verdict(client, lab):
 
 
 def test_missing_ca_and_unreachable_lab_store_nothing(tmp_path, monkeypatch, lab):
+    # "Missing" means missing from this process, not from the developer's shell:
+    # tests/conftest.py clears every CANARYGATE_* variable before each test.
     database = tmp_path / "unreachable.sqlite3"
     with TestClient(create_app(database)) as api:
         assert api.post("/api/lab-bola-scans", json={"port": lab.port}).status_code == 400

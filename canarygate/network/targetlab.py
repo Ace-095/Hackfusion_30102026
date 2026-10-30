@@ -23,8 +23,9 @@ import hashlib
 import hmac
 import http.client
 import json
-import socket
+import time
 import re
+import socket
 import ssl
 import threading
 import weakref
@@ -57,11 +58,18 @@ def _unique_object(pairs):
     return result
 
 
+#: The lab publishes its process identity in this header; only a 16-hex value is
+#: accepted, and the raw header is never stored. Two lab processes may reuse the
+#: same loopback port, so this is the identity the evidence is attributed to.
+LAB_INSTANCE_HEADER = "X-Lab-Instance"
+LAB_INSTANCE_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+
+
 class TargetLabTransport:
     """The only code path that may open a socket to TargetLab."""
 
     def __init__(self, scope: AuthorizedScope, *, ca_file, run_guard: RunSafetyGuard | None = None,
-                 timeout: float = DEFAULT_TIMEOUT_SECONDS):
+                 timeout: float = DEFAULT_TIMEOUT_SECONDS, observer=None):
         if not isinstance(scope, AuthorizedScope):
             raise ValueError("validated scope required")
         scope = AuthorizedScope.model_validate(scope.model_dump())
@@ -82,15 +90,40 @@ class TargetLabTransport:
         self._context = context
         self._scope = scope
         self._timeout = float(timeout)
+        #: Optional read-only callback invoked after each real request with
+        #: ``{actor, method, path, status, elapsed_ms, requests_sent}``. It is
+        #: telemetry about a completed exchange; it can never change a request,
+        #: a response or a verdict, and its own errors are swallowed.
+        self._observer = observer if callable(observer) else None
         self._run_guard = run_guard if run_guard is not None else RunSafetyGuard(scope)
         if not isinstance(self._run_guard, RunSafetyGuard) or self._run_guard.scope != scope:
             raise ValueError("run guard scope mismatch")
         self._lock = threading.Lock()
         self._requests = 0
+        self._lab_instance: str | None = None
 
     @property
     def scope(self):
         return self._scope
+
+    @property
+    def lab_instance(self) -> str | None:
+        """The lab process this transport talked to, if it published an id."""
+        with self._lock:
+            return self._lab_instance
+
+    def _note_lab_instance(self, value: str | None) -> None:
+        """Record the lab identity once; a change means the evidence spans two labs."""
+        if value is None:
+            return
+        with self._lock:
+            if self._lab_instance is None:
+                self._lab_instance = value
+                return
+            if self._lab_instance == value:
+                return
+        self._run_guard.halt()
+        raise TargetLabRefused("the TargetLab instance changed during the run")
 
     @property
     def requests_sent(self):
@@ -116,6 +149,7 @@ class TargetLabTransport:
                 input_probe: str | None = None) -> httpx.Response:
         """Perform exactly one guarded request. Never retries, never redirects."""
         self._validate(method, path)
+        started = time.monotonic()
         url = self._scope.origin + path
         if isinstance(body, bytes) and len(body) > MAX_REQUEST_BYTES:
             raise TargetLabRefused("request body exceeds limit")
@@ -129,8 +163,25 @@ class TargetLabTransport:
                 self._run_guard.authorize_authentication(actor, url, input_probe=input_probe)
             else:
                 self._run_guard.authorize(actor, method, url)
-            return self._send(actor, method, path, token=token, body=body,
-                              content_type=content_type)
+            response = self._send(actor, method, path, token=token, body=body,
+                                  content_type=content_type)
+        # Observation only: the request already happened and its response is
+        # final. The callback cannot alter either, and a failure in it is ignored.
+        self._observe(actor, method, path, response.status_code,
+                      (time.monotonic() - started) * 1000.0)
+        return response
+
+    def _observe(self, actor: str, method: str, path: str, status: int,
+                 elapsed_ms: float) -> None:
+        observer = self._observer
+        if observer is None:
+            return
+        try:
+            observer({"actor": actor, "method": method, "path": path,
+                      "status": status, "elapsed_ms": round(elapsed_ms, 1),
+                      "requests_sent": self.requests_sent})
+        except Exception:  # telemetry must never break a scan
+            return
 
     def _send(self, actor, method, path, *, token, body, content_type):
         headers = {"Host": f"{TARGETLAB_HOST}:{self._scope.port}", "Accept": "application/json",
@@ -157,6 +208,9 @@ class TargetLabTransport:
             status = raw.status
             if 300 <= status < 400:
                 raise TargetLabRefused("redirect refused")
+            published = (raw.getheader(LAB_INSTANCE_HEADER) or "").strip()
+            if published and not LAB_INSTANCE_PATTERN.fullmatch(published):
+                raise TargetLabRefused("malformed TargetLab instance header")
             content = raw.read(MAX_RESPONSE_BYTES + 1)
             if len(content) > MAX_RESPONSE_BYTES:
                 raise TargetLabRefused("response exceeds size limit")
@@ -177,6 +231,7 @@ class TargetLabTransport:
                     sock.close()
                 except Exception:
                     self._run_guard.halt()
+        self._note_lab_instance(published or None)
         self._run_guard.record_status(status)
         with self._lock:
             self._requests += 1
@@ -193,7 +248,8 @@ class TargetLabRunner(GuardedReadRunner):
     transport_label = "targetlab_https"
 
     def __init__(self, scope: AuthorizedScope, credentials, *, ca_file,
-                 run_guard: RunSafetyGuard | None = None, timeout: float = DEFAULT_TIMEOUT_SECONDS):
+                 run_guard: RunSafetyGuard | None = None, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+                 observer=None):
         super().__init__()
         if not isinstance(credentials, dict) or not credentials:
             raise ValueError("TargetLab credentials are required")
@@ -204,7 +260,7 @@ class TargetLabRunner(GuardedReadRunner):
             if not isinstance(password, str) or not 0 < len(password.encode("utf-8")) <= 4096:
                 raise ValueError("invalid credential")
         self._transport = TargetLabTransport(scope, ca_file=ca_file, run_guard=run_guard,
-                                             timeout=timeout)
+                                             timeout=timeout, observer=observer)
         self._scope = self._transport.scope
         self._credentials = dict(credentials)
         self._tokens: dict[str, str] = {}
@@ -216,6 +272,11 @@ class TargetLabRunner(GuardedReadRunner):
     @property
     def scope(self):
         return self._scope
+
+    @property
+    def lab_instance(self) -> str | None:
+        """The lab process this runner authenticated against, if it published one."""
+        return self._transport.lab_instance
 
     def supports_read_path(self, path: str) -> bool:
         return isinstance(path, str) and path in self._paths

@@ -36,7 +36,7 @@ before calling `POST /api/lab-scans`.
 | `GET /health` | Public status plus a live state snapshot. |
 | `POST /login` | `{"username","password"}` → `{"token","identity","role"}`; 401 for bad credentials; 422 for a malformed body. |
 | `GET /profile` | Bearer token required; returns the caller's identity and role. |
-| `GET /admin/users` | Bearer token required; denies both lab accounts (403) — no admin exists. |
+| `GET /admin/users` | Bearer token required; denies all three demo accounts (403) — no admin exists. |
 | `GET /records` | Correct: each account sees only its own records (discovery for ownership verification). |
 | `GET /records/{id}` | **Deliberately vulnerable (BOLA)**: any authenticated account reads any record. |
 | `GET /records/{id}/secure` | Correct: owner-only, 403 for anyone else. |
@@ -46,29 +46,53 @@ before calling `POST /api/lab-scans`.
 | `GET /lab/ground-truth` | Machine-readable flaw map, accounts and markers. |
 | `GET /openapi.json`, `GET /docs` | OpenAPI 3 documentation, including the `bearerAuth` scheme. |
 
+Every response also carries `X-Lab-Instance`, a 16-hex identifier generated when the
+process starts, and `GET /health` reports it as `instance_id`. A restarted lab is
+therefore a *different* instance even when it reuses the same port, which is what
+lets the matrix tell "the lab moved" from "the evidence is old" without guessing.
+The header is a public label, not a credential: it proves nothing about identity
+and is never used as one.
+
 ## Ground truth (synthetic, public, deterministic)
 
 | Item | Value |
 |---|---|
-| Accounts | `alice` / `alice-lab-password`, `bob` / `bob-lab-password` |
-| Tokens | `lab-token-alice`, `lab-token-bob` |
-| Records | `ra` owned by alice, `rb` owned by bob |
-| Private markers | `targetlab-alice-private-marker`, `targetlab-bob-private-marker` |
+| Accounts | `mallapa`, `sakshi`, `harsha` (passwords `<name>-lab-password`) |
+| Titles | Marketing Manager, Brand Designer, Campaign Analyst |
+| Tokens | `lab-token-mallapa`, `lab-token-sakshi`, `lab-token-harsha` |
+| Assets | `MKT-2026-041` (mallapa), `BRD-2026-018` (sakshi), `ADS-2026-027` (harsha) |
+| Private markers | `targetlab-<account>-private-marker` |
 | Trace marker | `targetlab-trace-marker` |
+
+The three accounts model one fictional Digital Asset Management tenant: colleagues
+who differ only in which private asset they own. Roles are descriptive metadata;
+no route in the lab authorises on a role, so this is an authorization story, not a
+role-permission story. Every ordered pair of distinct accounts is a valid
+cross-account read.
+
+> The **frozen offline fixture** in `scope.yaml` (`alice`/`bob`, `/items/alice-item`,
+> `synthetic-bob-private-canary`) is a *different, untouched dataset*. The interface
+> labels the two datasets separately so they are never confused.
 
 `targetlab.state.FLAWS` is the single source of truth for the intentional flaws;
 the tests and this document read the same data.
 
 ## The interaction flaw, exactly
 
-1. `GET /records/rb/guarded` as alice → `403 {"error":"forbidden"}` (the control
-   works alone).
-2. `POST /login` as alice with an unexpected property → `422 {"error":"invalid_request"}`
+Take any ordered pair, for example requester `mallapa` and owner `sakshi`
+(asset `BRD-2026-018`):
+
+1. `GET /records/BRD-2026-018/guarded` as mallapa → `403 {"error":"forbidden"}` (the
+   control works alone).
+2. `POST /login` as mallapa with an unexpected property → `422 {"error":"invalid_request"}`
    (input validation works alone, and the error is bounded).
-3. `GET /records/rb/guarded` as alice → `200` with bob's private marker, because
-   the rejected login left a legacy compatibility flag for that account.
-4. `GET /records/rb/secure` as alice → still `403`; the flaw is narrow.
+3. `GET /records/BRD-2026-018/guarded` as mallapa → `200` with sakshi's private
+   marker, because the rejected login left a legacy compatibility flag for that
+   account.
+4. `GET /records/BRD-2026-018/secure` as mallapa → still `403`; the flaw is narrow.
 5. A successful login clears the flag; the flag is per account, never global.
+
+The same sequence reproduces for every other ordered pair, with that owner's asset.
 
 This is the sequence checkpoint 35–37 must reproduce through CanaryGate's own
 guarded transport.
@@ -95,7 +119,26 @@ are declared, and it runs on the same machine. Reports must say so.
 |---|---|
 | 35 | **Done.** Dedicated `local_lab` transport: literal `127.0.0.1`, pinned test CA with hostname checking, no DNS, no redirects, no retries, same `RunSafetyGuard`. See [checkpoint 35](checkpoints/35-targetlab-transport.md). |
 | 36 | **Done.** Real requests through the `local_lab` transport reach the shared read-BOLA oracle: `/records/{id}` is CONFIRMED in both directions and `/records/{id}/secure` is SAFE, matching the declared ground truth 6/6. See [checkpoint 36](checkpoints/36-targetlab-bola.md). |
-| 37 | **Done.** Real requests reproduce deny → rejected login → leak: `SCI-AUTHZ` and `SCI-AUTHN` pass alone, the combined read returns bob's private marker and the SCI engine returns `CONFIRMED`/`interaction_induced`. A separate two-run scenario proves a successful login clears the condition. See [checkpoint 37](checkpoints/37-targetlab-sci.md). |
+| 37 | **Done.** Real requests reproduce deny → rejected login → leak: `SCI-AUTHZ` and `SCI-AUTHN` pass alone, the combined read returns the owner's private marker and the SCI engine returns `CONFIRMED`/`interaction_induced`. A separate two-run scenario proves a successful login clears the condition. See [checkpoint 37](checkpoints/37-targetlab-sci.md). |
+| Playground | **Done.** `GET /api/lab-catalog` publishes the demo tenant (accounts, assets, the nine combinations, the ordered pair to run for each and the three `coverage_pairs` that answer all nine). A BOLA run covers one pair and answers that combination's row; `actor`/`owner` on `/api/lab-bola-scans` and `/api/lab-sci-scans` select the pair. |
+| 39 | **Done.** `GET /api/lab-matrix` and `/ui/lab/matrix` project the stored runs onto the nine combinations. Nothing is inferred: a tested cell carries its run id, check id and evidence hash, an untested cell has no verdict at all, and three coverage runs produce 9 tested / 6 CONFIRMED / 3 SAFE with 3 duplicated cells visible. `tools/consistency_audit.py` rebuilds the same matrix offline from the database. |
+| 40 | **Done.** `/ui/lab/matrix` offers **RUN FULL AUTHORIZATION DEMONSTRATION**: one port, the catalog's three coverage pairs, three sequential ordinary runs, then the nine-cell grid rebuilt from what was stored. Each cell opens onto its requesting account, the resource owner, expected vs actual access, status, verdict, run id, evidence id and hash, the oracle's remediation, and the secure route's 403 beside it. Staleness now follows the lab's `X-Lab-Instance` before it falls back to the port. |
+
+### The nine combinations
+
+| Requester | Own asset (legitimate) | Cross-account attempts |
+|---|---|---|
+| `mallapa` | `MKT-2026-041` — owner baseline `LAB-BOLA-01` | `BRD-2026-018`, `ADS-2026-027` |
+| `sakshi` | `BRD-2026-018` — owner baseline `LAB-BOLA-02` | `MKT-2026-041`, `ADS-2026-027` |
+| `harsha` | `ADS-2026-027` — owner baseline | `MKT-2026-041`, `BRD-2026-018` |
+
+A cross-account cell is answered by the cross-account check of that pair's run on
+`/records/{id}` (200 + owner marker ⇒ CONFIRMED when ownership is verified) and its
+**secure** counterpart on `/records/{id}/secure` (403 ⇒ SAFE). One run answers four
+cells (two owner baselines, one cross direction and its secure twin), which is why
+three runs already cover all nine; running the other three ordered pairs re-answers
+the same cells from the other direction and those duplicates stay listed as
+superseded evidence rather than being hidden.
 
 The production guard stays as it is. A loopback mode is a separate, stricter
 path: it must accept **only** `127.0.0.1`/`localhost`, require TLS, keep every

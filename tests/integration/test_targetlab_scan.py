@@ -15,9 +15,9 @@ import targetlab.testing as lab_server
 from canarygate.api.app import create_app
 from canarygate.database.lab_store import LabStore
 
-FORBIDDEN_IN_OUTPUT = ("lab-token-alice", "lab-token-bob", "alice-lab-password",
-                       "bob-lab-password", "targetlab-bob-private-marker",
-                       "targetlab-alice-private-marker")
+FORBIDDEN_IN_OUTPUT = ("lab-token-mallapa", "lab-token-sakshi", "mallapa-lab-password",
+                       "sakshi-lab-password", "targetlab-sakshi-private-marker",
+                       "targetlab-mallapa-private-marker")
 
 
 @pytest.fixture()
@@ -104,6 +104,7 @@ def test_runs_survive_restart_and_tampering_is_rejected(client, lab):
 
 
 def test_missing_ca_configuration_is_refused_without_contacting_the_lab(tmp_path, lab):
+    # See tests/conftest.py: ambient CANARYGATE_* variables are cleared per test.
     database = tmp_path / "no-ca.sqlite3"
     with TestClient(create_app(database)) as api:
         response = api.post("/api/lab-scans", json={"port": lab.port})
@@ -162,5 +163,5 @@ def test_rejected_requests_never_leave_the_process(lab, monkeypatch):
         transport = TargetLabTransport(build_lab_scope(lab.port),
                                        ca_file=lab_server.TARGETLAB_CERT)
         with pytest.raises(TargetLabRefused):
-            transport.request("alice", "GET", "/lab/ground-truth", token="lab-token-alice")
+            transport.request("mallapa", "GET", "/lab/ground-truth", token="lab-token-mallapa")
     assert opened == []

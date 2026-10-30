@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, status_badge, stat, empty, icon,
+                              unavailable, kv, journey %}
+{% block title %}TargetLab validation{% endblock %}
+
+{% block content %}
+{% call page_head("Runs",
+                 "TargetLab validation",
+                 "The only workflow that opens a real socket. CanaryGate makes HTTPS requests
+                  to a deliberately vulnerable lab on 127.0.0.1 with a pinned test CA. Your
+                  browser never talks to the lab: it submits a port to CanaryGate, and
+                  CanaryGate performs the guarded requests.",
+                 trail=[("Dashboard", "/ui/"), ("TargetLab validation", None)]) %}
+  <a class="btn btn-sm" href="/ui/lab/matrix">Asset matrix</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/reports">Lab reports</a>
+{% endcall %}
+
+{{ journey("scans", lab=lab) }}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Controlled validation, not live-target validation.</b>
+    These runs prove that the scanner detects the declared flaws in a lab written by the
+    same team. The lab is loopback-only; the transport refuses DNS, redirects and retries.
+    Every stored run states this in its own limitations.
+  </div>
+</div>
+
+<section class="grid grid-4" aria-label="Lab readiness">
+  {% if readiness.ca_configured %}
+    {{ stat("TargetLab CA", "configured", readiness.ca_env ~ " is set", tone="ok") }}
+  {% else %}
+    {{ stat("TargetLab CA", "missing", readiness.ca_env ~ " is not set", tone="danger") }}
+  {% endif %}
+  {{ stat("Destination", readiness.destination ~ " only", "literal loopback address") }}
+  {{ stat("Transport", readiness.scheme, "pinned CA · hostname checked") }}
+  {{ stat("Redirects / DNS", readiness.redirects, "DNS " ~ readiness.dns) }}
+</section>
+
+<section class="card" aria-label="Demo tenant">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Demo tenant — three accounts, three assets</h2>
+    <span class="hint mono">GET /api/lab-catalog</span>
+  </div>
+  <div class="card-body">
+    <p class="note">TargetLab serves a synthetic Digital Asset Management tenant: three
+      colleagues, one private asset each. Every combination you can pick below is one of
+      these accounts requesting one of these assets.</p>
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Account</th><th scope="col">Title</th>
+                   <th scope="col">Owns</th><th scope="col">Asset</th></tr></thead>
+        <tbody>
+          {% for account in catalog.accounts %}
+          <tr>
+            <td class="mono">{{ account.account }}</td>
+            <td>{{ account.title }}</td>
+            <td class="mono">{{ account.asset_id }}</td>
+            <td class="small">{{ account.asset_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% set legitimate = catalog.combinations|selectattr("kind", "equalto", "legitimate_owner_request")|list|length %}
+    {% set cross = catalog.combinations|selectattr("kind", "equalto", "cross_account_attempt")|list|length %}
+    <p class="note mt-1">{{ catalog.combinations|length }} combinations: {{ legitimate }} legitimate owner request(s) and {{ cross }} cross-account attempt(s). Labels come from the same constants the scans use.</p>
+    <p class="note">The <a href="/ui/lab/matrix">3×3 asset matrix</a> shows every combination
+      of these accounts and assets, filled only from stored runs.</p>
+    <p class="note"><b>Two datasets, never mixed:</b> this demo tenant is separate from the
+      frozen offline fixture (<span class="mono">alice</span> / <span class="mono">bob</span>
+      in <span class="mono">scope.yaml</span>), which is unchanged and shown on the fixture
+      pages. No credential, token or private marker is sent to the browser.</p>
+  </div>
+</section>
+
+{% if not readiness.ca_configured %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon("lock") }} The lab transport is not ready</h2></div>
+  <div class="card-body">
+    {{ unavailable("CANARYGATE_TARGETLAB_CA is not set",
+                   "The backend refuses every lab scan with HTTP 400 until the pinned test
+                    certificate path is provided. Start TargetLab and export the variable,
+                    then reload this page.") }}
+    <p class="note">Documented commands are in <span class="mono">docs/FRONTEND_BACKEND_INTEGRATION.md</span>
+      and <span class="mono">docs/TARGETLAB.md</span>. Nothing on this page retries for you.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-3">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("shield") }} Read-BOLA</h2>
+      <span class="hint mono">POST /api/lab-bola-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Six checks on the lab's record endpoints: owner baselines, the
+        cross-account read on the vulnerable route, and the checked denial on the secure one.
+        Ground truth is scored afterwards, never used to decide.</p>
+      <form class="form" method="post" action="/ui/actions/lab-bola-scan"
+            hx-post="/ui/actions/lab-bola-scan" hx-target="#lab-panel" hx-swap="innerHTML"
+            hx-indicator="#bola-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>TargetLab port</span>
+          <input type="number" name="port" min="1024" max="65535" required
+                 inputmode="numeric" placeholder="e.g. 8765">
+        </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "MKT-2026-041" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">The backend answers the pair this selection names (for an asset you own, that is the owner baseline). One run also reads the same pair in the reverse direction and on the secure route, so the comparison on the run page is drawn from real checks only.</p>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run read-BOLA validation</button>
+          <span id="bola-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      {% if history.bola %}
+        {{ history.bola|length }} stored run(s) ·
+        <a href="#history-bola">latest {{ history.bola[0].verdict }}</a>
+      {% else %}No read-BOLA lab run stored yet.{% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("key") }} Control interaction</h2>
+      <span class="hint mono">POST /api/lab-sci-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Deny, then a rejected login, then the identical read again. Two correct
+        controls interact and the guard stops protecting the record. The verdict comes from
+        the shared SCI decision engine, not from the sequence being 403 → 401 → 200.</p>
+      <form class="form" method="post" action="/ui/actions/lab-sci-scan"
+            hx-post="/ui/actions/lab-sci-scan" hx-target="#lab-panel" hx-swap="innerHTML"
+            hx-indicator="#sci-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>TargetLab port</span>
+          <input type="number" name="port" min="1024" max="65535" required
+                 inputmode="numeric" placeholder="e.g. 8765">
+        </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "BRD-2026-018" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">The interaction needs two different accounts. The requester sets the lab condition and the asset must belong to the other account, whose private marker is the disclosure proof. A selection where both are the same account is refused, not simulated.</p>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run interaction validation</button>
+          <span id="sci-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      {% if history.sci %}
+        {{ history.sci|length }} stored run(s) ·
+        <a href="#history-sci">latest {{ history.sci[0].verdict }}</a>
+      {% else %}No interaction lab run stored yet.{% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("reload") }} Reset proof</h2>
+      <span class="hint mono">POST /api/lab-sci-resets</span>
+    </div>
+    <div class="card-body">
+      <p class="note">A separate two-runner scenario that proves a successful login clears the
+        lab condition (403 → 401 → 200 → 403). It cannot consume the primary interaction run's
+        one-read state, which is why it is its own action.</p>
+      <form class="form" method="post" action="/ui/actions/lab-sci-reset"
+            hx-post="/ui/actions/lab-sci-reset" hx-target="#lab-panel" hx-swap="innerHTML"
+            hx-indicator="#reset-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>TargetLab port</span>
+          <input type="number" name="port" min="1024" max="65535" required
+                 inputmode="numeric" placeholder="e.g. 8765">
+        </label>
+        <div class="field-row-2">
+          <label class="field">
+            <span>Requester</span>
+            <select name="actor">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.account }}"{% if account.account == "mallapa" %} selected{% endif %}>{{ account.account }} — {{ account.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Asset</span>
+            <select name="asset">
+              {% for account in catalog.accounts %}
+              <option value="{{ account.asset_id }}"{% if account.asset_id == "BRD-2026-018" %} selected{% endif %}>{{ account.asset_id }} — {{ account.asset_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="note">Same pair rules as the interaction run: the proof follows the pair you select, in a separate controlled execution.</p>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Prove the reset</button>
+          <span id="reset-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      {% if history.reset %}
+        {{ history.reset|length }} stored proof(s) ·
+        <a href="#history-reset">latest {{ history.reset[0].status }}</a>
+      {% else %}No reset proof stored yet.{% endif %}
+    </div>
+  </section>
+</div>
+
+<section id="lab-panel" aria-live="polite"></section>
+
+<div class="grid grid-3">
+  {% for key, family in families.items() %}
+  <section class="card" id="history-{{ key }}">
+    <div class="card-head">
+      <h2>{{ icon("database") }} {{ family.label }}</h2>
+      <span class="hint mono">{{ history[key]|length }} stored</span>
+    </div>
+    {% if history[key] %}
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead>
+          <tr><th scope="col">Run</th><th scope="col">{{ "Status" if key == "reset" else "Verdict" }}</th>
+              <th scope="col">Port</th><th scope="col">Recorded</th></tr>
+        </thead>
+        <tbody>
+          {% for item in history[key] %}
+          {% set port = item.get("port") or (item.get("scope") or {}).get("port") %}
+          <tr>
+            <td><a class="mono" href="/ui/lab/{{ key }}/{{ item.id }}">{{ item.get("id")|short_id }}</a></td>
+            <td>
+              {% if key == "reset" %}{{ status_badge(item.get("status")) }}
+              {% else %}{{ verdict_badge(item.get("verdict")) }}{% endif %}
+            </td>
+            <td class="mono">{{ port if port else "—" }}</td>
+            <td class="mono xs">{{ item.get("created_at") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body">{{ empty("No stored run", "Nothing has been recorded for this workflow yet.") }}</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} What the browser is allowed to do</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li>The forms submit a <b>port</b>, an <b>account</b> and an <b>asset</b>. The account
+        and asset are looked up in the published catalog and posted as the pair the backend
+        declares. The browser cannot name a host, a path, a credential or an expected
+        verdict, and the backend's request model rejects extra fields.</li>
+      <li>The scope, credentials and plan are built by the backend. The lab's passwords,
+        tokens and private markers are never sent to the browser.</li>
+      <li>A refusal is shown as a refusal: HTTP 400 for a bad configuration, 502 when the lab
+        is unreachable, and no evidence is stored in either case.</li>
+      <li>Run ids above are links to the stored evidence, the section report and the backend's
+        own HTML report.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

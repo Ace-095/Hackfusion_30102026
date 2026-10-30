@@ -37,7 +37,7 @@ def _print_stage(index, title, lines):
 def _stage_1_lines(stage):
     lines = []
     for check_id in ("LAB-BOLA-01", "LAB-BOLA-02", "LAB-BOLA-03", "LAB-BOLA-04"):
-        lines.append(f"{check_id}  alice/bob  GET /records/{{id}}  "
+        lines.append(f"{check_id}  mallapa/sakshi  GET /records/{{id}}  "
                      f"status {stage['statuses'][check_id]}  {stage['checks'][check_id]}")
     lines.append("owner baselines verified against each account's own record; "
                  "the leaked marker matched the owner's baseline")
@@ -53,9 +53,9 @@ def _stage_2_lines(stage):
 def _stage_3_lines(stage, reset):
     run = stage["run"]
     return [
-        f"SCI-AUTHZ  alice -> bob's guarded record   status {stage['statuses']['SCI-AUTHZ']}  "
+        f"SCI-AUTHZ  mallapa -> sakshi's guarded record   status {stage['statuses']['SCI-AUTHZ']}  "
         f"{stage['baselines']['SCI-AUTHZ']}",
-        f"SCI-AUTHN  alice posts a wrong password    status {stage['statuses']['SCI-AUTHN']}  "
+        f"SCI-AUTHN  mallapa posts a wrong password    status {stage['statuses']['SCI-AUTHN']}  "
         f"{stage['baselines']['SCI-AUTHN']}",
         f"combined   the identical guarded read      status {stage['combined_status']}  "
         f"{run['combined']['impact']}",
@@ -70,6 +70,7 @@ def _stage_4_lines(bundle):
     stages = {stage["id"]: stage for stage in bundle["stages"]}
     bola = stages["bola"]
     sci = stages["sci"]
+    asset = bundle["summary"].get("asset_matrix") or {}
     return [
         f"stage 1 stored run, sections, nine sections, HTML and matrix agree "
         f"({bola['requests_sent']}/{bola['request_budget']} requests)",
@@ -77,6 +78,9 @@ def _stage_4_lines(bundle):
         f"({sci['requests_sent']}/{sci['request_budget']} requests)",
         "matrix: GET /records/{id} red for another account's resource; "
         "GET /records/{id}/secure green; GET /records/{id}/guarded red",
+        f"asset matrix from the stored runs: {asset.get('tested')} cells tested "
+        f"({asset.get('confirmed')} CONFIRMED, {asset.get('safe')} SAFE), "
+        f"{asset.get('untested')} untested — untested is not SAFE",
         "ground truth is scored when the report is built, never before the verdict",
         "every surface states: controlled validation of the loopback lab, not live validation",
     ]
@@ -96,10 +100,19 @@ def main(argv=None) -> int:
     import targetlab.testing as lab_server
     from canarygate.api.app import create_app
 
-    holder = tempfile.TemporaryDirectory(prefix="canarygate-demo-")
-    database = Path(args.database) if args.database else Path(holder.name) / "demo.sqlite3"
-    if database.exists() and args.database:
-        parser.error("the demonstration needs a database that does not exist yet")
+    if args.database:
+        holder = None
+        database = Path(args.database)
+        if database.exists():
+            parser.error("the demonstration needs a database that does not exist yet")
+    elif args.keep:
+        # A TemporaryDirectory deletes itself when the interpreter exits, so --keep
+        # used to print a path that was already gone. mkdtemp stays where it is.
+        holder = None
+        database = Path(tempfile.mkdtemp(prefix="canarygate-demo-")) / "demo.sqlite3"
+    else:
+        holder = tempfile.TemporaryDirectory(prefix="canarygate-demo-")
+        database = Path(holder.name) / "demo.sqlite3"
     os.environ["CANARYGATE_TARGETLAB_CA"] = str(lab_server.TARGETLAB_CERT)
 
     print("CanaryGate — demonstration (checkpoint 38)")
@@ -144,7 +157,8 @@ def main(argv=None) -> int:
         print(f"summary written to {args.json}")
     if args.keep:
         print(f"database kept at {database}")
-    else:
+        print(f"  audit it with: python tools/consistency_audit.py --database {database}")
+    elif holder is not None:
         holder.cleanup()
     return status
 

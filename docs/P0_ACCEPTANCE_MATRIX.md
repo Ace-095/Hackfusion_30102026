@@ -290,7 +290,8 @@ adds cross-surface consistency checking (stored run, sections, nine sections, HT
 and matrix must agree), a re-hashing audit of stored evidence, a one-command
 four-stage demonstration that fails if any surface disagrees, and a static safety
 sweep. Four audit rows (I1–I4) record it; no P0 requirement, verdict rule or gate
-changes: **58 requirements, 916 tests, 56 classified files.**
+changes: **58 requirements, 916 tests, 56 classified files.** (Head after
+checkpoint 39: 1055 tests, 63 classified files — the gate is unchanged.)
 
 **Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
 now including SCI, is accepted with documented limitations; live validation and

@@ -1,0 +1,82 @@
+{% from "_macros.html" import icon %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="CanaryGate — evidence-based API authorization testing. Local build: offline fixtures plus a loopback TargetLab.">
+  <title>{% block title %}CanaryGate{% endblock %} · CanaryGate</title>
+  {#- All assets are served locally: no CDN, no web fonts, no external requests. -#}
+  <link rel="stylesheet" href="/ui/static/css/app.css">
+  <script src="/ui/static/vendor/htmx.min.js" defer></script>
+  <script src="/ui/static/js/app.js" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">CG</span>
+      <span class="brand-name">
+        <b>CanaryGate</b>
+        <span>evidence-based API authorization testing</span>
+      </span>
+    </div>
+    <div class="topbar-right">
+      <span class="mode-chip" title="The API reports live_scanning=false; the only socket is the loopback TargetLab">
+        Offline + loopback lab · live scanning off
+      </span>
+      <button type="button" class="nav-toggle" data-nav-toggle
+              aria-controls="site-nav" aria-expanded="false">
+        {{ icon("inventory") }} Menu
+      </button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav id="site-nav" class="sidebar" aria-label="Main navigation" data-nav>
+      {% for group, items in nav_groups %}
+      <div class="nav-group">
+        <span class="nav-group-label">{{ group }}</span>
+        {% for key, href, label, ico in items %}
+        <a class="nav-link" href="{{ href }}"
+           {% if active == key %}aria-current="page"{% endif %}>
+          {{ icon(ico) }} {{ label }}
+        </a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <div class="sidebar-foot">
+        <span>{{ icon("lock") }} Local only · no API authentication</span>
+        <a href="/openapi.json" target="_blank" rel="noopener">OpenAPI schema</a>
+        <a href="/ui/spec">Inspect a specification</a>
+      </div>
+    </nav>
+
+    <main id="main" class="main">
+      <div class="banner" role="note">
+        {{ icon("warning") }}
+        <div>
+          <b>Local evidence only.</b> Offline pages show fixture or recorded-transcript results.
+          <a href="/ui/lab">TargetLab validation</a> makes real HTTPS requests, but only to
+          <span class="mono">127.0.0.1</span> with a pinned test CA, to a lab written by the same
+          team. Nothing here is evidence about a live or organizer-supplied API. API contracts
+          are provisional — <a href="/ui/setup">readiness</a> and
+          <a href="/ui/reports">reports</a> state exactly what the backend did.
+        </div>
+      </div>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div>CanaryGate v3.2 · local build · backend mode <span class="mono">fixture</span> · loopback lab only · live scanning disabled</div>
+    <div>Do not expose this server. Do not treat fixture, transcript or loopback results as live-target results.</div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

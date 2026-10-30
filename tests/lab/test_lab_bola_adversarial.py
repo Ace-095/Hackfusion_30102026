@@ -27,7 +27,7 @@ def runner_for(lab, *, plan=None):
     return TargetLabRunner(plan.scope, plan.credentials, ca_file=str(lab_server.TARGETLAB_CERT))
 
 
-def ownership_for(runner, resource, accounts=("alice", "bob")):
+def ownership_for(runner, resource, accounts=("mallapa", "sakshi")):
     for account in accounts:
         runner.login(account)
     return collect_guarded_ownership(runner, resource_type="record", resource=resource,
@@ -40,19 +40,19 @@ def test_a_mutated_response_is_never_evidence(lab):
     try:
         ownership = ownership_for(runner, VULNERABLE_RESOURCE)
         assert ownership.ownership_status == "SUCCESS"
-        response = runner.get("alice", "/records/rb")
+        response = runner.get("mallapa", "/records/BRD-2026-018")
         assert response.status_code == 200
         decision = evaluate_read_bola(
             ownership=ownership, resource_type="record", resource=VULNERABLE_RESOURCE,
-            actor="alice", owner="bob", response=response, expected_access="owner-only",
+            actor="mallapa", owner="sakshi", response=response, expected_access="owner-only",
             expected_source="targetlab declared record policy")
         assert decision.verdict == "CONFIRMED"
         # Mutate the recorded body: provenance must fail and the verdict must drop.
-        response._content = response.content.replace(b"targetlab-bob-private-marker",
-                                                     b"targetlab-alice-private-marker")
+        response._content = response.content.replace(b"targetlab-sakshi-private-marker",
+                                                     b"targetlab-mallapa-private-marker")
         mutated = evaluate_read_bola(
             ownership=ownership, resource_type="record", resource=VULNERABLE_RESOURCE,
-            actor="alice", owner="bob", response=response, expected_access="owner-only",
+            actor="mallapa", owner="sakshi", response=response, expected_access="owner-only",
             expected_source="targetlab declared record policy")
         assert mutated.verdict == "INCONCLUSIVE"
         assert mutated.checklist["attacker_request"] is False
@@ -64,12 +64,12 @@ def test_a_response_recorded_for_another_actor_is_rejected(lab):
     runner = runner_for(lab)
     try:
         ownership = ownership_for(runner, VULNERABLE_RESOURCE)
-        response = runner.get("alice", "/records/rb")
-        assert runner.verifies_recorded_read(response, "alice", "/records/rb") is True
-        assert runner.verifies_recorded_read(response, "bob", "/records/rb") is False
+        response = runner.get("mallapa", "/records/BRD-2026-018")
+        assert runner.verifies_recorded_read(response, "mallapa", "/records/BRD-2026-018") is True
+        assert runner.verifies_recorded_read(response, "sakshi", "/records/BRD-2026-018") is False
         decision = evaluate_read_bola(
             ownership=ownership, resource_type="record", resource=VULNERABLE_RESOURCE,
-            actor="bob", owner="alice", response=response, expected_access="owner-only",
+            actor="sakshi", owner="mallapa", response=response, expected_access="owner-only",
             expected_source="targetlab declared record policy")
         assert decision.verdict == "INCONCLUSIVE"
     finally:
@@ -82,10 +82,10 @@ def test_ownership_from_another_endpoint_cannot_be_reused(lab):
     try:
         secure_ownership = ownership_for(runner, SECURE_RESOURCE)
         assert secure_ownership.ownership_status == "SUCCESS"
-        response = runner.get("alice", "/records/rb")
+        response = runner.get("mallapa", "/records/BRD-2026-018")
         decision = evaluate_read_bola(
             ownership=secure_ownership, resource_type="record", resource=VULNERABLE_RESOURCE,
-            actor="alice", owner="bob", response=response, expected_access="owner-only",
+            actor="mallapa", owner="sakshi", response=response, expected_access="owner-only",
             expected_source="targetlab declared record policy")
         assert decision.verdict == "INCONCLUSIVE"
         assert decision.checklist["ownership_verified"] is False
@@ -103,7 +103,7 @@ def test_shared_or_public_ownership_is_never_confirmed(lab, model):
         assert ownership.ownership_status != "SUCCESS"
         decision = evaluate_read_bola(
             ownership=ownership, resource_type="record", resource=resource,
-            actor="alice", owner="bob", response=None, expected_access="owner-only",
+            actor="mallapa", owner="sakshi", response=None, expected_access="owner-only",
             expected_source="targetlab declared record policy")
         assert decision.verdict == "INCONCLUSIVE"
         assert decision.checklist["private_resource"] is False
@@ -115,9 +115,9 @@ def test_authentication_is_one_shot_per_run(lab):
     """A duplicate login attempt is refused by the shared guard, not retried."""
     runner = runner_for(lab)
     try:
-        assert runner.login("alice") is True
+        assert runner.login("mallapa") is True
         with pytest.raises(ValueError):
-            runner.login("alice")
+            runner.login("mallapa")
         assert runner.stats()["requests_sent"] == 1
     finally:
         runner.close()
@@ -128,11 +128,11 @@ def test_an_untrusted_policy_source_is_never_confirmed(lab):
     runner = runner_for(lab)
     try:
         ownership = ownership_for(runner, VULNERABLE_RESOURCE)
-        response = runner.get("alice", "/records/rb")
+        response = runner.get("mallapa", "/records/BRD-2026-018")
         for source in ("synthetic fixture policy", "offline scenario policy", "self declared"):
             decision = evaluate_read_bola(
                 ownership=ownership, resource_type="record", resource=VULNERABLE_RESOURCE,
-                actor="alice", owner="bob", response=response, expected_access="owner-only",
+                actor="mallapa", owner="sakshi", response=response, expected_access="owner-only",
                 expected_source=source)
             assert decision.verdict == "INCONCLUSIVE", source
             assert decision.checklist["policy_denies_access"] is False
@@ -144,10 +144,10 @@ def test_a_wrong_identity_halts_ownership_and_never_confirms(lab):
     """If a token appears to identify another account, the run stops."""
     runner = runner_for(lab)
     try:
-        runner.login("alice")
-        runner.login("bob")
-        # Swap bob's token for alice's: the profile for "bob" will report alice.
-        runner._tokens["bob"] = runner._tokens["alice"]
+        runner.login("mallapa")
+        runner.login("sakshi")
+        # Swap sakshi's token for mallapa's: the profile for "sakshi" will report mallapa.
+        runner._tokens["sakshi"] = runner._tokens["mallapa"]
         plan = build_bola_plan(lab.port)
         run = run_lab_bola_scan(plan, runner)
         assert run.verdict != "CONFIRMED"
@@ -163,7 +163,7 @@ def test_the_ground_truth_route_is_unreachable_through_the_transport(lab):
     try:
         for path in ("/lab/ground-truth", "/lab/ground-truth/", "/openapi.json"):
             with pytest.raises((TargetLabRefused, ValueError)):
-                runner.get("alice", path)
+                runner.get("mallapa", path)
     finally:
         runner.close()
 

@@ -1,7 +1,7 @@
 # CanaryGate — The Complete Technical Master Guide
 
 - **Repository:** `Ace-095/Hackfusion_30102026`
-- **Document scope:** the code as it exists at commit `d9436d1` on branch `arena/aa67fa1b-hackfusion-30102026` (test suite: 916 passing tests).
+- **Document scope:** the code as it exists at commit `8202d77` on branch `arena/80050ed6-hackfusion-30102026` (test suite: 1055 passing tests).
 - **Audience:** the engineer who has to explain, debug, extend, or defend CanaryGate in front of judges — and who must never overstate what it does.
 
 ---
@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP37](#17-checkpoint-history-cp26cp37)
+- [§17 Checkpoint history CP26–CP46](#17-checkpoint-history-cp26cp46)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -98,14 +98,14 @@ CanaryGate is an evidence-first API authorization scanner that decides BOLA, aut
 
 ### 1.2 Thirty seconds
 
-It takes an OpenAPI document, lists the operations, and then runs targeted, bounded checks: can Alice read Bob's private object? Do crafted tokens change identity? Does malformed input get reflected? Do two controls that each look correct combine into a leak? Every request goes through one guard that enforces an exact host/port allow-list, method classes, a request budget, and (for the lab) a pinned TLS context. Results are stored as minimized, hashed evidence and rendered into a frozen nine-section report plus an authorization matrix that never hides an untested cell. The only "real" target it has ever talked to is a deliberately vulnerable loopback lab (`TargetLab`) that the same team wrote — so the honest claim is *controlled validation of our own lab*, not live-scanning readiness.
+It takes an OpenAPI document, lists the operations, and then runs targeted, bounded checks: can one colleague read another colleague's private asset? Do crafted tokens change identity? Does malformed input get reflected? Do two controls that each look correct combine into a leak? Every request goes through one guard that enforces an exact host/port allow-list, method classes, a request budget, and (for the lab) a pinned TLS context. Results are stored as minimized, hashed evidence and rendered into a frozen nine-section report plus an authorization matrix that never hides an untested cell. The only "real" target it has ever talked to is a deliberately vulnerable loopback lab (`TargetLab`) that the same team wrote — so the honest claim is *controlled validation of our own lab*, not live-scanning readiness.
 
 ### 1.3 Two minutes
 
 CanaryGate exists because API authorization bugs are boring to find and easy to fake. A scanner that says "403 was not returned, therefore vulnerable" is guessing: the server might have returned 200 with an empty body, the object might be shared, the identity might be wrong, or the response might be a login page. So the project defines a stricter contract:
 
 1. **Ownership must be verified, not assumed.** Two distinct accounts each read their own object; each object's owner field must match the reader, and the two objects must be different. `canarygate/seed/registry.py` records this as `FixtureOwnershipResult` / `GuardedOwnership`.
-2. **The private value must be established from the owner's own baseline.** The scanner learns Bob's private marker by reading Bob's object *as Bob*, then looks for *that exact value* in Alice's response.
+2. **The private value must be established from the owner's own baseline.** The scanner learns sakshi's private marker by reading sakshi's asset *as sakshi*, then looks for *that exact value* in mallapa's response.
 3. **The policy must come from a trusted source bound to the transport.** `canarygate/oracles/read_bola.py` only honors `"owner-only"` expectations whose `expected_source` matches the runner that produced the evidence (`synthetic fixture policy`, `offline scenario policy`, or `targetlab declared record policy`).
 4. **A denial must be checked, not inferred.** `403` alone is not enough: the body must equal the declared denial contract (`{"error": "forbidden"}`) for the synthetic paths, otherwise the result is `INCONCLUSIVE`.
 5. **Only five verdicts exist.** `CONFIRMED`, `SUSPECTED`, `SAFE`, `INCONCLUSIVE`, `SKIPPED` (`canarygate/models/result.py`). There is no sixth "probably."
@@ -118,11 +118,11 @@ The result is intentionally narrow. It does not do BFLA, mass assignment, BOPLA,
 
 Consider the one finding the demonstration actually produces.
 
-**Setup.** TargetLab declares two accounts (`alice`, `bob`), two records (`ra` owned by alice, `rb` owned by bob), each with a private marker, and three deliberate flaws (`targetlab/state.py`). The scope (`canarygate/scan/lab_bola_scenarios.py` → `AuthorizedScope`) lists 13 operations, all `READ_ONLY` except `POST /login` (`AUTHENTICATION`), and a budget of 20.
+**Setup.** TargetLab declares three accounts (`mallapa`, `sakshi`, `harsha`), three private assets (`MKT-2026-041` owned by mallapa, `BRD-2026-018` by sakshi, `ADS-2026-027` by harsha), each with a private marker, and three deliberate flaws (`targetlab/state.py`). The scope (`canarygate/scan/lab_bola_scenarios.py` → `AuthorizedScope`) lists 16 operations, all `READ_ONLY` except `POST /login` (`AUTHENTICATION`), and a budget of 20. A run selects one ordered pair of those accounts (`actor`, `owner`) and declares exactly that pair in its scope and credentials; the six ordered pairs answer the nine account × asset combinations.
 
-**Run.** `POST /api/lab-bola-scans {"port": …}` builds a `TargetLabRunner`, logs both accounts in, verifies identity via `/profile`, harvests each account's list (`GET /records`), verifies that each list contains only that account's record, reads each owner's own record to capture the private marker, then performs the cross-account reads on both the vulnerable and the secure route.
+**Run.** `POST /api/lab-bola-scans {"port": …, "actor": "mallapa", "owner": "sakshi"}` (the pair defaults to `mallapa` → `sakshi`) builds a `TargetLabRunner`, logs both accounts in, verifies identity via `/profile`, harvests each account's list (`GET /records`), verifies that each list contains only that account's asset, reads each owner's own asset to capture the private marker, then performs the cross-account reads on both the vulnerable and the secure route.
 
-**Decision.** For `LAB-BOLA-03` (alice reads bob's record), the oracle walks its checks in order: private resource? yes; distinct accounts? yes; trusted policy says `owner-only`? yes; ownership entries verified? yes; both owner baselines `200` with matching identity? yes; distinct private markers? yes; attacker request identity and path consistent? yes; response contains bob's marker plus bob's id and owner? yes. All ten checklist flags except `verified_denial` become true, and the verdict is `CONFIRMED` with reason *"Verified ownership and cross-user private baseline disclosure."* For `LAB-BOLA-05` (alice reads bob's **secure** record) the same machinery runs but the response is `403 {"error": "forbidden"}`, which sets `verified_denial` instead of `private_disclosure`, and the verdict is `SAFE` — a *positive* statement that the control was observed working, not an absence of evidence.
+**Decision.** For `LAB-BOLA-03` (mallapa reads sakshi's asset), the oracle walks its checks in order: private resource? yes; distinct accounts? yes; trusted policy says `owner-only`? yes; ownership entries verified? yes; both owner baselines `200` with matching identity? yes; distinct private markers? yes; attacker request identity and path consistent? yes; response contains sakshi's marker plus sakshi's id and owner? yes. All ten checklist flags except `verified_denial` become true, and the verdict is `CONFIRMED` with reason *"Verified ownership and cross-user private baseline disclosure."* For `LAB-BOLA-05` (mallapa reads sakshi's **secure** asset) the same machinery runs but the response is `403 {"error": "forbidden"}`, which sets `verified_denial` instead of `private_disclosure`, and the verdict is `SAFE` — a *positive* statement that the control was observed working, not an absence of evidence.
 
 **Report.** The nine-section report renders one finding per check, an executive summary that counts `SKIPPED` and `INCONCLUSIVE` alongside everything else, a secured-endpoints section that lists `LAB-BOLA-05/06` because they were *checked and denied*, and a constraint checklist that prints request counts, guard blocks, budget remaining, redirects followed (0), and destructive requests executed (0). The matrix colours `GET /records/{id}` red for `other_account_resource` and `GET /records/{id}/secure` green, with distinct `source_ref` values so the two can never be confused with an offline scenario or an SCI cell.
 
@@ -140,7 +140,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** HTTP/1.1 request: `METHOD /path?query HTTP/1.1`, headers, blank line, optional body. HTTPS wraps the connection in TLS; the client validates the server certificate chain against trusted roots and checks that the certificate's Subject Alternative Name covers the host (or IP) it connected to.
 
-**Example.** `GET /records/rb HTTP/1.1` + `Host: 127.0.0.1:8765` + `Authorization: Bearer lab-token-alice` → `HTTP/1.1 200 OK`, JSON body.
+**Example.** `GET /records/BRD-2026-018 HTTP/1.1` + `Host: 127.0.0.1:8765` + `Authorization: Bearer lab-token-mallapa` → `HTTP/1.1 200 OK`, JSON body.
 
 **Why CanaryGate cares.** The entire safety argument is "we know exactly which bytes went where." `canarygate/network/targetlab.py` builds the request by hand (`http.client.HTTPConnection` over a socket it wrapped itself), sets `Accept-Encoding: identity`, sets `Connection: close`, and caps the body at `MAX_RESPONSE_BYTES = 64 * 1024` (`canarygate/guard/policy.py`). There is no connection pool to inherit, no proxy environment variable to honour, and no redirect handling to disable because none exists.
 
@@ -166,11 +166,11 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.4 REST, resources, and endpoints
 
-**Simple.** REST models the world as resources (`/records/ra`), addresses them with URLs, and uses HTTP methods as verbs.
+**Simple.** REST models the world as resources (`/records/MKT-2026-041`), addresses them with URLs, and uses HTTP methods as verbs.
 
 **Technical.** A resource collection is `/records`; an instance is `/records/{id}`. Templates in the OpenAPI document (`/records/{record_id}`) describe the shape; concrete instances are discovered at runtime.
 
-**Example.** `GET /records` returns Alice's list; `GET /records/rb` addresses Bob's record.
+**Example.** `GET /records` returns mallapa's list; `GET /records/BRD-2026-018` addresses sakshi's asset.
 
 **Why CanaryGate cares.** BOLA is exactly the gap between *template* and *instance*: the route is authorized by its template, the object is not checked. CanaryGate therefore never reasons about `/records/{id}` in the abstract when making a finding — it needs two concrete ids, two concrete owners, and one concrete cross-account read. This is why the recipe (`ScenarioRecipe` / `LabBolaRecipe`) declares `discovery`, `detail`, `id_field`, `ownership_field`, `private_field` and `ownership_model` rather than just a path.
 
@@ -196,7 +196,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.7 JSON
 
-**Simple.** A text format for objects and arrays: `{"id": "rb", "owner": "bob", "private_note": "…"}`.
+**Simple.** A text format for objects and arrays: `{"id": "BRD-2026-018", "owner": "sakshi", "private_note": "…"}`.
 
 **Technical.** CanaryGate parses response bodies with a duplicate-key-rejecting object hook (`_unique_object` in `canarygate/network/targetlab.py`), refuses oversized bodies (> 64 KiB), and treats non-object bodies as ambiguous for BOLA decisions.
 
@@ -210,7 +210,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** Authentication produces a subject (a user id) and usually a role or claims. Authorization compares that subject against a policy for a resource or function.
 
-**Example.** Alice logs in (authentication) and then tries to read Bob's record (authorization). TargetLab returns `401` if Alice has no token and `403` if she has one but may not read.
+**Example.** Mallapa logs in (authentication) and then tries to read sakshi's asset (authorization). TargetLab returns `401` if mallapa has no token and `403` if he has one but may not read.
 
 **Why CanaryGate cares.** The two are tested by different engines and reported in different categories. Authentication probes ask "does a crafted credential change the effective identity or capability?" Authorization checks ask "does an authenticated but non-owning subject receive an object it should not?" A run that fails authentication first never gets to make an authorization claim — `canarygate/scan/lab_sci.py` returns a closed run with an explanatory reason when either account cannot authenticate.
 
@@ -218,9 +218,9 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Simple.** A session is server-side state keyed by a cookie. A bearer token is a credential the client presents on every request; whoever holds it is treated as the subject.
 
-**Technical.** TargetLab issues opaque tokens (`lab-token-alice`, `lab-token-bob`) and maps them to accounts via `TOKEN_TO_ACCOUNT`. It does not use cookies at all.
+**Technical.** TargetLab issues opaque tokens (`lab-token-mallapa`, `lab-token-sakshi`, `lab-token-harsha`) and maps them to accounts via `TOKEN_TO_ACCOUNT`. It does not use cookies at all.
 
-**Example.** `Authorization: Bearer lab-token-alice` → identity `alice`.
+**Example.** `Authorization: Bearer lab-token-mallapa` → identity `mallapa`.
 
 **Why CanaryGate cares.** "Bearer" means possession equals identity, so a leaked token is a full compromise — which is why tokens are never persisted, never reported, and why `has_distinct_credentials` uses `hmac.compare_digest` rather than `==` when checking that two accounts hold genuinely different tokens.
 
@@ -238,7 +238,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Simple.** Roles group permissions: `admin` can do more than `user`.
 
-**Technical.** RBAC maps subjects → roles → permissions. CanaryGate models roles as strings on accounts (`{"account": "alice", "role": "user"}`) and treats role expectations as declared policy (`role:admin`).
+**Technical.** RBAC maps subjects → roles → permissions. CanaryGate models roles as strings on accounts (`{"account": "mallapa", "role": "marketing_manager"}`) and treats role expectations as declared policy (`role:admin`).
 
 **Example.** `AUTHN-04b` (`jwt_role`) swaps the role claim to `admin` and asks for `/admin/users`. A `403` is `SAFE`; a `200` with `{"admin_capability": true}` is `CONFIRMED`.
 
@@ -246,13 +246,13 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.12 Ownership and tenancy
 
-**Simple.** "This object belongs to Alice" is a fact the server knows and the scanner must verify.
+**Simple.** "This asset belongs to mallapa" is a fact the server knows and the scanner must verify.
 
 **Technical.** Ownership can be modelled as `private` (one owner), `shared` (several), or `public` (everyone). CanaryGate's `OwnedResource.ownership_model` (`canarygate/models/ownership.py`) is exactly that literal. BOLA only applies to `private`.
 
-**Example.** TargetLab's `/records/ra` is `{"id": "ra", "owner": "alice", "private_note": "…"}` — private.
+**Example.** TargetLab's `/records/MKT-2026-041` is `{"id": "MKT-2026-041", "owner": "mallapa", "private_note": "…"}` — private.
 
-**Why CanaryGate cares.** If the object is shared, Alice reading Bob's record is *correct behaviour*. The oracle refuses to proceed unless `ownership_model == "private"`, and the ownership registry must show two distinct resources with distinct owners. A shared resource can therefore never be falsely reported as BOLA.
+**Why CanaryGate cares.** If the asset were shared, mallapa reading sakshi's asset would be *correct behaviour*. The oracle refuses to proceed unless `ownership_model == "private"`, and the ownership registry must show two distinct resources with distinct owners. A shared resource can therefore never be falsely reported as BOLA.
 
 ### 2.13 ACL policies and expected access
 
@@ -270,7 +270,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** BOLA = broken object-level authorization; BFLA = broken function-level authorization. They fail differently and are detected differently.
 
-**Example.** Alice reading `/records/rb` is an object-level failure. A non-admin successfully calling `GET /admin/users` is a function-level failure.
+**Example.** Mallapa reading `/records/BRD-2026-018` is an object-level failure. A non-admin successfully calling `GET /admin/users` is a function-level failure.
 
 **Why CanaryGate cares.** The project implements object-level detection end-to-end (`[LOOP]` validated). It has **no BFLA engine**: no role inventory, no per-function policy model, no expected-permission ingestion at scale. Requirement `D11` is missing, and the guide says so in every chapter that touches roles.
 
@@ -280,7 +280,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** CanaryGate probes five behaviours: an extra/unexpected property, malformed JSON, special characters, enumeration/pagination limits, and (for the lab only) a wrong password in a well-formed login body.
 
-**Example.** A login endpoint that returns `200` for `{"username": "alice"}` with no password is a validation failure.
+**Example.** A login endpoint that returns `200` for `{"username": "mallapa"}` with no password is a validation failure.
 
 **Why CanaryGate cares.** A validation finding must show an *effect*, not just a `200`: `malformed_json → 422` is never `CONFIRMED`; a `200` with an unchanged body is `INCONCLUSIVE`, because the probe did not demonstrate that the input was honoured in a dangerous way.
 
@@ -323,9 +323,9 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 This chapter is deliberately blunt: for each class you get the concept, the check identifiers that exist in code, the decision rule, an example, the limits, and a status label. If a class has no implementation, the chapter says so instead of describing it aspirationally.
 
-### 3.1 Read-BOLA (object-level authorization), Alice and Bob
+### 3.1 Read-BOLA (object-level authorization), the demo tenant
 
-**The flaw.** The server authenticates the caller but never checks that the requested object belongs to them. Alice changes `/records/ra` to `/records/rb` and receives Bob's private data.
+**The flaw.** The server authenticates the caller but never checks that the requested object belongs to them. Mallapa changes `/records/MKT-2026-041` to `/records/BRD-2026-018` and receives sakshi's private data.
 
 **Where it lives in CanaryGate.**
 - Oracle: `canarygate/oracles/read_bola.py::evaluate_read_bola`.
@@ -348,9 +348,9 @@ This chapter is deliberately blunt: for each class you get the concept, the chec
 
 **Verdicts.** `CONFIRMED` if (3) and (9); `SUSPECTED` if the marker matched but identity fields were incomplete; `SAFE` if (3) and (10); otherwise `INCONCLUSIVE`.
 
-**Alice/Bob example (loopback, real HTTPS).** `LAB-BOLA-01/02` are owner baselines (`SAFE`). `LAB-BOLA-03` (alice → bob) and `LAB-BOLA-04` (bob → alice) are `CONFIRMED` with status `200`, 9 of 10 checklist flags true (all but `verified_denial`). `LAB-BOLA-05/06` are the same reads on `/secure`, both `403` with the checked denial body, both `SAFE`. Run summary: 6 checks, 2 confirmed, 4 safe, 18 of 20 requests used.
+**Demo-tenant example (loopback, real HTTPS).** `LAB-BOLA-01/02` are owner baselines (`SAFE`). `LAB-BOLA-03` (mallapa → sakshi) and `LAB-BOLA-04` (sakshi → mallapa) are `CONFIRMED` with status `200`, 9 of 10 checklist flags true (all but `verified_denial`). `LAB-BOLA-05/06` are the same reads on `/secure`, both `403` with the checked denial body, both `SAFE`. Run summary: 6 checks, 2 confirmed, 4 safe, 18 of 20 requests used.
 
-**Limits.** The resource model, discovery route, detail route, id field, ownership field and private field must all be declared; IDs cannot be guessed "for free" — `resource_ids_withheld: true` means the run does not publish them. Two synthetic accounts only (`D3` partial). The policy is declared by the lab, not inferred from OpenAPI (`D2` partial). Nothing here generalizes to an arbitrary API without someone writing the recipe.
+**Limits.** The resource model, discovery route, detail route, id field, ownership field and private field must all be declared; IDs cannot be guessed "for free" — `resource_ids_withheld: true` means the run does not publish them. Three synthetic accounts with one private asset each, and the pair is selected per run (`D3` partial). The policy is declared by the lab, not inferred from OpenAPI (`D2` partial). Nothing here generalizes to an arbitrary API without someone writing the recipe.
 
 **Status:** `[FIXTURE]` + `[REC]` + `[LOOP]` implemented. No `[LIVE]`.
 
@@ -479,9 +479,9 @@ A baseline is one control exercised **alone**, on the same runner, in the same r
 
 | Baseline | Control | Request | Expected | Observed |
 |---|---|---|---|---|
-| `SCI-AUTHZ` | Authorization | alice → bob's `/records/{id}/guarded` | `403 {"error":"forbidden"}` | `403`, `checked_denial: true`, `SAFE` |
-| `SCI-AUTHN` | Authentication | alice `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | `401`, `checked_rejection: true`, `SAFE` |
-| combined | both | alice → the *identical* guarded read again | denial | `200` with bob's private marker → `private_data` |
+| `SCI-AUTHZ` | Authorization | mallapa → sakshi's `/records/{id}/guarded` | `403 {"error":"forbidden"}` | `403`, `checked_denial: true`, `SAFE` |
+| `SCI-AUTHN` | Authentication | mallapa `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | `401`, `checked_rejection: true`, `SAFE` |
+| combined | both | mallapa → the *identical* guarded read again | denial | `200` with sakshi's private marker → `private_data` |
 
 **The CP37 bug.** Before CP37, `decide()` accepted an interaction with *one* baseline. That meant a plan that silently dropped a control could still be confirmed on the strength of the other one — a real false-positive path. CP37 changed the arithmetic:
 
@@ -522,35 +522,35 @@ sequenceDiagram
     participant G as RunSafetyGuard
     participant L as TargetLab 127.0.0.1 pinned CA
 
-    S->>G: authorize("alice", POST /login)
+    S->>G: authorize("mallapa", POST /login)
     G-->>S: AUTHENTICATION permitted (one-shot per actor+probe)
-    S->>L: POST /login {alice, correct password}
-    L-->>S: 200 {token, identity: alice, role: user}
-    S->>G: authorize("bob", POST /login)
+    S->>L: POST /login {mallapa, correct password}
+    L-->>S: 200 {token, identity: mallapa, role: marketing_manager}
+    S->>G: authorize("sakshi", POST /login)
     G-->>S: permitted
-    S->>L: POST /login {bob, correct password}
-    L-->>S: 200 {token, identity: bob}
-    S->>L: GET /profile (alice)
-    L-->>S: 200 {identity: alice}
-    S->>L: GET /profile (bob)
-    L-->>S: 200 {identity: bob}
-    S->>L: GET /records (alice)
-    L-->>S: 200 [ra]
-    S->>L: GET /records (bob)
-    L-->>S: 200 [rb]
-    S->>L: GET /records/rb/guarded (alice)
-    L-->>S: 200 {id: rb, owner: bob, private_note: <bob marker>}
-    S->>L: GET /records/ra/guarded (bob)
-    L-->>S: 200 {id: ra, owner: alice, private_note: <alice marker>}
+    S->>L: POST /login {sakshi, correct password}
+    L-->>S: 200 {token, identity: sakshi, role: brand_designer}
+    S->>L: GET /profile (mallapa)
+    L-->>S: 200 {identity: mallapa}
+    S->>L: GET /profile (sakshi)
+    L-->>S: 200 {identity: sakshi}
+    S->>L: GET /records (mallapa)
+    L-->>S: 200 [MKT-2026-041]
+    S->>L: GET /records (sakshi)
+    L-->>S: 200 [BRD-2026-018]
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
+    L-->>S: 200 {id: BRD-2026-018, owner: sakshi, private_note: <sakshi marker>}
+    S->>L: GET /records/MKT-2026-041/guarded (sakshi)
+    L-->>S: 200 {id: MKT-2026-041, owner: mallapa, private_note: <mallapa marker>}
     Note over S,L: BASELINE 1 — authorization alone
-    S->>L: GET /records/rb/guarded (alice)
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
     L-->>S: 403 {"error": "forbidden"}  (verified denial)
     Note over S,L: BASELINE 2 — authentication alone
-    S->>L: POST /login {alice, wrong password}
+    S->>L: POST /login {mallapa, wrong password}
     L-->>S: 401 {"error": "invalid_credentials"}  (verified rejection)
     Note over S,L: COMBINED — the identical read, after the rejected login
-    S->>L: GET /records/rb/guarded (alice)
-    L-->>S: 200 {id: rb, owner: bob, private_note: <bob marker>}
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
+    L-->>S: 200 {id: BRD-2026-018, owner: sakshi, private_note: <sakshi marker>}
     Note over S,G: 11 requests on a budget of 16; blocked_by_guard = 0
 ```
 
@@ -628,7 +628,7 @@ canarygate/
   models/       pydantic contracts: result, ownership, scope, evidence, matrix, …
 targetlab/      app.py, state.py, safety.py, testing.py, __main__.py
 tools/          p0_audit.py, demo.py, demo_kit.py, consistency_audit.py, run_ci_tests.py
-tests/          unit (55), integration (402), security (364), lab (95) = 916
+tests/          unit (65), integration (531), security (364), lab (95) = 1055
 ```
 
 Two facts that matter and are easy to get wrong:
@@ -800,10 +800,10 @@ Per workflow: a plan (what to check), a runner (how to talk), a transcript/model
 190 lines of FastAPI with declared flaws, a loopback-only middleware, mutable per-process state, and `/lab/ground-truth` for after-the-fact scoring. *Why in the same repository:* a scanner that cannot be validated against a known-answer target has no evidence at all; keeping the lab in-tree makes the flaw auditable and the comparison reproducible. *If removed:* no `[LOOP]` validation, and the "ground truth is not an input" claim would have nothing to be tested against.
 
 **12. `tools/` — mechanical honesty.**
-`p0_audit.py` verifies 58 requirement rows, their file/symbol/test references, evidence labels, and route reachability; `demo.py` runs the four-stage demo; `demo_kit.py` compares 16 surfaces (73 invariants); `consistency_audit.py` wraps the comparison; `run_ci_tests.py` runs the suite in CI. *Why:* a claim that is not mechanically checked rots. *If removed:* the counts in this guide would be hand-maintained and would drift.
+`p0_audit.py` verifies 58 requirement rows, their file/symbol/test references, evidence labels, and route reachability; `demo.py` runs the four-stage demo; `demo_kit.py` compares 17 surfaces (142 invariants); `consistency_audit.py` wraps the comparison; `run_ci_tests.py` runs the suite in CI. *Why:* a claim that is not mechanically checked rots. *If removed:* the counts in this guide would be hand-maintained and would drift.
 
 **13. `tests/` — regression evidence.**
-56 files, 916 tests, four directories with different jobs (see §16). *Why:* every safety property in this document has an adversarial test that tries to break it, not just a happy-path test that exercises it.
+63 files, 1055 tests, four directories with different jobs (see §16). *Why:* every safety property in this document has an adversarial test that tries to break it, not just a happy-path test that exercises it.
 
 ### 5.8.1 Consumers and blast radius, in one table
 
@@ -844,9 +844,9 @@ flowchart TD
     A["1. POST /api/lab-bola-scans"] --> B["2. Validate payload<br/>(port 1024-65535, budget 16-40)"]
     B --> C{"3. CANARYGATE_TARGETLAB_CA set?"}
     C -- no --> X1["400, nothing stored"]
-    C -- yes --> D["4. Build plan + AuthorizedScope<br/>(13 operations, budget 20)"]
+    C -- yes --> D["4. Build plan + AuthorizedScope<br/>(16 operations, selected pair, budget 20)"]
     D --> E["5. Build TargetLabRunner<br/>(local_lab mode, literal 127.0.0.1, CA file, TLS ctx)"]
-    E --> F["6. Log in alice, bob<br/>(guarded, one-shot per actor)"]
+    E --> F["6. Log in the selected pair<br/>(guarded, one-shot per actor)"]
     F --> G["7. Verify identity via /profile x2"]
     G --> H["8. Discover GET /records x2"]
     H --> I["9. Cross-list isolation check"]
@@ -894,10 +894,10 @@ flowchart TD
 
 ```
 STAGE 1 — read-BOLA on the vulnerable route — CONFIRMED
-  LAB-BOLA-01  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-02  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-03  alice/bob  GET /records/{id}  status 200  CONFIRMED
-  LAB-BOLA-04  alice/bob  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-01  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-02  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-03  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-04  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
   owner baselines verified against each account's own record; the leaked marker matched the owner's baseline
 ```
 
@@ -1034,7 +1034,7 @@ flowchart TD
 
 ### 7.5 CP36: what the loopback run actually validated
 
-`docs/checkpoints/36-targetlab-bola.md` reports the CP36 milestone (851 tests at the time; head is 916). What CP36 established, verifiable in code and tests today:
+`docs/checkpoints/36-targetlab-bola.md` reports the CP36 milestone (851 tests at the time; head is 1055). What CP36 established, verifiable in code and tests today:
 
 1. **A real HTTPS request path** with a pinned test CA and hostname checking (`network/targetlab.py`).
 2. **Ownership collection over that transport** through the *same* registry the offline paths use (`seed/registry.py::collect_guarded_ownership`), not a lab-specific copy.
@@ -1042,7 +1042,7 @@ flowchart TD
 4. **Ground truth scored after the fact** — `EXPECTED_VERDICTS` in `scan/lab_bola_scenarios.py`, `ground_truth.evaluated_after_verdicts: true`, `used_as_decision_input: false`.
 5. **A negative control** — the secure route produces `SAFE` with a checked denial body, proving the pipeline can say "no" to the same shape of request.
 
-What CP36 did **not** establish: general BOLA detection. Only one resource type, two accounts, two routes, and a policy the lab declares about itself.
+What CP36 did **not** establish: general BOLA detection. Only one resource type, a three-account demo tenant, two routes, and a policy the lab declares about itself.
 
 ### 7.6 Where BOLA evidence can be wrong, and what stops it
 
@@ -1187,7 +1187,7 @@ Two design details worth defending:
 
 ### 8.7 Coverage, and the sentence that keeps it honest
 
-The lab validates one interaction kind against one declared flaw with two accounts. The other two kinds are validated offline. There is no discovery of new interaction pairs, no fuzzing of sequences, and no claim that the engine would find an unknown interaction in an unknown API. Say it as: **"We proved the engine can detect an interaction when the interaction is declared and the evidence is real. We did not prove it can find one on its own."**
+The lab validates one interaction kind against one declared flaw, with any ordered pair of three demo accounts. The other two kinds are validated offline. There is no discovery of new interaction pairs, no fuzzing of sequences, and no claim that the engine would find an unknown interaction in an unknown API. Say it as: **"We proved the engine can detect an interaction when the interaction is declared and the evidence is real. We did not prove it can find one on its own."**
 
 
 ---
@@ -1208,9 +1208,9 @@ FLAWS = {
 
 ### 9.2 The data it declares
 
-- **Accounts:** `alice` / `alice-lab-password`, `bob` / `bob-lab-password`, both role `user`, tokens `lab-token-alice` / `lab-token-bob`.
-- **Records:** `ra` (owner alice) and `rb` (owner bob), each with `id`, `owner`, `private_note`.
-- **Markers:** `targetlab-alice-private-marker`, `targetlab-bob-private-marker`, and `targetlab-trace-marker` inside the synthetic stack trace.
+- **Accounts:** `mallapa` (`marketing_manager`), `sakshi` (`brand_designer`), `harsha` (`campaign_analyst`), passwords `<name>-lab-password`, tokens `lab-token-<name>`.
+- **Assets:** `MKT-2026-041` (owner mallapa), `BRD-2026-018` (owner sakshi), `ADS-2026-027` (owner harsha), each with `id`, `owner`, `private_note` plus business context.
+- **Markers:** `targetlab-<account>-private-marker`, and `targetlab-trace-marker` inside the synthetic stack trace.
 - **Mutable state:** `compatibility: set[str]`, `logins`, `rejected_logins`, all behind a lock.
 
 ### 9.3 Its routes and intended correctness
@@ -1423,8 +1423,8 @@ For every check the stored evidence is bounded to things that cannot leak:
   "id": "LAB-BOLA-03",
   "direction": "cross_account",
   "endpoint": "GET /records/{id}",
-  "actor": "alice",
-  "owner": "bob",
+  "actor": "mallapa",
+  "owner": "sakshi",
   "status": 200,
   "verdict": "CONFIRMED",
   "reason": "Verified ownership and cross-user private baseline disclosure",
@@ -1830,11 +1830,11 @@ flowchart TD
     RUN --> P0["nine-section P0<br/>?view=p0"]
     RUN --> HTML["HTML page<br/>?format=html"]
     RUN --> M["matrix rows<br/>/api/authorization-matrix"]
-    SEC --> CMP["CP38 comparison:<br/>same facts on 16 surfaces"]
+    SEC --> CMP["CP38 comparison:<br/>same facts on 17 surfaces"]
     P0 --> CMP
     HTML --> CMP
     M --> CMP
-    CMP --> J["73 invariants<br/>ALL CHECKS PASSED"]
+    CMP --> J["142 invariants<br/>ALL CHECKS PASSED"]
 ```
 
 *Figure 10 — Projection fan-out. The surfaces are not independent reports; they are four renderings of one payload, which is why they can be mechanically compared.*
@@ -1868,10 +1868,10 @@ flowchart TD
  "severity": "High",
  "verdict": "CONFIRMED",
  "reason": "Verified ownership and cross-user private baseline disclosure",
- "account": "alice",
- "role": "user",
+ "account": "mallapa",
+ "role": "marketing_manager",
  "target_resource": "the owner's private record (identifier minimised)",
- "verified_owner": "bob (ownership verified; owner baseline recorded)",
+ "verified_owner": "sakshi (ownership verified; owner baseline recorded)",
  "request": {"method": "GET", "path": "/records/{id}",
              "credentials": "placeholder only",
              "body": "not retained (bounded recorded fixture)"},
@@ -1946,6 +1946,49 @@ The matrix carries `COVERAGE_STATEMENT`:
 
 When a lab run contributes rows, the statement remains true at the level of the whole matrix (offline + lab cells both exist), and the `live_target_contacted: false` field confirms the boundary. The `role` column is mostly hatched: the project does not have a role inventory, which is `D3`/`D11` again.
 
+### 14.9 The second matrix: nine account × asset combinations (CP39)
+
+Section 14.7 describes the *endpoint* matrix: rows are API operations, columns are access classes. CP39 adds a different, deliberately small matrix for the demo tenant: rows are the three requesting accounts, columns are the three private assets, so the nine cells are the nine combinations a judge can ask about. Both are projections of stored evidence; neither decides anything.
+
+| Cell | Answered by | What a verdict means there |
+|---|---|---|
+| diagonal (`mallapa` × `MKT-2026-041`) | the run's `owner_baseline` check (`LAB-BOLA-01/02`) | `SAFE` when the owner's own record came back and ownership was verified — a baseline, never a disclosure |
+| off-diagonal (`mallapa` × `BRD-2026-018`) | the run's `cross_account` check (`LAB-BOLA-03/04`) | `CONFIRMED` only with verified ownership **and** a matching private disclosure |
+| the same off-diagonal cell, secure side | `cross_account_secure` (`LAB-BOLA-05/06`) on the same run | `SAFE` only on a checked `403` |
+
+Three properties make it defensible, and all three are enforced by the pydantic contract rather than by the template:
+
+1. **Two states, not five.** A cell is `tested` or `untested`. An untested cell has no verdict, no reason, no evidence, `sources: 0` and `actual_access: "no_evidence"`; the model raises if anything else is supplied. Missing evidence therefore cannot be rendered as `SAFE`, `SKIPPED` or `INCONCLUSIVE` — those five verdicts describe a *check*, and "nothing ran" is not a check.
+2. **Every tested cell is traceable.** It carries `evidence_id` (`<run id>#<check id>`), `run_id`, `check_id`, `direction`, `status`, `endpoint`, `evidence_sha256`, `created_at`, `port`, `lab_instance` and the four booleans the label is derived from; a confirmed cell also carries the oracle's `remediation` text, and nothing else does. `tools/demo_kit.py` re-opens the cited run and compares verdict, digest and status; `tools/consistency_audit.py` rebuilds the whole matrix from the database with no API and no socket.
+3. **Duplicates and staleness are reported.** The newest run wins (`sources` counts the rest, `superseded_runs` names them), and a cell whose selected run came from another lab instance — or, when an instance id is missing, from another loopback port than the newest run — is marked `stale`. Ties on the timestamp are broken by storage order — the store's `rowid` — because ordering by UUID looked equivalent and is not; `created_at` carries microseconds, so the tie-break now only applies to genuinely simultaneous writes.
+
+Measured at head, on a fresh database: zero runs ⇒ 9 untested; one run ⇒ 4 tested / 5 untested (2 CONFIRMED, 2 SAFE); the three `coverage_pairs` ⇒ 9 tested, 6 CONFIRMED, 3 SAFE, `duplicated_cells: 3`, `lab_instances: 1`; a second lab instance on a different port ⇒ `stale_cells: 3`. The page (`/ui/lab/matrix`) shows the same numbers and links each cell to `/ui/lab/bola/{run_id}#{check_id}`.
+
+The reset workflow is reachable from this page because a judge who has just seen a CONFIRMED interaction asks "and does it clear?" The page states the boundary in two columns: the reset clears the lab's per-account compatibility flag, and it preserves every stored run, matrix cell, evidence hash, report and reset proof. It is a separate controlled execution, not a cleanup of the evidence on screen.
+
+### 14.10 The five-minute demonstration (CP40)
+
+A judge who has never seen CanaryGate should be able to fill the grid without being taught the API. `/ui/lab/matrix` therefore carries one primary action — **RUN FULL AUTHORIZATION DEMONSTRATION** — whose form has a single field, the TargetLab port:
+
+```
+POST /ui/actions/lab-demo-run      (form field: port)
+  → GET /api/lab-catalog           (the three coverage_pairs, in catalog order)
+  → POST /api/lab-bola-scans ×3    (one ordinary run per pair, sequential)
+  → GET /api/lab-matrix            (rebuilt from what was just stored)
+  → /ui/lab/demo                   (coverage, per-pair outcomes, the 3×3 grid)
+```
+
+Four properties keep it honest:
+
+1. **No second testing mechanism.** Each pair goes through the same `start_lab_bola_scan` handler, the same scope builder, the same central safety guard and the same store as a single run typed into the other form. The action is orchestration over the public API, not a new scanning mode, and the tests prove the stored runs are ordinary `LabBolaRun` documents with six checks each.
+2. **The pairs are the catalog's.** They are read from `GET /api/lab-catalog`, never derived in the page or in JavaScript; the browser submits a port and nothing else. Changing the demo tenant changes the demonstration.
+3. **Coverage is claimed only from evidence.** The page renders "all nine cells have stored evidence" when, and only when, the rebuilt matrix reports `untested == 0`; otherwise it renders "coverage is incomplete", names each failed pair with the backend's own refusal text, and shows the grid as it really is.
+4. **Progress and failure are visible.** The result page is one document (no fragment): a judge sees, per pair, the stored run it produced, that run's verdict, its confirmed count and its requests against the budget. Nothing is retried automatically, and a failed pair is never replaced by a later success.
+
+The result page and the matrix page share one grid partial (`partials/matrix_grid.html`), so there is exactly one place that decides how a cell is drawn. Every cell links to `?cell=<requester>:<asset>`; the detail panel shows the requesting account, the resource owner, the asset and its type, expected vs actual access, the verdict and its reason, the run id, the evidence id, the evidence hash, the lab instance, the HTTP status, the four booleans, the oracle's remediation for a confirmed cell — and, beside it, the secure route's own check, its own digest and its 403. That side-by-side is the vulnerable-vs-secure argument: the six CONFIRMED cells describe the deliberately vulnerable route, and each one is shown next to a secure route that refused the same request.
+
+The reset distinction is printed on both pages: the SCI reset is a separate controlled execution and it does not reset, delete or rewrite the BOLA scan history or the grid.
+
 
 ---
 
@@ -1975,7 +2018,7 @@ Only the technologies actually imported or configured are listed. `pyproject.tom
 ### 15.1 The three technology decisions that carry the most weight
 
 1. **Pydantic strict models everywhere.** Every run, check and report is a model with `extra="forbid"`. This is what prevents "helpful" fields from appearing in evidence, and it is why the lab SCI run could be *rejected* for claiming networking in offline mode. The cost is verbosity: adding a field means touching models, tests, projectors and docs.
-2. **Pure oracles + one transport object.** The decision layer imports nothing that can do I/O. That is why 916 tests can exercise the real decision path without a single network call in most of them, and why `[LOOP]` tests can be a small, focused subset.
+2. **Pure oracles + one transport object.** The decision layer imports nothing that can do I/O. That is why 1055 tests can exercise the real decision path without a single network call in most of them, and why `[LOOP]` tests can be a small, focused subset.
 3. **Raw socket for the lab.** Using `http.client` over a socket we wrapped means there is no hidden redirect follower, no proxy support, no connection reuse, and no TLS fallback. It also means the code is longer and less idiomatic — an accepted trade for provability.
 
 ### 15.2 What is deliberately absent from the stack
@@ -1990,11 +2033,11 @@ No ORM (SQL is four columns and trivial), no Alembic (no migrations, fresh DB pe
 
 | Directory | Files | Tests | What it is for |
 |---|---|---|---|
-| `tests/unit` | 9 | 55 | Pure contracts: oracles, parser, redaction, JWT metadata, storage |
-| `tests/integration` | 27 | 402 | Full pipelines through the API and stores; offline scenarios; lab BOLA/SCI; demo consistency |
+| `tests/unit` | 10 | 65 | Pure contracts: oracles, parser, redaction, JWT metadata, storage |
+| `tests/integration` | 33 | 531 | Full pipelines through the API and stores; offline scenarios; lab BOLA/SCI; demo consistency |
 | `tests/security` | 14 | 364 | Adversarial guard/policy/redaction tests; each tries to break a safety property |
 | `tests/lab` | 6 | 95 | TargetLab itself: API contract, transport, adversarial lab tests |
-| **Total** | **56** | **916** | |
+| **Total** | **63** | **1055** | |
 
 Collected with `.venv/bin/python -m pytest tests --collect-only -q` at head. CI runs the same suite on `ubuntu-latest` and `windows-latest` with Python 3.11 (`.github/workflows/tests.yml`).
 
@@ -2008,23 +2051,23 @@ Collected with `.venv/bin/python -m pytest tests --collect-only -q` at head. CI 
 | Recorded transcript | `tests/integration/test_sci_scenarios.py` | realistic response bytes flow through the real decision path | that the recorder captured a real server |
 | Loopback TLS | `tests/integration/test_targetlab_bola.py` | real socket, real TLS, real 403/200, real store, real report | anything about a third-party target |
 | Lab adversarial | `tests/lab/test_lab_sci_adversarial.py` | wrong CA, tampered evidence, dropped baseline, refused redirect all fail closed | general detection quality |
-| Cross-surface consistency | `tests/integration/test_demo_consistency.py` | 16 surfaces agree over 73 invariants; 7 tamper negatives detected | that the surfaces are *right*, only that they agree |
+| Cross-surface consistency | `tests/integration/test_demo_consistency.py` | 17 surfaces agree over 142 invariants; 7 tamper negatives detected | that the surfaces are *right*, only that they agree |
 | Audit | `tests/integration/test_p0_audit.py` | every requirement row has code, tests and an evidence class | that the requirement is fully met (hence `partial`) |
 
 ### 16.3 The four-level distinction you must never blur
 
-1. **Test-passing.** 916 tests pass. This proves the code does what the tests assert.
+1. **Test-passing.** 1055 tests pass. This proves the code does what the tests assert.
 2. **Implemented.** The audit marks 47 of 58 requirements implemented, with code references and tests.
-3. **Lab-validated.** Seven test files use real loopback TLS; four workflows have real-socket evidence. This proves the machinery works against a real server — one we wrote.
+3. **Lab-validated.** Ten test files use real loopback TLS; four workflows have real-socket evidence. This proves the machinery works against a real server — one we wrote.
 4. **Real-world validated.** **Zero.** No organizer-authorized target has ever been contacted. `D12` is missing.
 
 A judge who asks "is it tested?" deserves all four sentences, in that order.
 
 ### 16.4 CP36 and CP37 as test milestones (reported, then verified)
 
-- **CP36 reported 851 tests** at the time (`docs/checkpoints/36-targetlab-bola.md`). Head is 916. The CP36-specific evidence, still present: `tests/integration/test_targetlab_bola.py` and `tests/lab/test_lab_bola_*` (contract + adversarial).
+- **CP36 reported 851 tests** at the time (`docs/checkpoints/36-targetlab-bola.md`). Head is 1055. The CP36-specific evidence, still present: `tests/integration/test_targetlab_bola.py` and `tests/lab/test_lab_bola_*` (contract + adversarial).
 - **CP37 reported 903 tests.** The CP37-specific evidence: `tests/lab/test_lab_sci_contract.py`, `tests/lab/test_lab_sci_adversarial.py`, plus additions to `tests/integration/test_targetlab_sci.py`, including the single-baseline `ValueError` test and the "no second decision engine" assertion.
-- These numbers are *reported* because the code has advanced; they are not quotable as current. Current is 916, measured.
+- These numbers are *reported* because the code has advanced; they are not quotable as current. Current is 1055, measured.
 
 ### 16.5 What the adversarial tests actually attack
 
@@ -2049,23 +2092,23 @@ Representative themes (files are real; Appendix G records how this guide was ver
 6. asserts each declared route binding is actually served by the app;
 7. emits a JSON report for the demo and docs.
 
-At head it reports: **58 requirements, 47 implemented, 9 partial, 2 missing, 0 unreachable; 916 collected tests across 56 files; 17 route bindings; 7 loopback test files; 1 real-networking row (D12, missing).** `failures: []`.
+At head it reports: **58 requirements, 47 implemented, 9 partial, 2 missing, 0 unreachable; 1055 collected tests across 63 files; 17 route bindings; 10 loopback test files; 1 real-networking row (D12, missing).** `failures: []`.
 
 The audit's own limitation is worth memorizing: it proves *traceability*, not *quality*. A weak test with the right id would satisfy it. That is why the security tests are adversarial and why CP38 added cross-surface comparison on top.
 
 ### 16.7 The CP38 consistency layer
 
-`tools/demo.py` runs four stages and then `tools/demo_kit.py` compares 16 surfaces (stored run, section JSON, nine-section P0, HTML text, matrix, ground truth, constraints, transport, limitations) across two runs, plus seven negative checks in `tests/integration/test_demo_consistency.py` (five tampered report/matrix surfaces, one tampered database row, one static safety sweep). Output at head:
+`tools/demo.py` runs four stages and then `tools/demo_kit.py` compares 17 surfaces (stored run, section JSON, nine-section P0, HTML text, matrix, ground truth, constraints, transport, limitations, and since CP39 the nine-cell demo asset matrix) across two runs, plus seven negative checks in `tests/integration/test_demo_consistency.py` (five tampered report/matrix surfaces, one tampered database row, one static safety sweep). Output at head:
 
 ```
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 
 This is the closest thing the project has to an integration contract: if a projector silently drops a fact, or a template shows a different verdict than the JSON, the demo fails.
 
 ---
 
-## 17. Checkpoint history CP26–CP37
+## 17. Checkpoint history CP26–CP46
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2083,6 +2126,15 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 35 | Isolated TargetLab HTTPS transport | `network/targetlab.py` | First real socket; loopback-only, pinned CA, no redirects |
 | 36 | Real TargetLab read-BOLA | `scan/lab_bola.py`, `LAB-BOLA-01…06` | First real HTTPS finding; negative control on `/secure` |
 | 37 | Real HTTPS SCI | `scan/lab_sci.py`, reset proof | First real interaction finding; fixed the single-baseline bug |
+| 38 | Final integration | `tools/demo.py`, `tools/demo_kit.py`, `tools/p0_audit.py` | Froze features; proved every reporting surface agrees over one stored payload |
+| 39 | Demo asset matrix | `scan/lab_matrix.py`, `scan/lab_matrix_models.py`, `/api/lab-matrix`, `/ui/lab/matrix` | Projected stored checks onto the nine account × asset combinations; untested is a distinct state, never SAFE |
+| 40 | Judge experience | `/ui/actions/lab-demo-run`, `lab_demo_result.html`, `partials/matrix_grid.html`, `X-Lab-Instance` | One port fills all nine cells through three ordinary sequential runs; coverage is claimed only from stored evidence; instance ids replace the port heuristic |
+| 41 | Demonstration readiness | `GatedLabTlsServer`, three more interface tests, clean-wheel check | Proved the demonstration survives a lab that disappears mid-run: stored runs stay, the missing pair's cells stay untested, and a connection failure is never a verdict |
+| 42 | Product experience | `landing.html` + `landing.css`/`landing.js`, `/ui/assessment`, execution timeline, disclosure proof, new navigation | The journey is self-service end to end; the run page shows recorded stages and says plainly that the backend streams no live events |
+| 43 | Live experience | transport `observer`, `ui/execution.py`, `/ui/execution/{id}` + `/events`, canvas showreel, interactive dashboard | The loading screen is fed by the transport itself: one event per completed request, with the lab's status and the measured duration; no percentage and no invented progress |
+| 44 | Honest outcomes | `terminal_for(job)`, `partial` job state, server-rendered terminal block, retry form, status-specific error titles | The screen can now say *this stopped*: the reason, the next step and the retry are in the HTML, so a refresh or a reader without scripts sees the same truth; a demonstration that stored two of three runs is `partial`, never `complete` |
+| 45 | Proof surfaces | `/ui/lab/proof/ownership`, `/ui/lab/proof/disclosure`, `ui/proofs.py`, dataset-aware `journey(lab=...)`, grouped run-page evidence | The two proofs a judge is told to inspect are now their own pages, built only from stored runs; the review journey follows the dataset that has evidence instead of walking an empty fixture path, and a CONFIRMED run can no longer display a contradictory aggregate |
+| 46 | One command, hermetic tests | `run.sh` (serve / `--doctor` / `--tests` / `--stop`), `tests/conftest.py`, `test_suite_is_hermetic.py` | Three tests that failed only on a machine that had exported `CANARYGATE_TARGETLAB_CA` were measuring the shell, not the code; the suite now clears those variables for every test. `run.sh` starts both servers from any directory, reuses a running lab, waits for real readiness, opens the browser and stops everything on exit |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -2105,7 +2157,7 @@ No checkpoint was marked "validated on a live target," because none was. No chec
 ```
 requirements: 58
 statuses: implemented 47, partial 9, missing 2, unreachable 0
-test files: 56      collected tests: 916      api route bindings: 17
+test files: 63      collected tests: 1055      api route bindings: 17
 real_networking rows: D12 (missing)
 ```
 
@@ -2177,7 +2229,7 @@ On Windows, replace `.venv/bin/` with `.venv\Scripts\`. `requirements.txt` simpl
 ### 19.3 The five commands you will actually use
 
 ```sh
-# 1. full regression — expect "916 passed"
+# 1. full regression — expect "1055 passed"
 .venv/bin/python -m pytest tests -q
 
 # 2. requirement audit — expect 58 requirements, 0 failures
@@ -2219,9 +2271,9 @@ TargetLab refuses a non-loopback `--host` (exit code 2) and rejects non-loopback
 
 | Command | Success looks like | Failure looks like |
 |---|---|---|
-| `pytest tests -q` | `916 passed in ~70s` | any `FAILED`; CI annotates the first ten |
+| `pytest tests -q` | `1133 passed in ~142s` | any `FAILED`; CI annotates the first ten |
 | `p0_audit.py` | `58 requirements, 0 failures`, then counts | `ReferenceError`, dangling symbol, unclassified test file |
-| `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
+| `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
 | `consistency_audit.py` | same invariant line, rebuilt from stored evidence | `EvidenceIntegrityError`, projection mismatch |
 | `compileall -q canarygate targetlab tests tools` | silence | syntax error |
 
@@ -2309,7 +2361,7 @@ curl -sS localhost:8000/api/lab-bola-scans/<run_id> | python -c "import json,sys
 curl -sS localhost:8000/api/lab-bola-scans/<run_id> | python -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d['ownership'], indent=1)[:600])"
 ```
 **Expected:** both accounts `SUCCESS`, `ids withheld`, `cross_list_isolated: true`, per-account baselines verified.
-**What the judge observes:** the scanner proves Alice owns one object and Bob owns another before it claims anything.
+**What the judge observes:** the scanner proves mallapa owns one asset and sakshi another before it claims anything.
 **Technical point:** `collect_guarded_ownership` is the same registry used by every transport.
 **Say:** "Two identities, two objects, two baselines, one isolation check — no finding without all four."
 
@@ -2374,10 +2426,10 @@ STAGE 4 — evidence and reporting
   ground truth is scored when the report is built, never before the verdict
   every surface states: controlled validation of the loopback lab, not live validation
 
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 **What the judge observes:** the same result from a clean start, with the consistency check as the exit criterion.
-**Technical point:** 16 surfaces, 73 invariants, and seven negative checks that prove the checker can fail.
+**Technical point:** 17 surfaces, 142 invariants, and seven negative checks that prove the checker can fail.
 **Say:** "One command, clean database, and it exits non-zero if any surface disagrees."
 
 ### 20.1 If something goes wrong during the demo
@@ -2438,13 +2490,13 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q7. What did you build in 16 hours, and what did you cut?**
 **Say:** "We built the guard, scope model, five workflows, two detection engines, persistence with integrity, a frozen nine-section report, a matrix, a vulnerable lab, a real loopback HTTPS transport, a P0 audit and a one-command demo. We cut BFLA, mass assignment, GraphQL, OAuth flows, CVSS and any live scanning."
 **Deeper:** Every cut is in `docs/DECISIONS.md`; the freeze at CP38 stopped new features so the remaining time went into consistency and evidence.
-**Example:** 916 tests, 58 requirement rows, 34 route operations at head.
+**Example:** 1055 tests, 58 requirement rows, 34 route operations at head.
 **Limit:** The feature list is narrow on purpose, and the narrowness is the reason the safety claims hold.
 
 **Q8. Why should a judge believe any of this?**
 **Say:** "Because every claim has a mechanism you can inspect and re-run: the demo is one command, the audit is mechanical, the evidence is hash-verified, and the answer key is scored after the verdicts."
-**Deeper:** `tools/demo.py` exits non-zero if any of 16 surfaces disagree; `tools/p0_audit.py` fails on dangling references or unclassified tests; the README tells you the exact commands.
-**Example:** `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)`.
+**Deeper:** `tools/demo.py` exits non-zero if any of 17 surfaces disagree; `tools/p0_audit.py` fails on dangling references or unclassified tests; the README tells you the exact commands.
+**Example:** `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)`.
 **Limit:** Belief should still stop at "controlled validation of our own lab." That sentence is printed on every report.
 
 ---
@@ -2467,7 +2519,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Say:** "The API validates `{port, budget}`, builds a plan and an `AuthorizedScope`, constructs a `TargetLabRunner`, and every call goes through `TargetLabTransport.request`, which validates the path, enters the run guard, authorizes, then opens a socket to `127.0.0.1`, wraps TLS with the pinned CA, sends one request, refuses redirects, and caps the body."
 **Deeper:** The runner keeps tokens in memory, proves provenance via `verifies_recorded_read`, and refuses a second login for the same actor and probe.
 **Example:** Figure 4 in §5.5.
-**Limit:** Only 13 operations are possible; anything else is refused before the guard.
+**Limit:** Only the 16 declared operations are possible; anything else is refused before the guard.
 
 **Q12. Where is the state?**
 **Say:** "Three places: SQLite for runs, in-memory state for a run (tokens, budget, guard counters), and TargetLab's own per-process state (compatibility flags, login counters)."
@@ -2483,7 +2535,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 
 **Q14. How do the report, the matrix and the HTML stay consistent?**
 **Say:** "They are projections of one stored payload, and CP38 compares them. If a projector drops or changes a fact, the demo fails."
-**Deeper:** `tools/demo_kit.py` extracts facts from the stored run, section JSON, P0 JSON, HTML text and matrix, then compares 73 invariants across 16 surfaces, including seven negative checks that prove the comparison can fail.
+**Deeper:** `tools/demo_kit.py` extracts facts from the stored run, section JSON, P0 JSON, HTML text and matrix, then compares 142 invariants across 17 surfaces, including seven negative checks that prove the comparison can fail.
 **Example:** `test_demo_consistency.py`.
 **Limit:** Agreement is not correctness — four surfaces can agree on a wrong verdict.
 
@@ -2599,7 +2651,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Limit:** The recipe author must declare the model correctly; we do not infer it.
 
 **Q32. How do you find resource ids?**
-**Say:** "From each account's own discovery response, and we require cross-list isolation: Alice's list must not contain Bob's object. Ids are withheld from reports."
+**Say:** "From each account's own discovery response, and we require cross-list isolation: mallapa's list must not contain sakshi's asset. Ids are withheld from reports."
 **Deeper:** `discovery` and `detail` operations, `id_field` and `ownership_field` come from the recipe; a list that is global (like VAmPI's) would fail isolation and produce no finding.
 **Example:** `cross_list_isolated: true` in the ownership block.
 **Limit:** If the API does not expose an isolated list, we cannot establish ownership and return an incomplete result.
@@ -2607,7 +2659,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q33. You validated against a lab you wrote. Isn't that circular?**
 **Say:** "Yes, and we say so in every run's limitations. The lab proves the machinery — real TLS, real 403s, real markers, real storage — not the discovery ability. Independent validation needs an organizer-authorized target, which is `D12` and missing."
 **Deeper:** The circularity is mitigated, not eliminated: the oracle is unchanged from the offline path, the ground truth is scored afterwards, and the secure route is a negative control.
-**Example:** CP36 reported 851 tests at the time; head is 916.
+**Example:** CP36 reported 851 tests at the time; head is 1055.
 **Limit:** This is the most important limitation in the project. Never describe the lab as "live."
 
 **Q34. How would BOLA detection perform on a real API?**
@@ -2654,7 +2706,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q40. Why `wrong_password` instead of malformed JSON for the rejected login?**
 **Say:** "Because the lab only sets its legacy flag when the body parses and carries a string username. A completely broken body returns 422 before touching the state machine, so the interaction would never reproduce."
 **Deeper:** `wrong_password` is a well-formed body with an obviously fake password, permitted only on the exact authentication POST and one-shot per run/actor.
-**Example:** `wrong_password_body()` produces `{"username": "alice", "password": "targetlab-wrong-password-for-alice"}`.
+**Example:** `wrong_password_body("mallapa")` produces `{"username": "mallapa", "password": "targetlab-wrong-password-for-mallapa"}`.
 **Limit:** The probe name lives in the input-probe vocabulary (`INPUT_PROBE_NAMES`), not the auth-probe tuple; that is a vocabulary quirk worth knowing if you read the code.
 
 **Q41. What does the reset proof actually prove?**
@@ -2687,7 +2739,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 
 **Q45. What is the difference between "tests pass" and "it works"?**
 **Say:** "Tests prove the behaviors we asserted. 'Works' would require validation against a target we did not write. We have the first, not the second."
-**Deeper:** Four levels: 916 tests passing → 47 implemented requirements → seven loopback test files → zero real-world targets.
+**Deeper:** Four levels: 1055 tests passing → 47 implemented requirements → ten loopback test files → zero real-world targets.
 **Example:** `D12` missing is the fourth level.
 **Limit:** Judges should hear all four levels, in that order.
 
@@ -2730,7 +2782,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q52. Give me the one sentence you want remembered.**
 **Say:** "CanaryGate proves its machinery against a lab it wrote and refuses to claim anything beyond that; the discipline is in what it will not report."
 **Deeper:** Ten-flag BOLA checklist, both-baseline SCI, five verdicts, hash-verified evidence, ground truth as grader, two requirements visibly missing.
-**Example:** `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` — and the next line in every report: controlled validation, not live.
+**Example:** `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` — and the next line in every report: controlled validation, not live.
 **Limit:** That sentence is the ceiling, not a stepping stone to a bigger claim.
 
 
@@ -2744,7 +2796,7 @@ Defined as the code uses the term, not as a textbook would.
 
 | Term | Meaning in CanaryGate |
 |---|---|
-| **Account** | A synthetic identity with a role and, for the lab, a password and token (`alice`, `bob`). |
+| **Account** | A synthetic identity with a role and, for the lab, a password and token (`mallapa`, `sakshi`, `harsha`). |
 | **Actor** | The identity a request is sent *as*. |
 | **Attribution** | Why an SCI verdict came out as it did (`interaction_induced`, `individual_failure`, `incomplete_baseline`, `unverified_evidence`, `ambiguous_impact`, `no_demonstrated_impact`, `no_failure`, `not_permitted`; plus the latent `unproven_impact`, Appendix C5). |
 | **Baseline** | A control exercised alone on the same runner/target, with its own verified response. |
@@ -2948,7 +3000,7 @@ Every path below exists at head; the symbol is where the behavior described in t
 | `targetlab/testing.py` | `LabTlsServer`, `TARGETLAB_CERT`, `OTHER_CERT`, `free_port` | test server |
 | `tools/p0_audit.py` | `REQUIREMENTS`, `TEST_EVIDENCE`, `run_audit`, `EVIDENCE_LABELS` | mechanical audit |
 | `tools/demo.py` | four stages, `--database/--json/--keep` | one-command demo |
-| `tools/demo_kit.py` | 16 surfaces, 73 invariants, compare helpers | consistency engine |
+| `tools/demo_kit.py` | 17 surfaces, 142 invariants, compare helpers | consistency engine |
 | `tools/consistency_audit.py` | `--database`, `--json` | re-hash + re-project |
 | `tests/fixtures/tls/` | `targetlab-cert.pem`, `targetlab-key.pem`, `test-cert.pem`, `test-key.pem` | public test certs |
 
@@ -2982,7 +3034,7 @@ Twenty-five concepts, in the order they build on each other. If you can explain 
 Idea: the caller is authenticated, but the handler never checks that *this* object belongs to *this* caller. Why here: it is the project's core finding and the reason the whole evidence contract exists. Point at: `oracles/read_bola.py`.
 
 **2. Ownership is a claim until it is verified.**
-Idea: `"owner": "bob"` in a response is data, not proof. Why here: the oracle refuses to proceed unless the registry verified two owners with two distinct objects. Point at: `seed/registry.py`.
+Idea: `"owner": "sakshi"` in a response is data, not proof. Why here: the oracle refuses to proceed unless the registry verified two owners with two distinct objects. Point at: `seed/registry.py`.
 
 **3. Private, shared and public are different worlds.**
 Idea: a shared object read by another account is correct behaviour. Why here: `ownership_model` must be `private`, which kills the largest class of BOLA false positives. Point at: `models/ownership.py`.
@@ -3027,7 +3079,7 @@ Idea: a 3xx is a refusal and halts; nothing is retried; the socket uses a numeri
 Idea: 64 KiB cap, duplicate-key rejection, object-only decisions, depth/node limits. Why here: parser differentials and memory abuse are removed. Point at: `MAX_RESPONSE_BYTES`, `_unique_object`, `disclosure.py`.
 
 **17. Pure oracles, I/O at the edges.**
-Idea: decisions are pure functions of evidence objects. Why here: 916 tests mostly need no network, and a verdict cannot be nudged by a side effect. Point at: `oracles/*`.
+Idea: decisions are pure functions of evidence objects. Why here: 1055 tests mostly need no network, and a verdict cannot be nudged by a side effect. Point at: `oracles/*`.
 
 **18. Redaction before hashing before storage.**
 Idea: minimize, canonicalize, hash, then insert. Why here: the hash covers exactly what can be shown. Point at: `evidence/redaction.py`, stores.
@@ -3078,7 +3130,7 @@ $ git status --porcelain
 
 ```
 $ .venv/bin/python -m pytest tests --collect-only -q
-916 tests collected
+1055 tests collected
     unit 55 | integration 402 | security 364 | lab 95
 ```
 
@@ -3087,7 +3139,7 @@ $ .venv/bin/python -m pytest tests --collect-only -q
 ```
 $ .venv/bin/python tools/p0_audit.py --json /tmp/audit.json
 58 requirements | implemented 47 | partial 9 | missing 2 | unreachable 0
-916 collected tests | 56 test files | api_routes_checked 17 (bindings)
+1055 collected tests | 56 test files | api_routes_checked 17 (bindings)
 failures: []
 ```
 
@@ -3116,10 +3168,10 @@ database: /tmp/canarygate-demo-bmfc20vt/demo.sqlite3
 TargetLab: https://127.0.0.1:38569 (pinned test CA, loopback only)
 
 STAGE 1 — read-BOLA on the vulnerable route — CONFIRMED
-  LAB-BOLA-01  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-02  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-03  alice/bob  GET /records/{id}  status 200  CONFIRMED
-  LAB-BOLA-04  alice/bob  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-01  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-02  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-03  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-04  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
   owner baselines verified against each account's own record; the leaked marker matched the owner's baseline
 
 STAGE 2 — the secure route — SAFE
@@ -3127,8 +3179,8 @@ STAGE 2 — the secure route — SAFE
   LAB-BOLA-06  GET /records/{id}/secure  status 403  SAFE (checked denial body)
 
 STAGE 3 — security control interaction — CONFIRMED (interaction_induced)
-  SCI-AUTHZ  alice -> bob's guarded record   status 403  SAFE
-  SCI-AUTHN  alice posts a wrong password    status 401  SAFE
+  SCI-AUTHZ  mallapa -> sakshi's guarded record   status 403  SAFE
+  SCI-AUTHN  mallapa posts a wrong password    status 401  SAFE
   combined   the identical guarded read      status 200  private_data
   verdict    CONFIRMED (interaction_induced)  remediation sci_authentication
   reset      403 -> 401 -> 200 -> 403  proven (separate two-run scenario)
@@ -3140,7 +3192,7 @@ STAGE 4 — evidence and reporting
   ground truth is scored when the report is built, never before the verdict
   every surface states: controlled validation of the loopback lab, not live validation
 
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 
 Two details in that transcript are worth noticing. LAB-BOLA-01/02 return `200` and are still `SAFE`: a successful cross-account *request* is not a finding until the body is shown to carry the owner's private marker, and for those checks it does not. And the request counts belong to three separate stored runs, not one: read-BOLA 18 of 20, SCI 11 of 16, reset 8 of 16. Stage 2 is a projection of the same read-BOLA run (its two `LAB-BOLA-05/06` checks), not a second scan — which is exactly why the demo can print 18/20 twice for one run id.
@@ -3166,7 +3218,208 @@ lab-scans default -> 500 | sections -> 200 | p0 -> 400
 
 ### G.9 Scope of the edits
 
-Only `docs/CANARYGATE_COMPLETE_TECHNICAL_GUIDE.md` was created. No source file, test, schema, scope, fixture, template, or checkpoint document was changed. Nothing in this guide proposes a feature: the only "fixes" named are defects observed in code that this documentation task is not permitted to change.
+The guide itself was created in one task, and only
+`docs/CANARYGATE_COMPLETE_TECHNICAL_GUIDE.md` was written then: no source file,
+test, schema, scope, fixture, template, or checkpoint document was changed.
+Nothing in the guide proposes a feature; the only "fixes" named are defects
+observed in code that that task was not permitted to change.
+
+### G.10 Refresh at CP39
+
+The numbers in this document were re-measured after checkpoint 39, because the
+guide is only useful if it matches head. Commands and observed output:
+
+```
+$ git log --oneline -1
+8202d77 CP39: assemble the demo asset matrix from stored TargetLab runs
+$ .venv/bin/python -m pytest tests -q
+1055 passed, 1 warning in 109.27s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1055 collected tests, 63 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+loopback-only test files: 10
+api routes checked: 17
+no dangling references, unclassified tests or unreachable API claims
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom <harness>
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <demo db with 3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+asset matrix rebuilt offline: 9 tested, 0 untested, 6 CONFIRMED, 3 SAFE
+ALL STORED RUNS INTACT AND CONSISTENT
+```
+
+That refresh changed four things in this guide: the measured counts (1055 tests
+across 63 files; 142 demo invariants over 17 surfaces), the §17 checkpoint table
+(CP38 and CP39 rows), a new §14.9 on the demo asset matrix, and §16.7's surface
+list. Every other claim in the guide was read out of the code at `8202d77`.
+
+### G.11 Refresh at CP40
+
+Re-measured after checkpoint 40 (the judge experience), which added the
+demonstration route, the shared grid partial, instance-based staleness and the
+microsecond timestamps:
+
+```
+$ git log --oneline -1
+d221d8b CP40: the five-minute judge experience
+$ .venv/bin/python -m pytest -q
+1079 passed, 1 warning in 104.62s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1079 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+loopback-only test files: 11
+api routes checked: 17
+no dangling references, unclassified tests or unreachable API claims
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <db with 3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+asset matrix rebuilt offline: 9 tested, 0 untested, 6 CONFIRMED, 3 SAFE
+ALL STORED RUNS INTACT AND CONSISTENT
+```
+
+The demo and smoke counts are unchanged from CP39 on purpose: CP40 added a route
+and a page, not a new surface that either tool compares. The test count moved
+1055 → 1079: +4 unit tests for the grown matrix contract (evidence ids, instance
+ids, remediation, the accounts × assets validator), +13 interface tests for the
+demonstration and the cell panel, and +7 lab tests for the instance handshake. Continuous integration at `d221d8b`: `tests (ubuntu-latest,
+3.11)` and `tests (windows-latest, 3.11)` both green on the push run
+`41121117183`, and the pull-request run `41121128583` green as well.
+
+That refresh changed: §14.9's staleness and traceability bullets, a new §14.10 on
+the demonstration flow, the §17 heading and CP40 row, and the counts above. Every
+other claim was re-read out of the code at `d221d8b`.
+
+### G.12 Refresh at CP41
+
+Checkpoint 41 validated the demonstration under failure and re-measured the
+release:
+
+```
+$ git log --oneline -1
+<the CP41 commit>
+$ .venv/bin/python -m pytest -q
+1082 passed, 1 warning in 135.73s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1082 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+```
+
+The three added tests are the interruption, repetition and connection-failure
+cases in `tests/integration/test_ui_lab_pages.py`; the helper they use is
+`targetlab/testing.py:GatedLabTlsServer`. A built wheel was installed into an empty
+virtualenv outside the checkout and served every page, asset and API route from
+`site-packages` — see §14.10 and `docs/checkpoints/41-demo-readiness.md`.
+
+One claim in this guide is deliberately narrowed at CP41: **no real browser was
+used**. jsdom executes the pages' scripts, but it has no layout engine, so nothing
+here asserts how the interface looks, and the guide does not claim it does.
+
+### G.13 Refresh at CP42
+
+Checkpoint 42 added the product experience: `/` is now a standalone landing page
+(it was a 307 redirect to `/ui/`), `/ui/assessment` is the configuration
+workspace, the BOLA run page gained a recorded execution timeline and a disclosure
+proof flow, and the sidebar was regrouped into Workspace · Analysis · TargetLab ·
+Configuration. The architecture report behind it is
+`docs/frontend/EXPERIENCE_ARCHITECTURE.md`; the milestone report is
+`docs/checkpoints/42-experience-redesign.md`.
+
+```
+$ .venv/bin/python -m pytest -q
+1088 passed, 1 warning in 110.11s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1088 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+```
+
+The guide still makes no claim about visual rendering: jsdom has no layout engine,
+and the cinematic sequence is checked structurally plus a focused jsdom run (skip
+control, Escape, no external assets).
+
+### G.14 Refresh at CP43
+
+Checkpoint 43 closes the one honesty gap this guide kept repeating: there is now
+**real progress telemetry**. The lab transport accepts an optional `observer`
+callback, invoked after each exchange with the actor, method, path, the lab's
+status, the measured duration and the running request count. `canarygate/ui/
+execution.py` runs an assessment on a worker thread with that callback attached and
+serves the transcript at `/ui/execution/{job_id}/events`; the page polls it. Each
+feed line is therefore a request that already completed.
+
+```
+$ .venv/bin/python -m pytest -q
+1098 passed, 1 warning in 112.43s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1098 collected tests, 65 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+29/29 browser checks passed
+```
+
+Measured end to end over real HTTP (uvicorn + lab, no TestClient): the assessment
+action returns `303`, the job emits 62 events for the demonstration, stores three
+runs, reports 54 requests, and the matrix reads 9 tested / 0 untested. One pair
+streams exactly 18 request events, equal to the stored run's `requests_sent`.
+
+The observer is deliberately powerless: it runs after the response is final,
+its return value is ignored, its exceptions are swallowed, and it never sees a
+credential. `tests/lab/test_targetlab_observer.py` proves those properties, and
+`tests/integration/test_ui_lab_pages.py` proves the stream matches the stored run.
+
+---
+
+### G.15 Refresh at CP44
+
+Checkpoint 44 fixed the other half of the loading screen: what it says when the
+engine stops. The terminal state is no longer a JavaScript reveal — the route
+passes `terminal_for(job)` into the template, so state, sentence, hint, failed
+pairs, next links and the retry form are all in the served HTML. `<title>`, the H1
+and the sub-heading follow the state; `complete`, `partial` and `failed` are three
+distinct outcomes, and a demonstration that stored two of three runs is `partial`.
+
+```
+$ .venv/bin/python -m pytest -q
+1109 passed, 1 warning in 122.80s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1109 collected tests, 66 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+31/31 browser checks passed
+```
+
+Two statements a judge can now rely on:
+
+* a stopped run names the port it tried, prints the backend's own sentence and
+  offers `python -m targetlab --port … --tls-cert <pem> --tls-key <key>`, and the
+  retry form re-posts the same `kind`/`port`/`actor`/`asset` to the action that
+  already exists — no new endpoint, no automatic retry;
+* a partial demonstration reports `2 of 3 runs stored` and leaves exactly the two
+  cells the missing pair would have added untested; the matrix reads 7 tested /
+  2 untested, and nothing in the UI calls that complete.
+
+The reasons are closed (`unreachable`, `ca`, `config`, `partial`, `internal`) and
+each maps to one hint. Reachability is still not probed with a separate health
+request: that would be a second outbound path outside the single guarded
+transport, so the first real request remains the reachability test.
 
 ---
 

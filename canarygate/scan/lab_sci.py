@@ -392,8 +392,13 @@ def run_lab_sci_reset(plan, runner_a, runner_b):
     Two guarded runs are required: a single run may authenticate an account only
     once, and the reset *is* a second successful login.
     """
+    from canarygate.scan.lab_scenarios import ASSET_IDS
+
     actor, owner = plan.accounts
-    path = plan.resource.detail.path.replace("{id}", "rb" if owner == "bob" else "ra")
+    # The declared asset of the owner, resolved from the same constant the scenarios
+    # use. The owner baseline below still has to return that id; if it does not, the
+    # marker match fails and the proof is not "proven" rather than being guessed.
+    path = plan.resource.detail.path.replace("{id}", ASSET_IDS[owner])
     checks = []
 
     def record(check_id, title, endpoint, expected, response, verified, observed, pass_rule):
@@ -415,6 +420,8 @@ def run_lab_sci_reset(plan, runner_a, runner_b):
                 and isinstance(owner_body, dict):
             owner_marker = extract(owner_body, plan.resource.private_field)
             owner_id = extract(owner_body, "id")
+            if owner_id != ASSET_IDS[owner]:
+                owner_marker, owner_id = MISSING, None
 
         before = runner_a.get(actor, path)
         record("RESET-01", "the guarded read is denied before any rejected login",

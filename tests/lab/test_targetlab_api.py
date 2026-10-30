@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from targetlab.app import LOOPBACK_HOSTS, create_lab_app
-from targetlab.state import LAB_ACCOUNTS, PRIVATE_MARKERS, TRACE_MARKER
+from targetlab.state import ASSET_BY_OWNER, LAB_ACCOUNTS, PRIVATE_MARKERS, TRACE_MARKER
 
 BASE_URL = "http://127.0.0.1"
 
@@ -39,25 +39,35 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_the_lab_documents_two_independent_accounts_with_private_markers():
-    assert set(LAB_ACCOUNTS) == {"alice", "bob"}
+def test_the_lab_documents_three_independent_accounts_with_private_markers():
+    """The demo tenant is three colleagues, one private asset each.
+
+    The accounts differ in which asset they own, not in the kind of grant they hold:
+    every role is descriptive metadata and no route authorizes on it.
+    """
+    assert set(LAB_ACCOUNTS) == {"mallapa", "sakshi", "harsha"}
     for name, account in LAB_ACCOUNTS.items():
-        assert account["password"] and account["token"] and account["role"] == "user"
-    assert set(PRIVATE_MARKERS) == {"alice", "bob"}
-    assert PRIVATE_MARKERS["alice"] != PRIVATE_MARKERS["bob"]
+        assert account["password"] and account["token"] and account["title"]
+        assert account["role"] not in {"admin", "user"}, "roles are descriptive, not capabilities"
+    assert len({account["token"] for account in LAB_ACCOUNTS.values()}) == 3
+    assert set(PRIVATE_MARKERS) == {"mallapa", "sakshi", "harsha"}
+    assert len(set(PRIVATE_MARKERS.values())) == 3
+    assert set(ASSET_BY_OWNER) == {"mallapa", "sakshi", "harsha"}
+    assert len(set(ASSET_BY_OWNER.values())) == 3
 
 
 def test_login_returns_identity_and_rejects_bad_credentials(lab):
-    token = login(lab, "alice")
+    token = login(lab, "mallapa")
     profile = lab.get("/profile", headers=auth(token)).json()
-    assert profile["identity"] == "alice" and profile["role"] == "user"
-    bad = lab.post("/login", json={"username": "alice", "password": "wrong"})
+    assert profile["identity"] == "mallapa"
+    assert profile["role"] == LAB_ACCOUNTS["mallapa"]["role"] == "marketing_manager"
+    bad = lab.post("/login", json={"username": "mallapa", "password": "wrong"})
     assert bad.status_code == 401
-    assert "alice-lab-password" not in bad.text
+    assert "mallapa-lab-password" not in bad.text
 
 
 def test_anonymous_access_is_rejected_everywhere_except_health_and_errors(lab):
-    for path in ("/profile", "/records/ra", "/records/rb/secure", "/records/rb/guarded",
+    for path in ("/profile", "/records/MKT-2026-041", "/records/BRD-2026-018/secure", "/records/BRD-2026-018/guarded",
                  "/admin/users"):
         response = lab.get(path)
         assert response.status_code == 401, path
@@ -66,87 +76,87 @@ def test_anonymous_access_is_rejected_everywhere_except_health_and_errors(lab):
 
 
 def test_admin_endpoint_denies_both_accounts(lab):
-    for name in ("alice", "bob"):
+    for name in ("mallapa", "sakshi"):
         assert lab.get("/admin/users", headers=auth(login(lab, name))).status_code == 403
 
 
 def test_vulnerable_endpoint_leaks_another_accounts_private_marker(lab):
     """Deliberate BOLA: the unprotected record route returns any owner's record."""
-    alice = login(lab, "alice")
-    stolen = lab.get("/records/rb", headers=auth(alice))
+    mallapa = login(lab, "mallapa")
+    stolen = lab.get("/records/BRD-2026-018", headers=auth(mallapa))
     assert stolen.status_code == 200
-    assert stolen.json()["owner"] == "bob"
-    assert PRIVATE_MARKERS["bob"] in stolen.json()["private_note"]
+    assert stolen.json()["owner"] == "sakshi"
+    assert PRIVATE_MARKERS["sakshi"] in stolen.json()["private_note"]
 
 
 def test_secure_endpoint_enforces_ownership_in_both_directions(lab):
-    alice, bob = login(lab, "alice"), login(lab, "bob")
-    denied = lab.get("/records/rb/secure", headers=auth(alice))
+    mallapa, sakshi = login(lab, "mallapa"), login(lab, "sakshi")
+    denied = lab.get("/records/BRD-2026-018/secure", headers=auth(mallapa))
     assert denied.status_code == 403 and denied.json() == {"error": "forbidden"}
-    assert PRIVATE_MARKERS["bob"] not in denied.text
-    owned = lab.get("/records/rb/secure", headers=auth(bob))
-    assert owned.status_code == 200 and PRIVATE_MARKERS["bob"] in owned.json()["private_note"]
-    # Alice reading her own resource is allowed and leaks nothing of Bob's.
-    own = lab.get("/records/ra/secure", headers=auth(alice))
-    assert own.status_code == 200 and PRIVATE_MARKERS["bob"] not in own.text
+    assert PRIVATE_MARKERS["sakshi"] not in denied.text
+    owned = lab.get("/records/BRD-2026-018/secure", headers=auth(sakshi))
+    assert owned.status_code == 200 and PRIVATE_MARKERS["sakshi"] in owned.json()["private_note"]
+    # Mallapa reading her own resource is allowed and leaks nothing of Sakshi's.
+    own = lab.get("/records/MKT-2026-041/secure", headers=auth(mallapa))
+    assert own.status_code == 200 and PRIVATE_MARKERS["sakshi"] not in own.text
 
 
 def test_the_full_interaction_sequence_denies_rejects_then_leaks(lab):
     """The exact sequence CanaryGate must reproduce against a live server.
 
-    1. Alice requests Bob's private resource: denied.
-    2. Alice submits malformed input: rejected with a bounded error.
+    1. Mallapa requests Sakshi's private resource: denied.
+    2. Mallapa submits malformed input: rejected with a bounded error.
     3. (Scanner records both baselines - out of scope for the lab.)
     4. The authorized combined condition executes.
-    5. The API returns Bob's private marker.
+    5. The API returns Sakshi's private marker.
     """
-    alice = login(lab, "alice")
-    before = lab.get("/records/rb/guarded", headers=auth(alice))
+    mallapa = login(lab, "mallapa")
+    before = lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa))
     assert before.status_code == 403
-    assert PRIVATE_MARKERS["bob"] not in before.text
+    assert PRIVATE_MARKERS["sakshi"] not in before.text
 
-    rejected = lab.post("/login", json={"username": "alice", "password": "x", "admin": True})
+    rejected = lab.post("/login", json={"username": "mallapa", "password": "x", "admin": True})
     assert rejected.status_code == 422
     assert rejected.json() == {"error": "invalid_request"}
     assert "admin" not in rejected.text
 
-    after = lab.get("/records/rb/guarded", headers=auth(alice))
+    after = lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa))
     assert after.status_code == 200
-    assert after.json()["owner"] == "bob"
-    assert PRIVATE_MARKERS["bob"] in after.json()["private_note"]
+    assert after.json()["owner"] == "sakshi"
+    assert PRIVATE_MARKERS["sakshi"] in after.json()["private_note"]
 
 
 def test_the_interaction_flaw_is_scoped_to_the_failing_account(lab):
-    alice, bob = login(lab, "alice"), login(lab, "bob")
-    lab.post("/login", json={"username": "bob", "password": "x", "admin": True})
-    # Bob's rejected login unlocks Bob's own guarded read, never Alice's.
-    assert lab.get("/records/rb/guarded", headers=auth(alice)).status_code == 403
-    assert lab.get("/records/ra/guarded", headers=auth(bob)).status_code == 200
+    mallapa, sakshi = login(lab, "mallapa"), login(lab, "sakshi")
+    lab.post("/login", json={"username": "sakshi", "password": "x", "admin": True})
+    # Sakshi's rejected login unlocks Sakshi's own guarded read, never Mallapa's.
+    assert lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa)).status_code == 403
+    assert lab.get("/records/MKT-2026-041/guarded", headers=auth(sakshi)).status_code == 200
 
 
 def test_a_successful_login_clears_the_compatibility_state(lab):
-    alice = login(lab, "alice")
-    lab.post("/login", json={"username": "alice", "password": "x", "admin": True})
-    assert lab.get("/records/rb/guarded", headers=auth(alice)).status_code == 200
-    login(lab, "alice")
-    assert lab.get("/records/rb/guarded", headers=auth(alice)).status_code == 403
+    mallapa = login(lab, "mallapa")
+    lab.post("/login", json={"username": "mallapa", "password": "x", "admin": True})
+    assert lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa)).status_code == 200
+    login(lab, "mallapa")
+    assert lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa)).status_code == 403
 
 
 def test_the_interaction_flaw_never_spreads_to_the_secure_endpoint(lab):
-    alice = login(lab, "alice")
-    lab.post("/login", json={"username": "alice", "password": "x", "admin": True})
-    assert lab.get("/records/rb/secure", headers=auth(alice)).status_code == 403
-    assert lab.get("/records/rb", headers=auth(alice)).status_code == 200
+    mallapa = login(lab, "mallapa")
+    lab.post("/login", json={"username": "mallapa", "password": "x", "admin": True})
+    assert lab.get("/records/BRD-2026-018/secure", headers=auth(mallapa)).status_code == 403
+    assert lab.get("/records/BRD-2026-018", headers=auth(mallapa)).status_code == 200
 
 
 def test_harmless_response_variation_has_no_security_impact(lab):
     """A response may change shape without granting anything: case H of the SCI list."""
-    alice = login(lab, "alice")
+    mallapa = login(lab, "mallapa")
     assert lab.get("/diagnostics/banner").json() == {"banner": "stable"}
-    lab.post("/login", json={"username": "alice", "password": "x", "admin": True})
+    lab.post("/login", json={"username": "mallapa", "password": "x", "admin": True})
     assert lab.get("/diagnostics/banner").json() == {"banner": "compatibility"}
-    assert lab.get("/records/rb/secure", headers=auth(alice)).status_code == 403
-    assert lab.get("/records/rb/guarded", headers=auth(alice)).json()["owner"] == "bob"
+    assert lab.get("/records/BRD-2026-018/secure", headers=auth(mallapa)).status_code == 403
+    assert lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa)).json()["owner"] == "sakshi"
 
 
 def test_verbose_error_endpoint_leaks_a_synthetic_trace(lab):
@@ -191,9 +201,9 @@ def test_the_lab_makes_no_outbound_connection(lab, monkeypatch):
     with monkeypatch.context() as guard:
         guard.setattr(socket.socket, "connect", forbidden)
         guard.setattr(socket, "getaddrinfo", forbidden)
-        alice = login(lab, "alice")
-        assert lab.get("/records/ra", headers=auth(alice)).status_code == 200
-        assert lab.get("/records/rb/guarded", headers=auth(alice)).status_code == 403
+        mallapa = login(lab, "mallapa")
+        assert lab.get("/records/MKT-2026-041", headers=auth(mallapa)).status_code == 200
+        assert lab.get("/records/BRD-2026-018/guarded", headers=auth(mallapa)).status_code == 403
 
 
 def test_the_scanner_never_imports_the_lab_package():
@@ -220,7 +230,7 @@ def test_the_lab_has_no_outbound_http_client():
 
 def test_reports_and_errors_never_echo_the_credentials(lab):
     documents = []
-    for name in ("alice", "bob"):
+    for name in ("mallapa", "sakshi"):
         token = login(lab, name)
         documents.append(lab.get("/profile", headers=auth(token)).text)
         documents.append(lab.post("/login", json={"username": name, "password": "nope"}).text)
@@ -230,19 +240,17 @@ def test_reports_and_errors_never_echo_the_credentials(lab):
     assert json.dumps({"ok": True})  # keep the json import meaningful
 
 
-def test_the_collection_route_is_owner_isolated_in_both_directions(lab):
-    """Discovery must be correct: each account sees only its own records."""
-    alice, bob = login(lab, "alice"), login(lab, "bob")
-    alice_list = lab.get("/records", headers=auth(alice)).json()
-    bob_list = lab.get("/records", headers=auth(bob)).json()
-    assert [item["id"] for item in alice_list] == ["ra"]
-    assert [item["id"] for item in bob_list] == ["rb"]
-    assert {item["owner"] for item in alice_list} == {"alice"}
-    assert {item["owner"] for item in bob_list} == {"bob"}
-    # Cross-account isolation: neither list mentions the other account's record.
-    assert "rb" not in {item["id"] for item in alice_list}
-    assert "ra" not in {item["id"] for item in bob_list}
-    assert PRIVATE_MARKERS["bob"] not in str(alice_list)
+def test_the_collection_route_is_owner_isolated_for_every_account(lab):
+    """Discovery must be correct: each account sees exactly one record, its own."""
+    for account in LAB_ACCOUNTS:
+        listed = lab.get("/records", headers=auth(login(lab, account))).json()
+        assert [item["id"] for item in listed] == [ASSET_BY_OWNER[account]]
+        assert {item["owner"] for item in listed} == {account}
+        # Cross-account isolation: no list mentions another account's record or marker.
+        others = set(ASSET_BY_OWNER.values()) - {ASSET_BY_OWNER[account]}
+        assert others.isdisjoint({item["id"] for item in listed})
+        for other in set(PRIVATE_MARKERS) - {account}:
+            assert PRIVATE_MARKERS[other] not in str(listed)
 
 
 def test_the_collection_route_requires_a_credential(lab):

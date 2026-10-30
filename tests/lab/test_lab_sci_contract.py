@@ -9,11 +9,12 @@ import pytest
 
 from canarygate.oracles.authn_probes import credential_rejection_decision
 from canarygate.oracles.interaction import INTERACTION_CONTROLS, decide
-from canarygate.scan.lab_sci_scenarios import (ACCOUNT_ORDER, DENIAL_BODY, EXPECTED,
-                                               GUARDED_RESOURCE, KIND, LOGIN_PATH,
-                                               MIN_REQUEST_BUDGET, POLICY_SOURCE,
-                                               REJECTED_LOGIN_PROBE, REJECTION_BODY,
-                                               build_sci_plan, wrong_password_body)
+from canarygate.scan.lab_scenarios import DEMO_PAIR
+from canarygate.scan.lab_sci_scenarios import (DENIAL_BODY, EXPECTED, GUARDED_RESOURCE,
+                                               KIND, LOGIN_PATH, MIN_REQUEST_BUDGET,
+                                               POLICY_SOURCE, REJECTED_LOGIN_PROBE,
+                                               REJECTION_BODY, build_sci_plan,
+                                               wrong_password_body)
 
 
 def test_the_plan_declares_the_frozen_interaction_kind():
@@ -21,7 +22,7 @@ def test_the_plan_declares_the_frozen_interaction_kind():
     assert plan.scenario_id == "targetlab-sci"
     assert plan.kind == KIND == "AUTHN+AUTHZ"
     assert tuple(INTERACTION_CONTROLS[KIND]) == ("Authentication", "Authorization")
-    assert plan.accounts == ACCOUNT_ORDER == ("alice", "bob")
+    assert plan.accounts == DEMO_PAIR == ("mallapa", "sakshi")
     assert plan.controls == ("Authentication", "Authorization")
 
 
@@ -62,10 +63,10 @@ def test_the_probe_is_only_permitted_where_the_scope_declares_it():
 
 
 def test_the_probe_body_is_well_formed_json_with_a_wrong_password_and_no_real_secret():
-    body = wrong_password_body("alice")
-    assert json.loads(body) == {"username": "alice",
-                                "password": "targetlab-wrong-password-for-alice"}
-    assert "alice-lab-password" not in body and "bob-lab-password" not in body
+    body = wrong_password_body("mallapa")
+    assert json.loads(body) == {"username": "mallapa",
+                                "password": "targetlab-wrong-password-for-mallapa"}
+    assert "mallapa-lab-password" not in body and "sakshi-lab-password" not in body
     assert len(body.encode("utf-8")) <= 4096
     # A broken-JSON body would never reach the lab's account state machine.
     assert json.loads(body) is not None

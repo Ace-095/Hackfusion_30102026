@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, tri, kv,
+                              evidence_proof, checklist_grid, constraints_panel,
+                              fixture_report_links, empty, icon, method_chip %}
+{% block title %}Finding {{ run.id|short_id }}{% endblock %}
+
+{% block content %}
+{% call page_head("Finding detail",
+                 run.endpoint,
+                 run.reason,
+                 trail=[("Dashboard", "/ui/"), ("Findings", "/ui/findings"),
+                        (run.id|short_id, None)]) %}
+  <div class="toolbar">
+    {{ verdict_badge(run.verdict, "badge-lg") }}
+    <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/replay">{{ icon("play") }} Replay run</a>
+    <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/evidence">{{ icon("eye") }} Evidence explorer</a>
+    <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
+  </div>
+{% endcall %}
+
+{{ journey("findings", run.id) }}
+
+{% if run.verdict == "SKIPPED" %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div><b>SKIPPED means not tested.</b> This run produced no security conclusion; treat it
+    as missing coverage rather than as a pass.</div>
+</div>
+{% elif run.verdict == "INCONCLUSIVE" %}
+<div class="alert alert-info">
+  {{ icon("info") }}
+  <div><b>INCONCLUSIVE.</b> The backend could not decide from the evidence it captured.
+    The checklist below shows which conditions were not established.</div>
+</div>
+{% elif run.verdict == "CONFIRMED" %}
+<div class="alert alert-danger">
+  {{ icon("shield") }}
+  <div><b>CONFIRMED cross-account disclosure.</b>
+    <span class="mono">{{ run.actor }}</span> received data that the backend verified
+    belongs to <span class="mono">{{ run.verified_owner }}</span>, while the expected
+    access was <span class="pill">{{ run.expected_access }}</span>.</div>
+</div>
+{% endif %}
+
+<div class="grid grid-2-1">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("findings") }} Run summary</h2>
+      {{ status_badge(run.status) }}
+    </div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Endpoint", run.endpoint, True) }}
+        {{ kv("Actor", run.actor ~ " (" ~ run.account_role ~ ")", True) }}
+        {{ kv("Target resource", run.target_resource, True) }}
+        {{ kv("Verified owner", run.verified_owner, True) }}
+        {{ kv("Expected access", run.expected_access, True) }}
+        {{ kv("Expected-access source", run.expected_source) }}
+        {{ kv("Verdict reason", run.reason) }}
+        {{ kv("Recorded", run.created_at, True) }}
+        {{ kv("Run id", run.id, True) }}
+      </dl>
+      {% if run.remediation %}
+      <h3 class="section-sub mt-1">Recommended remediation</h3>
+      <p>{{ run.remediation }}</p>
+      {% endif %}
+    </div>
+    <div class="card-foot">
+      Mode <span class="mono">{{ run.mode }}</span> ·
+      scope hash <span class="mono">{{ run.scope_hash|short_id(12) }}</span> ·
+      spec hash <span class="mono">{{ run.spec_hash|short_id(12) }}</span>
+    </div>
+  </section>
+
+  <div class="stack gap-1">
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("setup") }} Setup gates at run time</h2></div>
+      <div class="card-body">
+        <table class="table table-compact">
+          <tbody>
+            <tr><th scope="row">Authentication</th><td>{{ status_badge(run.setup.authentication) }}</td></tr>
+            <tr><th scope="row">Resources</th><td>{{ status_badge(run.setup.resources) }}</td></tr>
+            <tr><th scope="row">Ownership verification</th><td>{{ status_badge(run.setup.ownership_verification) }}</td></tr>
+            <tr><th scope="row">BOLA coverage</th><td>{{ status_badge(run.setup.bola_coverage) }}</td></tr>
+          </tbody>
+        </table>
+        <p class="note">Strategy <span class="mono">{{ run.setup.strategy }}</span>
+          {% if run.setup.reason %}· {{ run.setup.reason }}{% endif %}</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>
+      <div class="card-body">
+        {% if run.bola_checklist %}
+          {{ checklist_grid(run.bola_checklist) }}
+          <p class="note">A CONFIRMED verdict requires the ownership and disclosure keys.
+            “not recorded” is not a pass.</p>
+        {% else %}
+          {{ empty("Checklist not recorded for this run",
+                   "This run predates checklist recording. The UI does not reconstruct it.") }}
+        {% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<h2 class="section-title">Two-part evidence</h2>
+<p class="section-sub">A CONFIRMED read-BOLA finding needs both parts: proof of ownership,
+  then proof that the other account received private data. One part alone is not a finding.</p>
+<div class="grid grid-2">
+  {{ evidence_proof(1, "Ownership evidence", "Establishes that the resource genuinely
+     belongs to the other account.", run.evidence.ownership, "proof-ownership") }}
+  {{ evidence_proof(2, "Disclosure evidence", "Establishes that the acting account
+     received that account's private data.", run.evidence.disclosure, "proof-disclosure") }}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("search") }} Security checks ({{ run.checks|length }})</h2>
+    <span class="hint">
+      {% for verdict, count in check_counts.items() %}{{ verdict }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}
+    </span>
+  </div>
+  {% if run.checks %}
+  <div class="table-scroll">
+    <table class="table table-wide" id="checks-table">
+      <thead>
+        <tr>
+          <th scope="col">Check</th><th scope="col">Category</th><th scope="col">Verdict</th>
+          <th scope="col">Reason</th><th scope="col">Evidence</th><th scope="col">Remediation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for check in run.checks %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ check.id }}</th>
+          <td class="small">{{ check.category }}</td>
+          <td>{{ verdict_badge(check.verdict) }}</td>
+          <td class="small">{{ check.reason }}</td>
+          <td>
+            {% if check.evidence %}
+            <details class="disclosure">
+              <summary>HTTP {{ check.evidence.status_code }} · {{ check.evidence.method }} {{ check.evidence.path }}</summary>
+              <div class="disclosure-body">
+                <dl class="kv">
+                  {{ kv("Actor", check.evidence.actor ~ " (" ~ check.evidence.role ~ ")", True) }}
+                  {{ kv("Recorded", check.evidence.timestamp, True) }}
+                  {{ kv("Canary matched", tri(check.evidence.private_canary_matched)) }}
+                </dl>
+                <div class="proof-hash my-0">
+                  <span>SHA-256</span><code>{{ check.evidence.sha256 }}</code>
+                  <button type="button" class="copy-btn" data-copy="{{ check.evidence.sha256 }}">copy</button>
+                </div>
+                <pre class="json">{{ check.evidence.request|pretty_json }}</pre>
+                <pre class="json">{{ check.evidence.response|pretty_json }}</pre>
+              </div>
+            </details>
+            {% else %}
+              <span class="dim small">none — not performed</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ check.remediation if check.remediation else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="card-body">{{ empty("No checks were run") }}</div>
+  {% endif %}
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("lock") }} Constraint counters</h2>
+    <span class="mono xs dim">{{ run.constraints.scope }}</span>
+  </div>
+  <div class="card-body">{{ constraints_panel(run.constraints) }}</div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("inventory") }} Inventory captured with this run</h2></div>
+    {% if run.inventory %}
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th><th scope="col">Source</th></tr></thead>
+        <tbody>
+          {% for endpoint in run.inventory %}
+          <tr>
+            <td>{{ method_chip(endpoint.method) }}</td>
+            <td class="mono">{{ endpoint.path }}</td>
+            <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+            <td class="mono small">{{ endpoint.expected_source }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="card-body">{{ empty("No inventory snapshot stored with this run") }}</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("reports") }} Reports</h2></div>
+    <div class="card-body">
+      <p class="note">The report view is rendered from the backend's own sections for this
+        stored run, so it cannot diverge from this page.</p>
+      {{ fixture_report_links(run.id) }}
+    </div>
+  </section>
+</div>
+{% endblock %}

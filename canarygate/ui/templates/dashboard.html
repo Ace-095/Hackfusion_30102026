@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, stat, icon, verdict_badge, status_badge, kv, empty,
+                              verdict_legend, journey %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+{{ page_head("CanaryGate", "Security overview",
+             "Everything below is read from the local stores. Every tile opens the evidence
+              behind it — nothing on this page is decorative.") }}
+{{ journey("dashboard", lab=lab) }}
+
+{# The offline quick scan keeps its HTMX path: one button, the run appears in the
+   panel below without a page reload. It is fixture evidence, labelled as such. #}
+<section class="quickbar" aria-label="Quick offline scan">
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">{{ icon("play") }} Run fixture scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+    <span class="hint">offline synthetic dataset · no network</span>
+  </form>
+  <a class="btn" href="/ui/assessment">{{ icon("shield") }} Run a TargetLab assessment</a>
+</section>
+<section id="scan-panel" aria-live="polite"></section>
+
+{% if setup is none %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div><b>No fixture scan has been recorded yet.</b>
+    Authentication, resource discovery and ownership verification are all unverified until
+    the first run. Nothing on this page is a finding.</div>
+</div>
+{% endif %}
+
+{% if not run_count and not lab_run_count %}
+<p class="verdict-none" data-empty-verdict><span class="badge badge-muted">No verdict yet</span>
+  <span class="note">No verdicts yet — nothing stored</span>
+  Nothing has been scanned on this database. Start with the full demonstration to fill the
+  matrix with stored checks.</p>
+{% endif %}
+{% set safe_total = all_verdicts.CONFIRMED + all_verdicts.SUSPECTED + all_verdicts.SAFE
+                    + all_verdicts.INCONCLUSIVE + all_verdicts.SKIPPED %}
+
+{# ---------------------------------------------------------------- 1. status #}
+<section class="grid grid-4" aria-label="Assessment status">
+  <a class="kpi kpi-link" href="/ui/assessment">
+    <span class="kpi-label">Start an assessment</span>
+    <span class="kpi-value">{{ icon("play") }} New run</span>
+    <span class="kpi-foot">four steps · one button</span>
+  </a>
+  <a class="kpi kpi-link" href="/ui/endpoints">
+    <span class="kpi-label">Endpoints in inventory</span>
+    <span class="kpi-value">{{ endpoints|length }}</span>
+    <span class="kpi-foot">declared · nothing tested yet by itself</span>
+  </a>
+  <a class="kpi kpi-link" href="/ui/lab/matrix">
+    <span class="kpi-label">Authorization coverage</span>
+    <span class="kpi-value">{{ matrix.summary.tested }}<span class="kpi-of">/9</span></span>
+    <span class="kpi-foot">{{ matrix.summary.untested }} untested · untested is not SAFE</span>
+  </a>
+  <a class="kpi kpi-link {% if all_verdicts.CONFIRMED %}kpi-danger{% endif %}" href="/ui/findings">
+    <span class="kpi-label">Confirmed findings</span>
+    <span class="kpi-value">{{ all_verdicts.CONFIRMED }}</span>
+    <span class="kpi-foot">across every stored run · open the explorer</span>
+  </a>
+</section>
+
+{# ------------------------------------------------------------- 2. the matrix #}
+<section class="card" aria-labelledby="matrix-title">
+  <div class="card-head">
+    <h2 id="matrix-title">{{ icon("matrix") }} Authorization matrix</h2>
+    <a class="hint" href="/ui/lab/matrix">open the full matrix →</a>
+  </div>
+  {% include "partials/matrix_grid.html" %}
+  <div class="card-foot spread">
+    {{ verdict_legend() }}
+    <span class="hint">click any cell for the stored run, check and evidence hash</span>
+  </div>
+</section>
+
+{# --------------------------------------------------- 3. analytics + proofs #}
+<div class="grid grid-2-1">
+  <section class="card" aria-labelledby="verdicts-title">
+    <div class="card-head">
+      <h2 id="verdicts-title">{{ icon("findings") }} Verdict distribution</h2>
+      <span class="hint">{{ safe_total }} stored verdict(s) across every family</span>
+    </div>
+    <div class="card-body">
+      {% if safe_total %}
+      <ul class="bars">
+        {% for row in verdict_rows %}
+        <li>
+          <a class="bar-row" href="{{ row.href }}">
+            <span class="bar-name">{{ verdict_badge(row.verdict) }}</span>
+            <span class="bar-track"><i class="bar-fill bar-{{ row.verdict|lower }}"
+              style="width: {{ (row.count / safe_total * 100)|round(1) }}%"></i></span>
+            <span class="bar-count mono">{{ row.count }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="note mt-1">Counts are run-level verdicts from stored runs. A run-level
+        <span class="mono">CONFIRMED</span> means at least one of its checks was confirmed;
+        the per-check detail lives on each run page.</p>
+      {% else %}
+      {{ empty("No fixture scan has been recorded yet",
+               "Run the full demonstration to fill the matrix and produce real verdicts, "
+               "or start with an offline suite from the test suites page.",
+               "/ui/assessment", "Start an assessment") }}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="evidence-title">
+    <div class="card-head"><h2 id="evidence-title">{{ icon("database") }} Evidence accounting</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Stored runs", run_count + lab_run_count) }}
+        {{ kv("TargetLab checks", lab_checks) }}
+        {{ kv("Checks with an evidence hash", lab_evidence) }}
+        {{ kv("Offline runs", run_count) }}
+        {{ kv("Lab runs", lab_run_count) }}
+      </dl>
+      <p class="note mt-1">A record is counted only when a stored check carries an evidence
+        SHA-256. Nothing here is an estimate.</p>
+    </div>
+  </section>
+</div>
+
+{# --------------------------------------------------------- 4. ownership map #}
+<section class="card" aria-labelledby="ownership-title">
+  <div class="card-head">
+    <h2 id="ownership-title">{{ icon("account") }} Ownership proof</h2>
+    <span class="hint mono">source: GET /api/lab-catalog · baselines from stored runs</span>
+  </div>
+  <div class="card-body">
+    <ul class="ownership">
+      {% for account in catalog.accounts %}
+      {% set cell = (matrix.cells|selectattr("requester", "equalto", account.account)
+                     |selectattr("asset_id", "equalto", account.asset_id)|first) %}
+      <li>
+        <a class="own-node" href="/ui/lab/matrix?cell={{ account.account }}:{{ account.asset_id }}#cell-detail">
+          <span class="avatar" aria-hidden="true">{{ account.account[:1]|upper }}</span>
+          <span class="own-name">{{ account.account|capitalize }}<em>{{ account.title }}</em></span>
+        </a>
+        <span class="own-link" aria-hidden="true"></span>
+        <a class="own-asset" href="/ui/lab/matrix?cell={{ account.account }}:{{ account.asset_id }}#cell-detail">
+          <span class="mono">{{ account.asset_id }}</span>
+          <em>{{ account.asset_label }}</em>
+          {% if cell and cell.state == "tested" %}
+          <span class="badge badge-ok">baseline verified</span>
+          {% else %}
+          <span class="badge badge-muted">unverified</span>
+          {% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="note mt-1">An asset is "verified" only when a stored owner-baseline check returned
+      that account's own record. Clicking either side opens the evidence.</p>
+  </div>
+</section>
+
+{# ------------------------------------------------------ 5. disclosure proof #}
+<section class="card" aria-labelledby="disclosure-title">
+  <div class="card-head">
+    <h2 id="disclosure-title">{{ icon("eye") }} Request-to-disclosure proof</h2>
+    {% if latest_bola %}
+    <a class="hint" href="/ui/lab/bola/{{ latest_bola.id }}">open the stored run →</a>
+    {% endif %}
+  </div>
+  {% if bola_proof %}
+  <div class="card-body stack">
+    {% for item in bola_proof %}
+    <div class="proof-strip">
+      <div class="proof-head">
+        <span class="mono">{{ item.requester }} → {{ item.owner }}'s record</span>
+        {{ verdict_badge(item.check.verdict) }}
+      </div>
+      <ol class="flow">
+        {% for step in item.steps %}
+        <li><span class="flow-label">{{ step.label }}</span>
+          <span class="flow-value">
+            {% if step.value is sameas true %}<span class="tri tri-yes">yes</span>
+            {% elif step.value is sameas false %}<span class="tri tri-no">no</span>
+            {% elif step.value is number %}<span class="mono">{{ step.value }}</span>
+            {% else %}<span class="tri tri-none">not recorded</span>{% endif %}
+          </span>
+          <a class="flow-link mono xs" href="/ui/lab/bola/{{ latest_bola.id }}#{{ step.anchor }}">{{ step.anchor }}</a>
+        </li>
+        {% endfor %}
+        {% if item.secure %}
+        <li class="flow-secure"><span class="flow-label">Same request · secure route</span>
+          <span class="flow-value mono">HTTP {{ item.secure.status }} · {{ item.secure.verdict }}</span>
+          <a class="flow-link mono xs" href="/ui/lab/bola/{{ latest_bola.id }}#{{ item.secure.id }}">{{ item.secure.id }}</a>
+        </li>
+        {% endif %}
+      </ol>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("No cross-account evidence stored yet",
+             "The proof chain appears once a read-BOLA run is stored.",
+             "/ui/assessment", "Run an assessment") }}
+  </div>
+  {% endif %}
+</section>
+
+{# ----------------------------------------------------------- 6. the timeline #}
+<div class="grid grid-2-1">
+  <section class="card" aria-labelledby="timeline-title">
+    <div class="card-head">
+      <h2 id="timeline-title">{{ icon("clock") }} Execution timeline</h2>
+      {% if latest_bola %}<a class="hint" href="/ui/lab/bola/{{ latest_bola.id }}">run detail →</a>{% endif %}
+    </div>
+    <div class="card-body">
+      {% if latest_bola %}
+      <ol class="timeline">
+        {% for stage in bola_stages %}
+        <li class="{% if stage.checks and (stage.checks|selectattr('verdict', 'equalto', 'CONFIRMED')|list) %}is-warn{% elif stage.checks %}is-ok{% endif %}">
+          <p class="t-title">{{ stage.title }}</p>
+          <p class="t-meta">
+            {% if stage.checks %}
+            {% for check in stage.checks %}<a href="/ui/lab/bola/{{ latest_bola.id }}#{{ check.id }}">{{ check.id }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+            · {{ stage.checks[0].status if stage.checks[0].status is not none else "no response" }}
+            {% elif stage.note %}{{ stage.note }}{% else %}not recorded{% endif %}
+          </p>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="note mt-1">Stages come from the stored checks, not from a live feed. The
+        loading screen shows real request events while a run is executing.</p>
+      {% else %}
+      {{ empty("No TargetLab run yet", "Run an assessment to produce real TargetLab evidence.",
+               "/ui/assessment", "Run an assessment") }}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="reports-title">
+    <div class="card-head">
+      <h2 id="reports-title">{{ icon("reports") }} Reports</h2>
+      <a class="hint" href="/ui/reports">all reports →</a>
+    </div>
+    <div class="card-body">
+      <ul class="link-list">
+        <li><a href="/ui/reports">Every stored report<span>section and nine-section projections</span></a></li>
+        <li><a href="/ui/scans">Offline run history<span>{{ run_count }} run(s)</span></a></li>
+        <li><a href="/ui/lab">TargetLab runs<span>{{ lab_run_count }} run(s)</span></a></li>
+        <li><a href="/ui/matrix">Offline endpoint matrix<span>stored fixture evidence</span></a></li>
+        <li><a href="/ui/setup">Readiness and gaps<span>what the build does not do</span></a></li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+{# ------------------------------------------------------------- 7. history #}
+<section class="card" aria-labelledby="history-title">
+  <div class="card-head">
+    <h2 id="history-title">{{ icon("scans") }} Recent activity</h2>
+    <a class="hint" href="/ui/scans">scan history →</a>
+  </div>
+  {% if runs or lab_run_count %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Dataset</th><th scope="col">Run</th><th scope="col">Verdict</th>
+        <th scope="col">Recorded</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {% for family in ["bola", "sci"] %}
+        {% for lab_run in lab_history[family][:3] %}
+        <tr>
+          <td><span class="chip chip-post">TargetLab · {{ family|upper }}</span></td>
+          <th scope="row" class="mono nowrap">{{ lab_run.id[:8] }}…</th>
+          <td>{{ verdict_badge(lab_run.get("verdict")) }}</td>
+          <td class="mono small">{{ lab_run.get("created_at") }}</td>
+          <td><a class="btn btn-sm" href="/ui/lab/{{ family }}/{{ lab_run.id }}">Evidence</a></td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+        {% for run in runs[:4] %}
+        <tr>
+          <td><span class="chip chip-get">Offline fixture</span></td>
+          <th scope="row" class="mono nowrap">{{ run.id[:8] }}…</th>
+          <td>{{ verdict_badge(run.get("verdict")) }}</td>
+          <td class="mono small">{{ run.get("created_at") }}</td>
+          <td><a class="btn btn-sm" href="/ui/scans/{{ run.id }}">Evidence</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">{{ empty("Nothing stored yet",
+      "Start with the full demonstration: three runs fill all nine cells.",
+      "/ui/assessment", "Start an assessment") }}</div>
+  {% endif %}
+</section>
+{% endblock %}

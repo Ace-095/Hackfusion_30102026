@@ -5,8 +5,8 @@ questions a technical judge is most likely to ask, with the reasoning and the
 file that backs each answer. Where the answer is "we do not do that yet", it says
 so.
 
-Everything below is verifiable in this repository at the checkpoint 38 commit:
-**916 tests pass, 58 audited requirements (47 implemented, 9 partial, 2 missing),
+Everything below is verifiable in this repository at the checkpoint 39 commit:
+**1055 tests pass, 58 audited requirements (47 implemented, 9 partial, 2 missing),
 0 audit failures.**
 
 ---
@@ -88,7 +88,7 @@ Five properties are structural, not conventions:
 | **stdlib `socket` + `ssl` for the lab transport** | `http.client.HTTPSConnection` resolves a hostname. We connect to the numeric literal `127.0.0.1` and attach a TLS-wrapped socket, so **no resolver is ever consulted** and DNS rebinding is structurally impossible. | `canarygate/network/targetlab.py` |
 | **Jinja2 with local CSS, vendored HTMX** | Reports must render with no network access; no CDN, no remote assets, no remote `$ref`. | `canarygate/report/templates/` |
 | **PyYAML safe loading with alias/anchor rejection** | Scope files are attacker-supplied input. Anchors/aliases are refused before parsing, so a scope cannot be made exponential or self-referential. | `canarygate/scope/authorized.py` |
-| **pytest, 916 tests** | The claims are regression-protected: every safety property has an adversarial test, and the audit fails if a test file is unclassified. | `tests/`, `tools/p0_audit.py` |
+| **pytest, 1055 tests** | The claims are regression-protected: every safety property has an adversarial test, and the audit fails if a test file is unclassified. | `tests/`, `tools/p0_audit.py` |
 
 Deliberately **not** used: an LLM classifier (non-deterministic evidence is not
 evidence), a vulnerability database or CVSS engine (frozen spec excludes it),
@@ -172,14 +172,15 @@ was denied → `SAFE`. If it returned 200 with no private data →
 
 | # | Request | Result | Meaning |
 |---|---|---|---|
-| 1 | alice → bob's `GET /records/{id}/guarded` | `403 {"error":"forbidden"}` | authorization control works |
-| 2 | alice `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | authentication control works |
-| 3 | alice → **the same** guarded read | `200` + **bob's private marker** | their interaction leaks |
+| 1 | mallapa → sakshi's `GET /records/{id}/guarded` | `403 {"error":"forbidden"}` | authorization control works |
+| 2 | mallapa `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | authentication control works |
+| 3 | mallapa → **the same** guarded read | `200` + **sakshi's private marker** | their interaction leaks |
 
 The identical request by the identical actor changes outcome only because of the
 intervening rejected login. The disclosure proof compares the returned marker with
-the marker bob's own baseline returned, so a stale or unrelated value cannot
-confirm it.
+the marker sakshi's own baseline returned, so a stale or unrelated value cannot
+confirm it. The same sequence holds for every other ordered pair of the three demo
+accounts (`mallapa`, `sakshi`, `harsha`), each with that owner's asset.
 
 A separate two-run scenario (`POST /api/lab-sci-resets`) proves the state is
 really state: `403 → 401 → 200 → 403`, where the last step follows a *successful*
@@ -236,7 +237,7 @@ Stated in the product, the reports and the audit:
    (D8), disclosure detection is signature-based over recorded bodies (D9).
 6. **One interaction kind** is exercised against the lab (`AUTHN+AUTHZ`). Three
    kinds exist in the engine; quantity is not coverage.
-7. **916 tests are regression evidence, not 916 validated vulnerabilities.** They
+7. **1055 tests are regression evidence, not 1055 validated vulnerabilities.** They
    prove the implementation and its safety properties behave as specified.
 8. **Not a replacement for manual review.** It answers "is this specific
    cross-account read provably broken" — not "is this API secure".
@@ -335,7 +336,7 @@ differentiator, not breadth.
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e ".[test]"
 
-.venv/bin/python -m pytest tests -q            # 916 passed
+.venv/bin/python -m pytest tests -q            # 1055 passed
 .venv/bin/python tools/p0_audit.py             # 58 requirements, 0 failures
 .venv/bin/python tools/demo.py                 # the four-stage demonstration
 .venv/bin/python tools/consistency_audit.py --database <demo.sqlite3>

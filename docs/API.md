@@ -47,6 +47,14 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
+Every `…/report` route also accepts `view=run` (the default): it returns the stored
+run itself with 200. `?view=sections` returns the section projection, `?format=html`
+the HTML report, and `?view=p0` the frozen nine-section report where the family
+supports it. Until the integration branch the seven family report routes were
+annotated with the section model alone, so the documented default answered 500; the
+annotation now covers both shapes and no behaviour changed. See
+[FRONTEND_BACKEND_INTEGRATION.md](FRONTEND_BACKEND_INTEGRATION.md) §7.
+
 ## Specification inspection (provisional)
 
 Send the file as the **raw HTTP body**, not multipart form data. Accepted content
@@ -406,6 +414,39 @@ verdict is produced at this checkpoint.
 Evidence is bounded to status codes and booleans. Credentials, tokens, headers
 and response bodies are never stored, returned or reported.
 
+## TargetLab demo catalog
+
+`GET /api/lab-catalog`
+
+The public demo tenant the interface renders: three accounts (`mallapa`,
+`sakshi`, `harsha`), their three private assets, the six ordered pairs and the
+nine combinations. Each combination names the ordered pair a scan must run for
+it:
+
+```json
+{"mode": "targetlab_demo", "dataset": "demo_tenant",
+ "accounts": [{"account": "mallapa", "title": "Marketing Manager",
+               "role": "marketing_manager", "asset_id": "MKT-2026-041",
+               "asset_type": "campaign_artwork",
+               "asset_label": "Unreleased campaign artwork"}],
+ "pairs": [{"actor": "mallapa", "owner": "sakshi"}],
+ "combinations": [{"actor": "mallapa", "asset_id": "BRD-2026-018",
+                   "owner": "sakshi", "kind": "cross_account_attempt",
+                   "pair": {"actor": "mallapa", "owner": "sakshi"}}],
+ "notes": ["..."]}
+```
+
+It also publishes `coverage_pairs`: the minimum set of runs (three unordered
+pairs, `mallapa`→`sakshi`, `sakshi`→`harsha`, `harsha`→`mallapa`) that answers all
+nine combinations, because one run records both owner baselines and both
+cross-account directions. `pairs` stays the six ordered pairs the API accepts.
+
+It contains no credential, token, private marker, expected verdict or expected
+access, and it selects no target. `kind` describes the request
+(`legitimate_owner_request` or `cross_account_attempt`), never an outcome. The
+frozen offline fixture (`alice`/`bob` in `scope.yaml`) is a separate dataset and
+does not appear here.
+
 ## TargetLab read-BOLA validation (checkpoint 36)
 
 These routes perform real HTTPS requests to a running TargetLab and reach a
@@ -415,12 +456,24 @@ against our own loopback lab, not live-organizer scanning.
 `POST /api/lab-bola-scans`
 
 ```json
-{"port": 8765, "request_budget": 20}
+{"port": 8765, "request_budget": 20, "actor": "mallapa", "owner": "harsha"}
 ```
 
 `port` is 1024–65535 and `request_budget` is 16–40 (the workflow needs 18
-requests). No host, path, account or credential may be supplied; the resource
-declarations and policy are constants in `canarygate/scan/lab_bola_scenarios.py`.
+requests). `actor` and `owner` select an ordered pair of the provisioned demo
+accounts, must differ, and default to `mallapa` → `sakshi`; an unknown or
+same-account pair answers `400` before any request. No host, path, credential or
+expected verdict may be supplied; the resource declarations and policy are
+constants in `canarygate/scan/lab_bola_scenarios.py`. The scope and credentials
+of the run declare exactly the selected pair.
+
+A run exercises that pair in both directions and on both routes, so the nine
+combinations are answered by the six ordered pairs; the interface uses the
+catalog's `pair` for the selected combination and reads the verdict back from
+`GET /api/lab-matrix` (below), never from the page. `GET /api/lab-catalog` also
+lists `coverage_pairs` — the three ordered pairs whose three runs answer all nine
+cells — which `/ui/actions/lab-demo-run` executes one after the other.
+
 Requires `CANARYGATE_TARGETLAB_CA`; without it the API answers `400`. If the lab is
 unreachable, refuses TLS, or never returns a single response, the API answers
 `502` and stores nothing.
@@ -437,6 +490,13 @@ The run (`LabBolaRun`) contains:
 | `transport` | `destination: "127.0.0.1"`, `tls_verification: "pinned_test_ca_with_hostname_check"`, `redirects: "refused"`, `retries: "none"`, `dns: "not_used"`, `network_transport_enabled: true`, `live_target_contacted: false`. |
 | `constraints` | `requests_sent`, `blocked_by_guard`, `budget_remaining`, `halted`, `redirects_observed: 0`, `destructive_requests_executed: 0`. |
 
+`scope` records the authorized pair, the port, the request budget and — when the
+TargetLab publishes one — `lab_instance`, the `X-Lab-Instance` value the run
+observed. A run whose lab instance changes mid-run halts with
+`TargetLabRefused` instead of finishing against a different instance, and the
+stored `created_at` timestamps carry microseconds so successive runs sort
+deterministically.
+
 - `GET /api/lab-bola-scans/{run_id}` — the stored run.
 - `GET /api/lab-bola-scans/{run_id}/report?view=sections` — executive summary,
   scope and transport, ownership, checks, ground truth, constraints, limitations.
@@ -450,6 +510,97 @@ appears as a red `other_account_resource` cell and the secure route as a green o
 both labelled `lab_bola:<scenario>[:route]` so they stay distinguishable from
 offline scenario and SCI cells.
 
+## TargetLab asset matrix (checkpoint 39)
+
+`GET /api/lab-matrix`
+
+The nine demo-tenant combinations (three accounts × three private assets),
+assembled **only** from stored read-BOLA runs. It opens no socket, reads no ground
+truth, runs no check and adds no verdict: it projects each stored
+`LAB-BOLA-0x` check onto the cell it answers and carries the run id, check id and
+evidence hash through. The same aggregation is available offline through
+`tools/consistency_audit.py`, which rebuilds it from the database alone.
+
+```json
+{"mode": "targetlab_matrix", "dataset": "demo_tenant",
+ "derived_from": "stored_lab_bola_runs", "generated_at": "2026-10-30T19:29:57Z",
+ "accounts": [{"account": "mallapa", "title": "Marketing Manager",
+               "role": "marketing_manager", "asset_id": "MKT-2026-041",
+               "asset_type": "campaign_artwork",
+               "asset_label": "Unreleased campaign artwork"}],
+ "cells": [{"requester": "mallapa", "asset_id": "BRD-2026-018", "owner": "sakshi",
+            "kind": "cross_account_attempt", "state": "tested",
+            "expected_access": "owner-only", "actual_access": "private_record_returned",
+            "verdict": "CONFIRMED", "reason": "...",
+            "evidence": {"evidence_id": "…-…#LAB-BOLA-03", "run_id": "…",
+                         "check_id": "LAB-BOLA-03",
+                         "direction": "cross_account", "verdict": "CONFIRMED",
+                         "status": 200, "endpoint": "GET /records/{id}",
+                         "evidence_sha256": "…", "created_at": "…", "port": 8765,
+                         "lab_instance": "6f1a…c90d",
+                         "remediation": "…",
+                         "requests_sent": 18, "checklist_true": 9, "checklist_total": 9,
+                         "private_disclosure": true, "verified_denial": false,
+                         "ownership_verified": true, "owner_baseline": false},
+            "secure": {"run_id": "…", "check_id": "LAB-BOLA-05", "verdict": "SAFE",
+                       "status": 403, "evidence_sha256": "…", "verified_denial": true},
+            "stale": false, "sources": 1, "superseded_runs": []}],
+ "summary": {"cells": 9, "tested": 9, "untested": 0, "confirmed": 6, "suspected": 0,
+             "safe": 3, "inconclusive": 0, "skipped": 0, "runs_considered": 3,
+             "ports": [8765], "lab_instances": 1, "stale_cells": 0,
+             "duplicated_cells": 3},
+ "notes": ["..."]}
+```
+
+Cell states are `tested` and `untested`; they are not verdicts. An `untested`
+cell has `verdict: null`, `evidence: null`, `reason: null`, `sources: 0`,
+`actual_access: "no_evidence"` and `stale: false` — the contract refuses any other
+shape, so missing evidence cannot be rendered as `SAFE`, `SKIPPED` or
+`INCONCLUSIVE`. `expected_access` is always the literal `owner-only` and is never
+derived from a result. `actual_access` is derived only from the stored booleans of
+that check:
+
+| `actual_access` | Meaning |
+|---|---|
+| `own_record_returned` | an owner cell whose baseline read returned the account's own record |
+| `private_record_returned` | a cross-account check that recorded `private_disclosure` |
+| `denied` | the check recorded `verified_denial` |
+| `not_attempted` | the check was `SKIPPED` |
+| `unverified_response` | a response arrived but the evidence did not establish access or denial |
+| `no_evidence` | the cell is untested |
+
+`checklist_true` / `checklist_total` count only the four booleans a cell carries
+(`private_disclosure`, `verified_denial`, `ownership_verified`, `owner_baseline`),
+not the ten-key run checklist; the run's own facts stay on
+`GET /api/lab-bola-scans/{run_id}`.
+
+Every tested cell also carries a pointer a judge can follow:
+`evidence.evidence_id` is `<run id>#<check id>`, the same string the run page and
+the report use, so a cell can always be resolved back to one stored check.
+`evidence.remediation` repeats the oracle's repair text for a `CONFIRMED` cell and
+is `null` otherwise; the matrix never writes its own advice.
+
+Duplicate and stale evidence stay visible rather than being silently resolved.
+`sources` counts the stored checks that answer the cell, `superseded_runs` lists
+the older runs whose answer was replaced by the newest one,
+`summary.duplicated_cells` counts cells answered more than once, and `stale`
+marks a cell whose selected run is not from the newest lab instance.
+
+Staleness is decided by identity first and location second. A TargetLab publishes
+`X-Lab-Instance`, the transport records it as `scope.lab_instance`, and evidence
+carries it: when the selected run and the newest run both publish an instance id,
+a different id marks the cell stale even on the same port. Only when one side does
+not publish an id does the port decide — so two lab instances that reuse a port
+are no longer mistaken for one. `summary.lab_instances` counts the distinct valid
+instance ids seen across the runs considered.
+
+Runs are ordered by `created_at` and then by storage order; `created_at` is
+recorded with microsecond precision, so the tie-break only applies to genuinely
+simultaneous writes. This endpoint and `/ui/lab/matrix` select the same evidence.
+
+The response is read-only and stable: it changes only when a run is stored. It
+answers `200` with nine untested cells on an empty database.
+
 ## TargetLab control-interaction validation (checkpoint 37)
 
 Real HTTPS requests to a running TargetLab, decided by the existing SCI engine.
@@ -458,12 +609,15 @@ Real HTTPS requests to a running TargetLab, decided by the existing SCI engine.
 `POST /api/lab-sci-scans`
 
 ```json
-{"port": 8765, "request_budget": 16}
+{"port": 8765, "request_budget": 16, "actor": "mallapa", "owner": "harsha"}
 ```
 
 `port` is 1024–65535 and `request_budget` is 8–40; the interaction needs 11
 requests, so a smaller budget degrades to `INCONCLUSIVE` rather than a verdict.
-No host, path, account or credential may be supplied. Requires
+`actor` sets the lab condition and `owner` names whose asset it discloses; they
+must be two different provisioned demo accounts and default to `mallapa` →
+`sakshi`. `POST /api/lab-sci-resets` takes the same fields and follows the same
+pair. No host, path, credential or expected verdict may be supplied. Requires
 `CANARYGATE_TARGETLAB_CA` (`400` without it); a refused, redirected or
 unreachable lab answers `502` and stores nothing.
 

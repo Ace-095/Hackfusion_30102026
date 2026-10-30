@@ -7,7 +7,8 @@ as part of the evidence.
 
 **Result:** one command runs the whole demonstration from a clean start and
 refuses to print a result if any surface disagrees: 4 stages, 16 surfaces,
-73 invariants, 916 tests, 0 audit failures.
+73 invariants, 916 tests, 0 audit failures (measured at CP38; head after CP39 is
+142 invariants over 17 surfaces and 1055 tests).
 
 Scope was frozen for this checkpoint: no new scan mode, no new interaction type,
 no BFLA (D11 stays missing), no live-target testing (D12 stays missing), no LLM
@@ -101,7 +102,8 @@ the checker, not by weakening it.
 - Audit: **58 requirements**, 56 classified test files, 0 failures,
   `implemented=47 / partial=9 / missing=2 / unreachable=0`, `real_networking=0`,
   `loopback_tls=7`, 17 API routes checked.
-- Demo: `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)`.
+- Demo: `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` (head
+  after CP39: `142 invariants over 17 surfaces`).
 - Delivered in commit `fc5f361` on `arena/aa67fa1b-hackfusion-30102026`.
 - CI: workflow run `fc5f361` checks — `ubuntu-latest` success and
   `windows-latest` success, including the subprocess demo run and the real

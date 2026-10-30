@@ -32,10 +32,17 @@ def free_port() -> int:
 class LabTlsServer:
     """The real TargetLab application served over HTTPS on loopback."""
 
-    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY, app=None):
+    host = "127.0.0.1"
+
+    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY, app=None, state=None):
+        from targetlab.state import LabState
+
         self.port = free_port()
-        self._config = uvicorn.Config(app if app is not None else create_lab_app(),
-                                      host="127.0.0.1", port=self.port,
+        self.state = state if state is not None else LabState()
+        #: The id the served lab process publishes in ``X-Lab-Instance``.
+        self.instance_id = self.state.instance_id
+        served = app if app is not None else create_lab_app(self.state)
+        self._config = uvicorn.Config(served, host="127.0.0.1", port=self.port,
                                       ssl_certfile=str(cert), ssl_keyfile=str(key),
                                       log_level="error", lifespan="off", access_log=False)
         self._server = uvicorn.Server(self._config)
@@ -69,15 +76,25 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802 - required by BaseHTTPRequestHandler
         self._respond()
 
+    def _instance(self) -> str | None:
+        instance = type(self).instance
+        if instance is not None and type(self).change_after is not None:
+            if type(self).hits > type(self).change_after:
+                return "f" * 16
+        return instance
+
     def _respond(self):
         if getattr(self, "command", None) == "POST":
             length = int(self.headers.get("Content-Length") or 0)
             if 0 < length <= 65536:
                 self.rfile.read(length)
         type(self).hits += 1
+        instance = self._instance()
         if type(self).status != 200:
             body = b'{"error":"synthetic"}'
             self.send_response(type(self).status)
+            if instance is not None:
+                self.send_header("X-Lab-Instance", instance)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -85,12 +102,16 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
             return
         if type(self).redirect:
             self.send_response(302)
+            if instance is not None:
+                self.send_header("X-Lab-Instance", instance)
             self.send_header("Location", "https://example.com/steal")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
         body = b'{"status":"ok"}'
         self.send_response(200)
+        if instance is not None:
+            self.send_header("X-Lab-Instance", instance)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -101,12 +122,19 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
 
 
 class CountingTlsServer:
-    """A minimal TLS server that counts requests and can answer with a redirect."""
+    """A minimal TLS server that counts requests and can answer with a redirect.
 
-    def __init__(self, *, redirect: bool = False, status: int = 200):
+    ``instance`` sets the ``X-Lab-Instance`` header; ``change_after`` makes the
+    server publish a different instance id once that many requests were served,
+    so a test can prove that a mid-run identity change is refused.
+    """
+
+    def __init__(self, *, redirect: bool = False, status: int = 200,
+                 instance: str | None = None, change_after: int | None = None):
         self.port = free_port()
         handler = type("CountingHandler", (_CountingHandler,),
-                       {"hits": 0, "redirect": redirect, "status": status})
+                       {"hits": 0, "redirect": redirect, "status": status,
+                        "instance": instance, "change_after": change_after})
         self._handler = handler
         self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -128,4 +156,106 @@ class CountingTlsServer:
         self._httpd.server_close()
         if self._thread is not None:
             self._thread.join(timeout=10)
+        return False
+
+
+class GatedLabTlsServer:
+    """The real TargetLab behind a loopback gate that can be cut off mid-demo.
+
+    The gate forwards TLS bytes verbatim, so the certificate, the protocol and
+    every response are the lab's own. Once ``cut_after`` connections have been
+    accepted, the listener is closed and every later connection is refused —
+    exactly what happens when the lab process exits. Each request opens its own
+    connection (``Connection: close``), so the connection count is a request
+    count.
+    """
+
+    def __init__(self, *, cut_after: int):
+        if not isinstance(cut_after, int) or cut_after < 1:
+            raise ValueError("cut_after must be a positive integer")
+        self.cut_after = cut_after
+        self._lab = LabTlsServer()
+        self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen(64)
+        self.port = self._listener.getsockname()[1]
+        self._accepted = 0
+        self._closed = False
+        self._thread: threading.Thread | None = None
+
+    @property
+    def connections(self) -> int:
+        return self._accepted
+
+    @property
+    def cut(self) -> bool:
+        return self._closed
+
+    def _forward(self, client: socket.socket) -> None:
+        upstream = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            upstream.connect(("127.0.0.1", self._lab.port))
+        except OSError:
+            client.close()
+            return
+
+        def pump(source, sink):
+            try:
+                while True:
+                    data = source.recv(65536)
+                    if not data:
+                        break
+                    sink.sendall(data)
+            except OSError:
+                pass
+            finally:
+                try:
+                    sink.shutdown(socket.SHUT_WR)
+                except OSError:
+                    pass
+
+        first = threading.Thread(target=pump, args=(client, upstream), daemon=True)
+        second = threading.Thread(target=pump, args=(upstream, client), daemon=True)
+        first.start()
+        second.start()
+        first.join(timeout=60)
+        second.join(timeout=60)
+        for sock in (client, upstream):
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                client, _ = self._listener.accept()
+            except OSError:
+                return
+            self._accepted += 1
+            threading.Thread(target=self._forward, args=(client,), daemon=True).start()
+            if self._accepted >= self.cut_after:
+                self._closed = True
+                try:
+                    self._listener.close()
+                except OSError:
+                    pass
+                return
+
+    def __enter__(self):
+        self._lab.__enter__()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._closed = True
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+        if self._thread is not None:
+            self._thread.join(timeout=10)
+        self._lab.__exit__(*exc)
         return False

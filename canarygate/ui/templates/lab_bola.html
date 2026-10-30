@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, status_badge, tri, kv, stat, journey,
+                              empty, icon, method_chip, checklist_grid,
+                              lab_transport_panel, lab_constraints_panel, verdict_legend %}
+{% block title %}Read-BOLA validation {{ run.id|short_id }}{% endblock %}
+
+{% block content %}
+{% call page_head("TargetLab validation",
+                 "Read-BOLA on the lab",
+                 run.reason,
+                 trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                        (run.id|short_id, None)]) %}
+  {{ journey("findings", lab=lab) }}
+  <div class="toolbar">
+    {{ verdict_badge(run.verdict, "badge-lg") }}
+    {{ status_badge(run.status) }}
+    <a class="btn btn-sm" href="/ui/lab/bola/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-bola-scans/{{ run.id }}/report?format=html"
+       target="_blank" rel="noopener">{{ icon("external") }} Backend HTML</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-bola-scans/{{ run.id }}"
+       target="_blank" rel="noopener">JSON run</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-bola-scans/{{ run.id }}/report?view=sections"
+       target="_blank" rel="noopener">JSON sections</a>
+  </div>
+{% endcall %}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Real HTTPS, loopback only.</b> This run made {{ run.constraints.requests_sent }} requests
+    to <span class="mono">{{ run.transport.destination }}:{{ run.transport.port }}</span> with a
+    pinned test CA. It is controlled validation of a lab written by the same team, not
+    organizer or live-target validation.
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("plug") }} Transport recorded by the backend</h2></div>
+  <div class="card-body">{{ lab_transport_panel(run.transport) }}</div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("scans") }} Run</h2>{{ status_badge(run.status) }}</div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Run id", run.id, True) }}
+        {{ kv("Recorded", run.created_at, True) }}
+        {{ kv("Mode", run.mode, True) }}
+        {{ kv("Scenario", run.scenario_id, True) }}
+        {{ kv("Policy source", run.policy.expected_source) }}
+        {{ kv("Expected access", run.policy.expected_access, True) }}
+        {{ kv("Transcript SHA-256", run.transcript_sha256, True) }}
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Scope the backend enforced</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Origin", run.scope.origin, True) }}
+        {{ kv("Mode", run.scope.mode, True) }}
+        {{ kv("Host / port", run.scope.hostname ~ ":" ~ run.scope.port, True) }}
+        {{ kv("Scheme", run.scope.scheme, True) }}
+        {{ kv("Request budget", run.scope.request_budget, True) }}
+        {{ kv("Scope SHA-256", run.scope.scope_sha256, True) }}
+        {{ kv("Authorization reference", run.scope.written_authorization_reference) }}
+      </dl>
+      <h3 class="section-sub mt-1">Accounts</h3>
+      <ul class="inline-list">
+        {% for account in run.scope.accounts %}
+        <li class="mono xs">{{ account.account }} ({{ account.role }})</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+</div>
+
+<section class="grid grid-3" aria-label="Check summary">
+  {{ stat("Checks", run.summary.total, "declared checks in this run", small=True) }}
+  {{ stat("CONFIRMED", run.summary.confirmed, "cross-account private disclosure", small=True) }}
+  {{ stat("SAFE", run.summary.safe, "owner baselines and checked denials", small=True) }}
+</section>
+<section class="grid grid-3" aria-label="Other check outcomes">
+  {{ stat("SUSPECTED", run.summary.suspected, "evidence incomplete", small=True) }}
+  {{ stat("INCONCLUSIVE", run.summary.inconclusive, "could not decide", small=True) }}
+  {{ stat("SKIPPED", run.summary.skipped, "not performed — never a pass", small=True) }}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Checks and verdicts</h2>
+    <span class="hint">verdicts are the lab oracle's, not the page's</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table table-wide">
+      <thead>
+        <tr><th scope="col">Check</th><th scope="col">Direction</th><th scope="col">Actor → owner</th>
+            <th scope="col">Endpoint</th><th scope="col">HTTP</th><th scope="col">Verdict</th>
+            <th scope="col">Reason</th><th scope="col">Evidence SHA-256</th></tr>
+      </thead>
+      <tbody>
+        {% for check in run.checks %}
+        <tr id="{{ check.id }}">
+          <th scope="row" class="mono nowrap">{{ check.id }}</th>
+          <td class="mono small">{{ check.direction }}</td>
+          <td class="mono small">{{ check.actor }} → {{ check.owner }}</td>
+          <td class="mono small">{{ check.endpoint }}</td>
+          <td class="mono">{{ check.status if check.status is not none else "—" }}</td>
+          <td>{{ verdict_badge(check.verdict) }}</td>
+          <td class="small">{{ check.reason }}</td>
+          <td class="mono xs">{{ check.evidence_sha256|short_id(12) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">{{ verdict_legend() }}</div>
+</section>
+
+<section class="card" aria-label="Vulnerable versus secure route">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Vulnerable versus secure route</h2>
+    <span class="hint">the same request, drawn from this run's checks</span>
+  </div>
+  {% if comparisons %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr><th scope="col">Actor → owner</th><th scope="col">Vulnerable route</th>
+            <th scope="col">HTTP</th><th scope="col">Verdict</th>
+            <th scope="col">Secure route</th><th scope="col">HTTP</th><th scope="col">Verdict</th></tr>
+      </thead>
+      <tbody>
+        {% for row in comparisons %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ row.actor }} → {{ row.owner }}</th>
+          <td class="mono small">{{ row.vulnerable.endpoint }}</td>
+          <td class="mono">{{ row.vulnerable.status if row.vulnerable.status is not none else "—" }}</td>
+          <td>{{ verdict_badge(row.vulnerable.verdict) }}</td>
+          <td class="mono small">{{ row.secure.endpoint }}</td>
+          <td class="mono">{{ row.secure.status if row.secure.status is not none else "—" }}</td>
+          <td>{{ verdict_badge(row.secure.verdict) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">Both columns are the lab's own answers to the identical request. A
+    CONFIRMED on the left and a SAFE on the right is the comparison; neither is inferred by
+    this page from a status code alone.</div>
+  {% else %}
+  <div class="card-body">{{ empty("No cross-account pair in this run") }}</div>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="execution-title">
+  <div class="card-head">
+    <h2 id="execution-title">{{ icon("clock") }} Execution timeline</h2>
+    <span class="hint">recorded from this stored run · the backend streams no live events</span>
+  </div>
+  <div class="card-body">
+    <p class="note">A scan runs synchronously and is stored when it finishes, so there is no
+      progress feed to render. These are the stages this run recorded, in the order the oracle
+      performs them. A stage with no stored check says so rather than showing invented progress.</p>
+    <ol class="timeline mt-1">
+      {% for stage in stages %}
+      <li class="{% if stage.checks and (stage.checks|selectattr('verdict', 'equalto', 'CONFIRMED')|list) %}is-warn{% elif stage.checks %}is-ok{% endif %}">
+        <p class="t-title">{{ stage.title }}</p>
+        <p class="note">{{ stage.detail }}</p>
+        {% if stage.checks %}
+        <ul class="inline-list mt-1">
+          {% for check in stage.checks %}
+          <li><a class="mono xs" href="#{{ check.id }}">{{ check.id }}</a>
+            {{ status_badge(check.status) }} {{ verdict_badge(check.verdict, "xs") }}</li>
+          {% endfor %}
+        </ul>
+        {% elif stage.note %}
+        <p class="t-meta">{{ stage.note }}</p>
+        {% else %}
+        <p class="t-meta">not recorded by this run</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+<section class="card" id="proof-disclosure" aria-labelledby="proof-title">
+  <div class="card-head">
+    <h2 id="proof-title">{{ icon("eye") }} Disclosure proof</h2>
+    <span class="hint">every step is a stored field of this run</span>
+  </div>
+  {% if proof %}
+  <div class="card-body stack">
+    {% for item in proof %}
+    <article class="card card-inset">
+      <div class="card-head">
+        <h3 class="mono">{{ item.requester }} → {{ item.owner }}'s record</h3>
+        {{ verdict_badge(item.check.verdict) }}
+      </div>
+      <ol class="flow mt-1">
+        {% for step in item.steps %}
+        <li>
+          <span class="flow-label">{{ step.label }}</span>
+          <span class="flow-value">
+            {% if step.value is sameas true %}<span class="tri tri-yes">yes</span>
+            {% elif step.value is sameas false %}<span class="tri tri-no">no</span>
+            {% elif step.value is number %}<span class="mono">{{ step.value }}</span>
+            {% else %}<span class="tri tri-none">not recorded</span>{% endif %}
+          </span>
+          <a class="flow-link mono xs" href="#{{ step.anchor }}">{{ step.anchor }}</a>
+        </li>
+        {% endfor %}
+        {% if item.secure %}
+        <li class="flow-secure">
+          <span class="flow-label">The same request · secure route</span>
+          <span class="flow-value mono">HTTP {{ item.secure.status }} · {{ item.secure.verdict }}</span>
+          <a class="flow-link mono xs" href="#{{ item.secure.id }}">{{ item.secure.id }}</a>
+        </li>
+        {% endif %}
+      </ol>
+      <p class="note mt-1">{{ item.check.reason }}</p>
+      {% if item.check.remediation %}
+      <p class="note"><b>Remediation:</b> {{ item.check.remediation }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card-body">{{ empty("No cross-account attempt in this run") }}</div>
+  {% endif %}
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>
+    <div class="card-body">{{ checklist_grid(run.checklist) }}</div>
+    <div class="card-foot">A false or unrecorded key cannot produce CONFIRMED. The oracle
+      requires the ownership proof, the owner baseline and the private disclosure together.</div>
+  </section>
+
+  <section class="card" id="proof-ownership">
+    <div class="card-head">
+      <h2>{{ icon("eye") }} Evidence the run kept</h2>
+      <span class="hint">flags grouped by route · nothing is aggregated across them</span>
+    </div>
+    <div class="card-body">
+      {% for group in evidence_groups %}
+      <h3 class="section-sub {{ 'mt-1' if not loop.first else '' }}">
+        {{ group.label }}
+        <span class="dim small">{{ group.checks|length }} check(s)</span>
+      </h3>
+      {% if group.present %}
+      <div class="table-scroll">
+        <table class="table compact" data-evidence-group="{{ group.direction }}">
+          <thead><tr><th>Check</th><th>Who</th><th>HTTP</th><th>Verdict</th><th>Flags</th></tr></thead>
+          <tbody>
+            {% for check in group.checks %}
+            <tr>
+              <td><a class="mono" href="#{{ check.id }}">{{ check.id }}</a></td>
+              <td class="mono xs">{{ check.actor }} → {{ check.owner }}</td>
+              <td class="mono">{{ check.status if check.status else "—" }}</td>
+              <td>{{ verdict_badge(check.verdict) }}</td>
+              <td class="flags">
+                {% for flag in check.flags %}
+                <span class="flag {{ 'is-true' if flag.value else 'is-false' }}"
+                      title="{{ flag.label }}">{{ flag.label }}={{ "true" if flag.value else "false" }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">{{ group.note }}</p>
+      {% else %}
+      <p class="note">No {{ group.label|lower }} were recorded in this run.</p>
+      {% endif %}
+      {% endfor %}
+      <p class="note">Minimized booleans and hashes only. No token, password or private marker
+        value is stored in the run. A <span class="mono">false</span> on a secure-route denial is
+        the expected answer, not a missing step; a <span class="mono">false</span> on a
+        cross-account request would mean the oracle could not record that step.</p>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("config") }} Constraint counters</h2></div>
+  <div class="card-body">{{ lab_constraints_panel(run.constraints) }}</div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("check") }} Ground truth, scored after the verdicts</h2>
+    <span class="hint mono">matched {{ run.ground_truth.matched }} / {{ run.ground_truth.rows|length }}</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Check</th><th scope="col">Expected</th><th scope="col">Observed</th>
+                 <th scope="col">Matched</th></tr></thead>
+      <tbody>
+        {% for row in run.ground_truth.rows %}
+        <tr>
+          <td class="mono">{{ row.check_id }}</td>
+          <td>{{ verdict_badge(row.expected) }}</td>
+          <td>{{ verdict_badge(row.observed) }}</td>
+          <td>{{ tri(row.matched) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body bordered-top">
+    <p class="note">{{ run.ground_truth.statement }}</p>
+    <p class="note">Source: <span class="mono">{{ run.ground_truth.source }}</span> ·
+      used_as_decision_input=<span class="mono">{{ run.ground_truth.used_as_decision_input|lower }}</span> ·
+      evaluated_after_verdicts=<span class="mono">{{ run.ground_truth.evaluated_after_verdicts|lower }}</span></p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("inventory") }} Inventory captured with the run</h2></div>
+  {% if run.inventory %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th>
+                 <th scope="col">Provenance</th></tr></thead>
+      <tbody>
+        {% for endpoint in run.inventory %}
+        <tr>
+          <td>{{ method_chip(endpoint.method) }}</td>
+          <td class="mono">{{ endpoint.path }}</td>
+          <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+          <td class="mono small">{{ endpoint.expected_source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">{{ empty("No inventory snapshot recorded") }}</div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} Limitations the backend recorded</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      {% for limitation in run.limitations %}<li>{{ limitation }}</li>{% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}

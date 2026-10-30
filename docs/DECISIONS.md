@@ -959,7 +959,7 @@ The lab is deliberately weak, so it is deliberately contained. It refuses a
 non-loopback bind address, rejects a non-loopback `Host` header, has no outbound
 HTTP client, and is never imported by `canarygate`. Predictable credentials are
 acceptable **only** because the service is loopback-only and the values are
-obviously fake (`lab-token-alice`); they must never be reused.
+obviously fake (`lab-token-mallapa`); they must never be reused.
 
 The interaction flaw is modelled as a cross-request state bug: a rejected
 malformed login leaves a legacy compatibility flag for that account, and one
@@ -1068,3 +1068,233 @@ Ground truth moved fully outside the stored artifact. In checkpoint 36 the
 comparison was stored inside the run, so corrupting the table changed the stored
 bytes even though the verdict held. Now the run is sealed first and the comparison
 is produced at report time, which makes "byte-identical" literally true.
+
+### Checkpoint 39: the matrix is a projection, not a second opinion
+
+The 3×3 matrix exists to answer one judge question — "did you really try every
+combination?" — without becoming a second detection engine. It therefore stores
+nothing and decides nothing. `build_lab_matrix()` walks the stored runs, maps each
+`LAB-BOLA-0x` check onto the annotation it answers, and copies the verdict, the
+evidence hash and the checklist booleans through. `actual_access` is *derived* from
+those booleans in a fixed order rather than recorded twice, so a label cannot drift
+away from the check that produced it. A strict pydantic contract (`lab_matrix_models.py`)
+then refuses an untested cell that carries a verdict, a tested cell whose verdict
+differs from its evidence, a secure twin from a different run, and a summary that
+does not add up.
+
+Two states, not five. The matrix has `tested` and `untested`, and untested is
+deliberately not one of the verdicts: the five verdicts describe a *check*, while
+"nothing was run" describes the *absence* of one. Rendering it as `SKIPPED` would
+have been tempting — the word is close — but a skipped check is evidence that a run
+reached the target and declined to attempt something, which is a different fact from
+a cell no run ever addressed. Missing evidence stays missing.
+
+Owner cells are not disclosures. The first version labelled a successful diagonal
+read `private_record_returned` via `private_disclosure`, which is wrong on the
+evidence: reading your own asset is the baseline the cross-account claim is measured
+against, not a leak. `actual_access_for()` now branches on the check's direction, so
+an owner cell reports a verified baseline read and an off-diagonal cell reports a
+disclosure.
+
+Ordering is storage order, not UUID order. Runs are stamped at second precision, so
+two runs in the same second are a real possibility in the demo; the aggregator
+breaks ties with the store's `rowid` order. Ordering by `run_id` looked equivalent
+and is not — UUIDs carry no chronology, which made the duplicate-selection and
+stale-port tests flap until the tie-break was fixed. The API reads the store
+oldest-first and the UI reverses its newest-first listing before aggregating, so
+both surfaces choose the same evidence.
+
+Stale and duplicated evidence are reported, not resolved away. When a later run
+re-answers a cell, the newest evidence is displayed and the older runs are listed as
+superseded; when the newest evidence came from a port a later run did not use, the
+cell is marked stale. Both counts stay in the summary because a matrix that quietly
+merges conflicting observations would be hiding exactly the thing a judge is
+looking for.
+
+The reset workflow is reachable from the matrix page, with the distinction stated on
+the page: the reset is a separate controlled two-run scenario, and what it clears is
+the lab's in-memory one-read state — not the stored evidence, which it preserves.
+
+### Checkpoint 40: the demonstration is orchestration, not a new scanner
+
+**One port in, one page out.** The judge-facing action submits a port and nothing
+else. The three pairs come from `GET /api/lab-catalog` (`coverage_pairs`), because
+the browser must never invent an account pairing: if the catalog says a pair exists,
+the pair exists; if it does not, the page cannot make one up. The alternative —
+letting the page post nine combinations and looping in JavaScript — was rejected
+twice over: it would duplicate the pairing rules in the frontend, and it would put a
+nine-request loop on the far side of an HTTP boundary where a partial failure is
+easy to hide.
+
+**Three ordinary runs, sequentially.** `/ui/actions/lab-demo-run` calls the same
+`start_lab_bola_scan` handler the single-combination form uses, once per pair, in
+catalog order, and stops at the first refusal's *report* rather than at the first
+refusal's *loop*. Nothing is parallelised: the guard's budget is per run, the lab's
+state is per account, and the demonstration is a sequence a judge watches. A refusal
+is stored as the backend's own detail on the result page — a failed pair leaves the
+cells it would have answered untested, and the page says "coverage is incomplete"
+and names the pair.
+
+**"Full coverage" is a claim about evidence, not intent.** The page prints "all nine
+cells have stored evidence" only when the rebuilt matrix reports `untested == 0`.
+There is no path from "the three runs were requested" to "the matrix is full": the
+runs must have stored checks that answer all nine combinations, which is exactly
+what the aggregator tests.
+
+**Instance identity before port heuristics.** A port is a location, not an identity:
+a restarted lab reuses it, and two labs can share it. TargetLab now publishes
+`X-Lab-Instance` on every response; the lab transport records it as
+`scope.lab_instance`; the matrix compares instance ids when both sides publish one
+and only falls back to the port when one does not. The port heuristic is kept
+because older stored runs predate the header and must stay interpretable.
+
+**Microsecond timestamps, storage order still decides.** `created_at` moved from
+seconds to microseconds so that three consecutive demo runs sort chronologically on
+their own. The aggregator's tie-break on `rowid` stays as the final rule, because
+"two identical timestamps" should still have a deterministic answer.
+
+**The reset stays a separate operation.** The matrix page explains, in two columns,
+what the SCI reset clears and what it preserves, and says explicitly that it does
+not reset, delete or rewrite the BOLA scan history or the grid above it. The one
+thing a judge must not conclude from a green reset proof is that the evidence
+changed — it did not.
+
+### Checkpoint 43: real progress, and why it took a callback
+
+The loading screen could have been a spinner, or a fake sequence of stage names
+ticking past on a timer. Both would have been easy and both would have been lies:
+the scan is synchronous, so at the moment the screen appears nothing has happened
+yet, and a timer cannot know when the lab answers.
+
+The smallest honest mechanism turned out to be a callback on the transport. Every
+lab request already goes through exactly one `_send`, so one call site after the
+response is enough to emit `{actor, method, path, status, elapsed_ms,
+requests_sent}`. It is invoked after the response is final, its return value is
+ignored, its exceptions are swallowed, and it never receives a credential — so it
+cannot change a request, a response or a verdict. Three tests pin that.
+
+On top of it sits a job registry and a worker thread in the UI layer. The job runs
+the *same* four steps the JSON API runs — plan builder, runner, oracle, store — so
+the stored run is byte-identical to a synchronous call and `/api/lab-matrix` fills
+exactly as before. The alternative, teaching the API route to accept an observer,
+would have added a query parameter to a frozen contract for the sake of the UI;
+that trade was rejected.
+
+Polling instead of SSE: a demonstration is three seconds long, and a JSON endpoint
+with a `since` cursor is a smaller surface than a stream, easier to test and
+trivial to cache. If the runs ever get long, the same transcript can be streamed
+without changing the events themselves.
+
+The landing page's animation is abstract on purpose. It draws networks, paths, a
+boundary and a report shape, but no status code, no verdict word and no number —
+so a judge cannot mistake the showreel for a result, and a screenshot of it can
+never become evidence.
+
+### Checkpoint 44: the screen must be able to say "this stopped"
+
+CP43's loading screen was honest while it ran and silent when it stopped. The
+reason was structural rather than careless: the terminal banner was a JavaScript
+reveal, so every path that did not run the poller — a refresh, a bookmark, a
+reader with scripts off — kept the page in its initial "in progress" state with
+no explanation. The fix is not more client code; it is moving the decision to the
+server. `terminal_for(job)` renders state, sentence, hint and next links into the
+HTML, and the script fills the same block when it is the one that saw the end.
+
+**A third terminal state was needed.** `complete`/`failed` could not describe a
+demonstration that stored two of three runs, and the old code called that
+"complete". Introducing `partial` was the smallest honest change: it is computed
+from the same counts the page already shows, it never reaches the store, and its
+hint repeats the rule the matrix enforces — a cell with no stored check is
+untested, and untested is not SAFE. Calling the pair count "complete" to keep the
+state machine small would have been a lie about coverage, which is the one thing
+this project cannot afford.
+
+**The hints are closed and dumb on purpose.** Five reasons, five sentences, no
+retry, no fallback to a default that sounds reassuring. A hint may tell an
+operator how to start the lab; it may not decide that the run "probably" worked.
+Reachability is still not probed separately: a health request would be a second
+outbound path outside the single guarded transport, which the frozen architecture
+forbids. The first real request is the reachability test.
+
+**Retry re-uses the action that already exists.** The retry form posts the same
+fields to `POST /ui/actions/run-assessment`; nothing new is exposed, nothing is
+queued, and a judge can only repeat a configuration they already chose. Steps now
+carry the catalog's `asset_id` so the form can replay a single-pair run exactly.
+
+**A rejection should read like a rejection.** The error page used to announce
+"Backend returned HTTP 422 — The UI rendered this page instead of a JSON error
+body", which describes our plumbing to someone trying to use the product. The
+status now maps to a sentence ("That configuration was rejected") while the HTTP
+code stays in a badge and the backend's own detail string is printed unchanged:
+friendlier words, identical facts.
+
+### Checkpoint 44 follow-up: a command that cannot say what went wrong is a bug
+
+Running the documented commands on a clean machine — rather than assuming they
+worked because they worked once — found three tools that failed badly in exactly
+the cases a judge hits. `demo.py --keep` printed a path into a `TemporaryDirectory`
+that had already been deleted, so the audit command suggested right after it could
+never work. `consistency_audit.py` answered a missing or empty database with a raw
+`sqlite3.OperationalError` traceback. `browser_smoke.py` answered a mistyped
+`--jsdom` path with `FileNotFoundError`.
+
+The fixes are small, but one of them encodes a rule this project keeps re-learning:
+**an empty database must not be reported as intact.** Zero runs is not "everything
+checks out"; it is "nothing was audited", so the tool exits 2 with a sentence
+saying exactly that. Reporting success there would have been the tooling version
+of calling an untested cell SAFE.
+
+### Checkpoint 45: a proof without a page is not a proof
+
+The ownership and disclosure proofs already existed — as a dashboard card and a section
+on one run page — but the numbered journey a reviewer is told to follow still pointed at
+the fixture workflow. Clicking "5 · Ownership proof" on a lab-only database landed on an
+empty `/ui/findings`. The lesson is not that the proof was missing; it is that **a claim
+the product makes must be a destination the product can reach**. Two pages now exist, both
+pure projections over stored runs.
+
+**The journey takes the dataset as an argument rather than guessing.** `journey(lab=...)`
+receives hrefs from `proofs.proof_anchors(runs)`, which returns `None` when no lab run is
+stored. That keeps the fixture path byte-identical for the fixture workflow and prevents
+the two datasets from being mixed in one nav — a failure mode this project has guarded
+against everywhere else.
+
+**The contradiction was a reading bug, not an evidence bug.** `run.evidence.disclosure`
+ANDs `private_disclosure` across every check that carries the flag, including the
+secure-route checks where the flag is correctly `false`. Rendering that aggregate beside a
+CONFIRMED verdict produced "private disclosure: no". The stored payload and its hash are
+untouched; the page now groups the flags by route and says what a `false` means in each
+group. Changing the stored aggregate was rejected: it would have altered evidence that is
+already hashed, and the aggregate is not wrong — it is answering "was this flag true
+everywhere", which is simply not the question a reviewer is asking.
+
+**A digest that binds content is not a digest that binds identity.** Owner-baseline checks
+at the same position in different runs share an `evidence_sha256` for different accounts.
+Rather than silently changing a hashed field and leaving two vintages of evidence in the
+database, the proof page prints the run id and the check id together and states what the
+digest does and does not cover. That limitation is recorded rather than papered over.
+
+### Checkpoint 46: a test that reads your shell is not a test
+
+Three tests asserted the "no CA configured" path while inheriting whatever the
+developer had exported. CI never exported it, so CI was green; a machine following our
+own setup guide exported it, so that machine was red. Both were accurately reporting
+their environment, which is the worst kind of disagreement — it makes a green pipeline
+untrustworthy.
+
+The fix is at the suite level, not per test: `tests/conftest.py` clears every
+`CANARYGATE_*` and `CANARY_*` variable for each test. Per-test `delenv` calls would have
+fixed these three and left the next test to make the same mistake. A rule that holds for
+every test is worth more than three local patches, and it is now itself tested.
+
+**On the launcher.** `run.sh` deliberately resolves `.venv/bin/python` by absolute path
+rather than trusting `python` from PATH. That is not defensive noise: the machine this
+was reported from has a conda environment that is activated *before* the venv, so
+`python` can be either interpreter depending on the order of two `source` commands. A
+launch script whose behaviour depends on shell history is not a launcher; it is a
+coin flip. `--doctor` exists so that question can be answered in one command instead of
+by reading a traceback.
+
+The script also reuses an already-running lab rather than starting a second one. Two
+labs on one port is not a feature: the second either fails to bind or, worse, binds a
+different port than the one the form is told to use.

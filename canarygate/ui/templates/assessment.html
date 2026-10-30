@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, stat, icon, verdict_badge, kv, empty %}
+{% block title %}New security assessment{% endblock %}
+{% block content %}
+{{ page_head("Workspace", "New security assessment",
+             "Four decisions: what to inspect, where to run it, who acts, what to test.
+              Nothing runs until you press the button at the bottom — opening this page never
+              contacts a target.") }}
+
+<ol class="steps-bar" aria-label="Assessment steps">
+  <li class="is-current"><span>1</span> Specification</li>
+  <li><span>2</span> Environment</li>
+  <li><span>3</span> Accounts</li>
+  <li><span>4</span> Tests</li>
+</ol>
+
+{# ------------------------------------------------------------------ A. spec #}
+<section class="card" id="specification" aria-labelledby="spec-title">
+  <div class="card-head">
+    <h2 id="spec-title"><span class="step-no">01</span> What are we inspecting?</h2>
+    <span class="badge badge-info">inventory only</span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-info" role="note">
+      {{ icon("info") }}
+      <div><b>Inventory only — no security scan performed.</b>
+        A specification lists the operations an API declares. Inspecting one here never sends
+        a request, and it is not evidence about any running API.</div>
+    </div>
+    <div class="grid grid-3 mt-1">
+      {{ stat("Operations in scope", inventory|length, "the backend's declared inventory", small=True) }}
+      {{ stat("Methods", methods|join(" · ") if methods else "—", "declared, not tested", small=True) }}
+      {{ stat("Accepted spec", "JSON · YAML", "≤ 1 MiB, parsed locally", small=True) }}
+    </div>
+    <p class="mt-1"><a class="btn" href="/ui/spec">{{ icon("spec") }} Open the API inspector</a>
+      <a class="btn btn-ghost" href="/api/endpoints" target="_blank" rel="noopener">
+        {{ icon("external") }} Inventory as JSON</a></p>
+  </div>
+</section>
+
+{# ------------------------------------------------------------ B. environment #}
+<section class="card" id="environment" aria-labelledby="env-title">
+  <div class="card-head">
+    <h2 id="env-title"><span class="step-no">02</span> Where should it run?</h2>
+    <span class="hint">pick one — they are never mixed</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <article class="choice">
+        <div class="choice-head">
+          <h3>{{ icon("database") }} Offline fixtures</h3>
+          <span class="badge badge-muted">no sockets</span>
+        </div>
+        <p>A frozen synthetic API and a recorded transcript. Deterministic and repeatable;
+          labelled as fixture evidence on every surface.</p>
+        <ul class="ticks">
+          <li>read-BOLA, authentication, validation and interaction scenarios</li>
+          <li>the nine-section report and the endpoint matrix</li>
+          <li><b>not</b> your API and <b>not</b> a live target</li>
+        </ul>
+        <p><a class="btn btn-sm" href="/ui/suites">{{ icon("suites") }} Open offline suites</a></p>
+      </article>
+      <article class="choice is-selected">
+        <div class="choice-head">
+          <h3>{{ icon("shield") }} AssetVault / TargetLab</h3>
+          {% if readiness.ca_configured %}
+          <span class="badge badge-ok">ready</span>
+          {% else %}
+          <span class="badge badge-warn">CA not configured</span>
+          {% endif %}
+        </div>
+        <p>A deliberately vulnerable lab on <span class="mono">127.0.0.1</span> with a pinned
+          test CA. Real HTTPS, real status codes, controlled validation only.</p>
+        <ul class="ticks">
+          <li>six read-BOLA checks per run, both directions, both routes</li>
+          <li>control-interaction (SCI) checks and a reset proof</li>
+          <li><b>not</b> a live or organizer-supplied API</li>
+        </ul>
+        {% if not readiness.ca_configured %}
+        <p class="note">Set <span class="mono">{{ readiness.ca_env }}</span> before starting the
+          server. A scan started without it answers 400 and stores nothing.</p>
+        {% endif %}
+      </article>
+    </div>
+  </div>
+</section>
+
+{# --------------------------------------------------------------- C. accounts #}
+<section class="card" id="accounts" aria-labelledby="accounts-title">
+  <div class="card-head">
+    <h2 id="accounts-title"><span class="step-no">03</span> Who acts, and on whose data?</h2>
+    <span class="hint mono">source: GET /api/lab-catalog</span>
+  </div>
+  <div class="card-body">
+    <p class="note">Each demo account owns exactly one private asset. A run authenticates two
+      identities, verifies both owner baselines, then attempts the boundary in one direction.</p>
+    <div class="grid grid-3">
+      {% for account in catalog.accounts %}
+      {% set cell = (matrix.cells|selectattr("requester", "equalto", account.account)
+                     |selectattr("asset_id", "equalto", account.asset_id)|first) %}
+      <article class="account-card">
+        <div class="account-top">
+          <span class="avatar" aria-hidden="true">{{ account.account[:1]|upper }}</span>
+          <div>
+            <h3>{{ account.account|capitalize }}</h3>
+            <p class="dim small">{{ account.title }}</p>
+          </div>
+          {% if cell and cell.state == "tested" %}
+          {{ verdict_badge(cell.verdict) }}
+          {% else %}
+          <span class="badge badge-muted">untested</span>
+          {% endif %}
+        </div>
+        <dl class="kv">
+          {{ kv("Owns", account.asset_id, True) }}
+          {{ kv("Asset", account.asset_label) }}
+          {{ kv("Type", account.asset_type|humanize) }}
+        </dl>
+        <p class="note">
+          {% if cell and cell.state == "tested" %}
+          Baseline verified by <span class="mono">{{ cell.evidence.check_id }}</span>.
+          {% else %}
+          No stored check has verified this account's baseline yet.
+          {% endif %}
+        </p>
+        <a class="btn btn-sm btn-ghost" href="/ui/lab/matrix?cell={{ account.account }}:{{ account.asset_id }}#cell-detail">
+          {{ icon("eye") }} Ownership evidence</a>
+      </article>
+      {% endfor %}
+    </div>
+    <div class="pair-bar mt-1">
+      <span class="hint">Coverage pairs the catalog publishes (three runs answer all nine cells)</span>
+      <ul class="inline-list">
+        {% for pair in coverage %}
+        <li class="mono xs">{{ pair.actor }} → {{ pair.owner }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+
+{# ------------------------------------------------------------------ D. tests #}
+<section class="card" id="tests" aria-labelledby="tests-title">
+  <div class="card-head">
+    <h2 id="tests-title"><span class="step-no">04</span> What should run?</h2>
+    <span class="hint">one form · real backend workflows</span>
+  </div>
+  <div class="card-body">
+    <form class="form run-form" method="post" action="/ui/actions/run-assessment" data-run-form>
+      <fieldset class="choice-set">
+        <legend class="visually-hidden">Choose an assessment</legend>
+
+        <label class="choice choice-radio">
+          <input type="radio" name="kind" value="demo" checked>
+          <span class="choice-body">
+            <span class="choice-title">Full authorization demonstration
+              <span class="badge badge-info">recommended</span></span>
+            <span class="choice-copy">Runs the three catalog coverage pairs one after another,
+              then rebuilds the nine-cell matrix from what was stored. Best first run for a
+              judge: it fills every cell in about three seconds.</span>
+            <span class="choice-meta mono">3 runs · ≤ 20 requests each · sequential</span>
+          </span>
+        </label>
+
+        <label class="choice choice-radio">
+          <input type="radio" name="kind" value="bola">
+          <span class="choice-body">
+            <span class="choice-title">BOLA testing</span>
+            <span class="choice-copy">Checks whether one account can read another account's
+              private resource, with an owner baseline and a secure-route comparison.</span>
+            <span class="choice-meta mono">6 checks · one run</span>
+          </span>
+        </label>
+
+        <label class="choice choice-radio">
+          <input type="radio" name="kind" value="sci">
+          <span class="choice-body">
+            <span class="choice-title">SCI testing</span>
+            <span class="choice-copy">Checks whether authentication and authorization, each
+              correct alone, fail when they interact.</span>
+            <span class="choice-meta mono">2 baselines + 1 combined read</span>
+          </span>
+        </label>
+      </fieldset>
+
+      <div class="grid grid-3 mt-1">
+        <label class="field field-lg">
+          <span>TargetLab port</span>
+          <input type="number" name="port" min="1024" max="65535" required
+                 inputmode="numeric" value="8765" data-port>
+          <span class="hint">The lab prints this when it starts. Default 8765.</span>
+        </label>
+        <label class="field field-lg">
+          <span>Requester (BOLA / SCI only)</span>
+          <select name="actor">
+            {% for account in catalog.accounts %}
+            <option value="{{ account.account }}">{{ account.account|capitalize }} — {{ account.title }}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">The identity that makes the request.</span>
+        </label>
+        <label class="field field-lg">
+          <span>Asset to request (BOLA / SCI only)</span>
+          <select name="asset">
+            {% for account in catalog.accounts %}
+            <option value="{{ account.asset_id }}">{{ account.asset_id }} — owned by {{ account.account }}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">The full demonstration ignores these two fields.</span>
+        </label>
+      </div>
+
+      <div class="run-cta">
+        <button class="btn btn-primary btn-xl" type="submit" data-run-button>
+          {{ icon("play") }} Run security assessment
+        </button>
+        <p class="note">You will see a live execution screen: each line is a request that
+          actually completed against the lab, with its own status code. Nothing is simulated and
+          no percentage is invented.</p>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/ui/static/js/run-form.js" defer></script>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, icon %}
+{% block title %}Error {{ status_code }}{% endblock %}
+
+{% block content %}
+{#- One sentence per status, in the operator's language. The HTTP code stays visible
+    in the badge, so nothing about what the backend did is hidden here. -#}
+{% set explanation = {
+  "404": "There is no stored record at this address. Nothing was changed.",
+  "422": "The backend rejected these values before it did anything, so nothing was stored.",
+  "413": "The document is larger than the limit the backend accepts, so it was not read.",
+  "415": "The backend only reads the content types it declares, so this one was refused.",
+  "500": "The backend could not complete the request. Nothing partial is shown as complete.",
+  "502": "CanaryGate could not reach the lab. A connection failure is never a result.",
+  "503": "The backend is not ready to run this yet; its readiness gates still hold."
+} %}
+{% call page_head("Error",
+                 title,
+                 explanation.get(status_code|string,
+                   "The backend refused this request. Nothing was stored."),
+                 trail=[("Dashboard", "/ui/"), ("Error " ~ status_code, None)]) %}
+  <span class="badge badge-danger badge-lg">HTTP {{ status_code }}</span>
+{% endcall %}
+
+<div class="alert alert-danger">
+  {{ icon("warning") }}
+  <div>
+    <b>{{ detail }}</b>
+    <div class="note mono mt-0">status {{ status_code }}</div>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What to do next</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>404</b> — the run id does not exist in the local database, or the route is
+          unknown. Check the scan list for ids that do exist.</li>
+        <li><b>422</b> — the submitted value was rejected before any backend action. Nothing
+          was stored.</li>
+        <li><b>413 / 415</b> — the document was too large or the content type was wrong. Send
+          raw UTF-8 YAML or JSON.</li>
+        <li><b>500 with “integrity verification”</b> — a stored record failed its checksum.
+          The backend refuses to use it and this UI does not guess its contents.</li>
+        <li><b>500 with “storage unavailable”</b> — the SQLite file cannot be created or read.
+          Check <span class="mono">CANARYGATE_DB_PATH</span> and permissions.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("arrow") }} Continue</h2></div>
+    <div class="card-body">
+      <div class="link-row">
+        {% if status_code == 422 %}
+        <a class="btn btn-primary" href="/ui/assessment">Open the workspace</a>
+        {% endif %}
+        <a class="btn {{ '' if status_code == 422 else 'btn-primary' }}" href="/ui/">Dashboard</a>
+        <a class="btn" href="/ui/scans">Scan list</a>
+        <a class="btn btn-ghost" href="/ui/setup">Readiness</a>
+        <a class="btn btn-ghost" href="/api/health" target="_blank" rel="noopener">API health (JSON)</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,12 +1,15 @@
-"""The single fixed TargetLab control-interaction scenario.
+"""The TargetLab control-interaction scenario.
 
 The lab's declared flaw is a *state-dependent* one: an account whose last login
 attempt was rejected as a bad credential skips the ownership check on the guarded
-record route. Two controls therefore look correct in isolation while their
-interaction leaks another account's private record.
+route for one read. Two controls therefore look correct in isolation while their
+interaction leaks another account's private asset.
 
-Everything here is fixed. The only knobs are the loopback port and the request
-budget. The rejection body is a lab contract, not configuration.
+A run may select which ordered pair of the three provisioned demo accounts it
+exercises: the requester (who sets the condition) and the asset owner (whose asset
+is leaked). Everything else is fixed: the loopback port, the request budget and the
+declared denial/rejection bodies. The rejection body is a lab contract, not
+configuration.
 """
 from dataclasses import dataclass
 
@@ -19,7 +22,6 @@ TITLE = "TargetLab control-interaction validation"
 POLICY_SOURCE = "targetlab declared interaction policy"
 KIND = "AUTHN+AUTHZ"
 
-ACCOUNT_ORDER = ("alice", "bob")
 LOGIN_PATH = "/login"
 PROFILE_PATH = "/profile"
 REJECTED_LOGIN_PROBE = "wrong_password"
@@ -85,8 +87,16 @@ class LabSciPlan:
         return wrong_password_body(actor)
 
 
-def build_sci_plan(port: int, *, budget: int = DEFAULT_REQUEST_BUDGET) -> LabSciPlan:
-    """Build the fixed interaction plan; only port and budget vary."""
+def _pair(actor, owner) -> tuple[str, str]:
+    """Resolve the requested ordered pair of demo accounts."""
+    from canarygate.scan.lab_scenarios import resolve_pair
+
+    return resolve_pair(actor, owner)
+
+
+def build_sci_plan(port: int, *, budget: int = DEFAULT_REQUEST_BUDGET,
+                   actor: str | None = None, owner: str | None = None) -> LabSciPlan:
+    """Build the interaction plan for one ordered pair; port, budget and pair vary."""
     from canarygate.scan.lab_scenarios import LAB_PASSWORDS, build_lab_scope
 
     if not isinstance(port, int) or not 1024 <= port <= 65535:
@@ -94,11 +104,13 @@ def build_sci_plan(port: int, *, budget: int = DEFAULT_REQUEST_BUDGET) -> LabSci
     if (not isinstance(budget, int) or not MIN_REQUEST_BUDGET <= budget <= MAX_REQUEST_BUDGET):
         raise ValueError(f"a request budget between {MIN_REQUEST_BUDGET} and "
                          f"{MAX_REQUEST_BUDGET} is required")
+    pair = _pair(actor, owner)
     return LabSciPlan(
         scenario_id=SCENARIO_ID, title=TITLE, kind=KIND,
         controls=tuple(INTERACTION_CONTROLS[KIND]), policy_source=POLICY_SOURCE,
-        scope=build_lab_scope(port, budget=budget, input_probes=(REJECTED_LOGIN_PROBE,)),
-        credentials=dict(LAB_PASSWORDS), accounts=ACCOUNT_ORDER, resource=GUARDED_RESOURCE,
+        scope=build_lab_scope(port, budget=budget, accounts=pair,
+                                input_probes=(REJECTED_LOGIN_PROBE,)),
+        credentials={name: LAB_PASSWORDS[name] for name in pair}, accounts=pair, resource=GUARDED_RESOURCE,
         login_path=LOGIN_PATH, profile_path=PROFILE_PATH, probe=REJECTED_LOGIN_PROBE,
         denial_body=dict(DENIAL_BODY), rejection_body=dict(REJECTION_BODY),
         required_requests=REQUIRED_REQUESTS)

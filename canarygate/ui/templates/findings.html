@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, tri, stat,
+                              empty, verdict_legend, icon %}
+{% block title %}Findings{% endblock %}
+
+{% block content %}
+{% call page_head("Analysis",
+                 "Findings",
+                 "Every conclusion the backend has recorded for stored fixture runs,
+                  grouped by verdict. A conclusion exists only because a stored run
+                  produced it — this page groups and explains; it never adds a finding
+                  of its own. Read-BOLA and authentication transcripts have no list
+                  endpoint in this contract, so they are opened by run id from
+                  Test suites rather than listed here.",
+                 trail=[("Dashboard", "/ui/"), ("Findings", None)]) %}
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">{{ icon("play") }} Run fixture scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+  </form>
+{% endcall %}
+
+{{ journey("findings") }}
+
+<section id="scan-panel" aria-live="polite"></section>
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Severity is not part of the backend contract.</b>
+    The backend returns a verdict, a reason, a decision checklist and a remediation key —
+    no CVSS, no severity label. This page ranks by verdict and never invents a score.
+    The proposed contract addition is documented as gap G11 in <span class="mono">docs/UI.md</span>.
+  </div>
+</div>
+
+<section class="grid grid-4" aria-label="Posture summary">
+  {{ stat("Open findings", findings_count, "CONFIRMED + SUSPECTED runs", tone=("danger" if findings_count else None)) }}
+  {{ stat("Confirmed", grouped.CONFIRMED|length, "both evidence parts present", tone=("danger" if grouped.CONFIRMED else None)) }}
+  {{ stat("Not covered", coverage.SKIPPED + coverage.INCONCLUSIVE, "checks skipped or inconclusive") }}
+  {{ stat("Stored runs", runs|length, coverage.SAFE ~ " checks returned SAFE") }}
+</section>
+
+{% if not runs %}
+  {{ empty("No findings yet",
+           "Findings are derived from stored runs. There are none in the database, so this
+            page is empty by design rather than showing sample results.",
+           "/ui/scans", "Open the scan list") }}
+{% endif %}
+
+{% if grouped.CONFIRMED %}
+<h2 class="section-title">Confirmed findings</h2>
+<p class="section-sub">Ownership evidence and disclosure evidence both established.</p>
+{% for run in grouped.CONFIRMED %}
+<section class="card finding finding-confirmed">
+  <div class="card-head">
+    <h2 class="finding-headline">
+      {{ verdict_badge(run.verdict) }}
+      <span class="mono">{{ run.endpoint }}</span>
+      <span class="dim">·</span>
+      <span class="pill">{{ run.expected_access }}</span>
+    </h2>
+    <span class="mono xs dim">{{ run.created_at }}</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <div>
+        <h3 class="section-sub mb-1">What happened</h3>
+        <p class="finding-quote">
+          <span class="mono">{{ run.actor }}</span>
+          (role <span class="mono">{{ run.account_role }}</span>) read
+          <span class="mono">{{ run.target_resource }}</span>, which the backend verified
+          belongs to <span class="mono">{{ run.verified_owner }}</span>, while the declared
+          expectation was <span class="pill">{{ run.expected_access }}</span>
+          (source: {{ run.expected_source }}).
+        </p>
+        <p class="reason mt-1">{{ run.reason }}</p>
+        {% if run.remediation %}
+        <h3 class="section-sub mt-1 mb-1">Recommended remediation</h3>
+        <p>{{ run.remediation }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <h3 class="section-sub mb-1">Evidence</h3>
+        <ul class="list-plain">
+          <li>Ownership proof {{ tri(true if run.evidence.ownership else none) }}
+            <span class="dim xs">— verified owner {{ run.verified_owner }}</span></li>
+          <li>Disclosure proof {{ tri(true if run.evidence.disclosure else none) }}
+            <span class="dim xs">— private data crossed the boundary</span></li>
+          <li>Checklist keys established
+            <span class="mono small">{{ run.bola_checklist.values()|select|list|length }}
+              / {{ run.bola_checklist|length }}</span></li>
+        </ul>
+        <div class="link-row mt-1">
+          <a class="btn btn-primary btn-sm" href="/ui/scans/{{ run.id }}">Full finding</a>
+          <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ run.id }}/replay">Replay</a>
+          <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ run.id }}/evidence">Evidence</a>
+          <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ run.id }}/report">Report</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+
+{% if grouped.SUSPECTED %}
+<h2 class="section-title">Suspected — not confirmed</h2>
+<p class="section-sub">Something looked wrong, but the backend could not establish both
+  evidence parts. Treat as an open question, not a proven defect.</p>
+{% for run in grouped.SUSPECTED %}
+<section class="card finding finding-suspected">
+  <div class="card-head">
+    <h2 class="finding-headline">{{ verdict_badge(run.verdict) }}
+      <span class="mono">{{ run.endpoint }}</span></h2>
+    <a class="card-link" href="/ui/scans/{{ run.id }}">open finding</a>
+  </div>
+  <div class="card-body"><p class="reason">{{ run.reason }}</p></div>
+</section>
+{% endfor %}
+{% endif %}
+
+{% if check_findings %}
+<h2 class="section-title">Check-level findings</h2>
+<p class="section-sub">Individual authentication, input-validation and disclosure checks
+  that returned CONFIRMED or SUSPECTED inside a run.</p>
+<div class="card">
+  <div class="table-scroll">
+    <table class="table table-wide">
+      <thead>
+        <tr><th scope="col">Check</th><th scope="col">Category</th><th scope="col">Verdict</th>
+            <th scope="col">Reason</th><th scope="col">Remediation</th><th scope="col">Run</th></tr>
+      </thead>
+      <tbody>
+        {% for item in check_findings %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ item.check.id }}</th>
+          <td class="small">{{ item.check.category }}</td>
+          <td>{{ verdict_badge(item.check.verdict) }}</td>
+          <td class="small">{{ item.check.reason }}</td>
+          <td class="small">{{ item.check.remediation if item.check.remediation else "—" }}</td>
+          <td><a href="/ui/scans/{{ item.run.id }}">{{ item.run.id|short_id }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("check") }} Secure behaviour observed</h2>
+      <span class="badge badge-ok">{{ grouped.SAFE|length }}</span>
+    </div>
+    <div class="card-body">
+      {% if grouped.SAFE %}
+      <p class="note">These runs matched the expected access. SAFE is only recorded when
+        the relevant checks actually executed.</p>
+      <ul class="list-plain">
+        {% for run in grouped.SAFE %}
+        <li>
+          {{ verdict_badge(run.verdict) }}
+          <a class="mono" href="/ui/scans/{{ run.id }}">{{ run.endpoint }}</a>
+          <span class="dim xs">· actor {{ run.actor }} · {{ run.id|short_id }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+        {{ empty("No SAFE run recorded", "Run the fixture scan or a read-BOLA scenario.") }}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("info") }} Not covered</h2>
+      <span class="badge badge-muted">{{ coverage.SKIPPED + coverage.INCONCLUSIVE }}</span>
+    </div>
+    <div class="card-body">
+      <table class="table table-compact">
+        <tbody>
+          <tr><th scope="row">Checks SKIPPED</th><td class="num">{{ coverage.SKIPPED }}</td></tr>
+          <tr><th scope="row">Checks INCONCLUSIVE</th><td class="num">{{ coverage.INCONCLUSIVE }}</td></tr>
+          <tr><th scope="row">Checks SAFE</th><td class="num">{{ coverage.SAFE }}</td></tr>
+          <tr><th scope="row">Runs SKIPPED</th><td class="num">{{ grouped.SKIPPED|length }}</td></tr>
+          <tr><th scope="row">Runs INCONCLUSIVE</th><td class="num">{{ grouped.INCONCLUSIVE|length }}</td></tr>
+        </tbody>
+      </table>
+      <p class="note dim-2">Skipped checks are listed with their reason on the finding page.
+        A skipped check is missing coverage, never a pass.</p>
+      {% if grouped.INCONCLUSIVE or grouped.SKIPPED %}
+      <ul class="list-plain">
+        {% for run in (grouped.INCONCLUSIVE + grouped.SKIPPED)[:6] %}
+        <li>{{ verdict_badge(run.verdict) }}
+          <a class="mono" href="/ui/scans/{{ run.id }}">{{ run.endpoint }}</a>
+          <span class="dim xs">· {{ run.reason[:90] }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("shield") }} How a finding is allowed to exist</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li><b>CONFIRMED</b> requires proof that the resource belongs to the other account
+        <em>and</em> proof that the acting account received that account's private data.
+        A 200 response alone is never enough.</li>
+      <li><b>SAFE</b> is only recorded when the oracle ran and matched the expectation,
+        including a verified denial.</li>
+      <li><b>INCONCLUSIVE / SKIPPED</b> stay visible here so coverage gaps cannot be
+        mistaken for security.</li>
+      <li>Every finding carries a redacted request/response summary with its own SHA-256;
+        the <a href="/ui/matrix">matrix</a> shows which combinations were assessed.</li>
+    </ul>
+    <div class="card-foot card-foot-flush">
+      {{ verdict_legend() }}
+    </div>
+  </div>
+</section>
+{% endblock %}

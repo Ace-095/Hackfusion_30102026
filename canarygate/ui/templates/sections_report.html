@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, status_badge, kv, icon,
+                              render_value, verdict_legend %}
+{% block title %}Report · {{ run_id_value|short_id }}{% endblock %}
+
+{#- Generic renderer for any family's nine-section projection. Every section and
+    every value below comes from the backend's own `?view=sections` response; this
+    template decides layout only, never a verdict. -#}
+{% block content %}
+{% call page_head("Report",
+                 family_label,
+                 "Rendered from the backend's own nine-section projection for this stored
+                  run. The same data is served as HTML and JSON by the backend.",
+                 trail=[("Dashboard", "/ui/"), ("Reports", "/ui/reports"),
+                        (run_id_value|short_id, back_href), ("Report", None)]) %}
+  <div class="toolbar">
+    {% if verdict and verdict in ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED") %}
+      {{ verdict_badge(verdict, "badge-lg") }}
+    {% elif verdict %}
+      {{ status_badge(verdict) }}
+    {% endif %}
+    <button type="button" class="btn btn-sm" data-print>{{ icon("download") }} Print / PDF</button>
+    <a class="btn btn-sm btn-ghost" href="{{ report_base }}?format=html"
+       target="_blank" rel="noopener">{{ icon("external") }} Backend HTML</a>
+    <a class="btn btn-sm btn-ghost" href="{{ report_base }}?view=sections"
+       target="_blank" rel="noopener">Sections JSON</a>
+    <a class="btn btn-sm btn-ghost" href="{{ back_href }}">Back to run</a>
+  </div>
+{% endcall %}
+
+<div class="report-shell">
+  <div class="report-cover">
+    <div class="spread">
+      <div>
+        <div class="kicker">CanaryGate · evidence-based authorization report</div>
+        <h2 class="report-title mb-1">{{ family_label }}</h2>
+        {% if reason %}<p class="page-sub">{{ reason }}</p>{% endif %}
+      </div>
+      <div class="center">
+        {% if verdict and verdict in ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED") %}
+          {{ verdict_badge(verdict, "badge-lg") }}
+        {% else %}
+          {{ status_badge(verdict) }}
+        {% endif %}
+        <div class="mono xs dim mt-0">{{ recorded }}</div>
+      </div>
+    </div>
+    <div class="grid grid-3 mt-2">
+      <div><div class="stat-label">Run id</div><div class="mono small">{{ run_id_value }}</div></div>
+      <div><div class="stat-label">Family</div><div class="mono small">{{ family }}</div></div>
+      <div><div class="stat-label">Sections</div><div class="mono small">{{ sections|length }}</div></div>
+    </div>
+  </div>
+
+  {% set section_titles = {
+    "executive_summary": "Executive summary",
+    "scope_and_rules": "Scope and rules",
+    "scope_accounts_seeding": "Scope, accounts and seeding",
+    "endpoint_inventory": "Endpoint inventory",
+    "findings": "Findings",
+    "secured_endpoints": "Secured endpoints that passed",
+    "skipped_and_inconclusive": "Skipped and inconclusive",
+    "authorization_matrix": "Authorization matrix",
+    "manual_interventions_and_inferences": "Manual interventions and inferences",
+    "constraint_checklist": "Constraint checklist"
+  } %}
+
+  {% for key, value in sections.items() %}
+  <section class="report-section" id="section-{{ loop.index }}">
+    <h2><span class="idx">{{ loop.index }}</span>{{ section_titles.get(key, key|humanize) }}</h2>
+    {{ render_value(value) }}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="card mt-2">
+  <div class="card-head">
+    <h2>{{ icon("info") }} Where this report comes from</h2>
+    <span class="hint mono">{{ report_base }}?view=sections</span>
+  </div>
+  <div class="card-body">
+    <p class="note">
+      The nine sections are the backend's projection of one stored run. This page does not
+      re-derive any verdict, count or coverage figure; it renders the dictionaries it was
+      given. {{ family_label }} runs are stored locally and carry their own mode and
+      limitations, which are listed in the run's own sections.
+    </p>
+    <div class="card-foot card-foot-flush">{{ verdict_legend() }}</div>
+  </div>
+</div>
+{% endblock %}

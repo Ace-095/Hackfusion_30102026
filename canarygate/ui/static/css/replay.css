@@ -1,0 +1,408 @@
+/* ==========================================================================
+   CanaryGate UI — flight recorder
+   Loaded only by replay.html. Shares the tokens defined in app.css so the
+   recorder cannot drift from the rest of the interface.
+   ========================================================================== */
+
+/* --------------------------------------------------------------- summary */
+.replay-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  margin-bottom: 1rem;
+}
+.replay-summary .stat-value.sm { font-size: 0.95rem; line-height: 1.35; }
+
+/* ------------------------------------------------------------------ shell */
+.replay {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.replay:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.replay-bar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-3);
+  padding: 0.6rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.replay-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.replay-controls[hidden] { display: none; }
+
+.btn-icon { padding: 0.34rem 0.45rem; }
+.btn-icon svg { width: 15px; height: 15px; }
+
+.replay-speed {
+  margin-left: 0.35rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.replay-speed select {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 0.2rem 0.35rem;
+  font: inherit;
+  font-size: var(--fs-xs);
+}
+
+.replay-counter {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-hint,
+.replay-announce {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.replay-hint kbd {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 0.28rem;
+  color: var(--ink-2);
+}
+.replay-announce { color: var(--ink-2); min-height: 1.1em; }
+
+/* ----------------------------------------------------------------- events */
+.replay-events {
+  list-style: none;
+  margin: 0;
+  padding: 1rem 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.replay-event {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  gap: 0.7rem;
+  scroll-margin-top: 5rem;
+}
+
+.replay-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.75rem;
+}
+.replay-marker .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--neutral);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--neutral) 18%, transparent);
+  flex: 0 0 auto;
+}
+.replay-marker .dot-ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-tint); }
+.replay-marker .dot-denied { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-tint); }
+.replay-marker .dot-redirect { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-tint); }
+.replay-marker .dot-absent { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-tint); }
+.replay-marker .dot-error { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-tint); }
+.replay-marker .line {
+  flex: 1 1 auto;
+  width: 1px;
+  background: var(--line-strong);
+  margin-top: 0.4rem;
+}
+
+.replay-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.replay-event[aria-current="step"] .replay-card {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-tint), var(--shadow-2);
+}
+.replay-event.is-past .replay-card { opacity: 0.72; }
+
+.replay-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+}
+.replay-step {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.replay-title { font-weight: 600; color: var(--ink); font-size: var(--fs-sm); }
+.replay-time,
+.replay-offset {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  margin-left: auto;
+}
+.replay-offset { margin-left: 0.35rem; color: var(--ink-2); }
+
+.source-tag,
+.part-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-pill);
+  font-size: 0.64rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+.source-tag.source-probe { border-color: #3a5064; color: var(--accent); }
+.part-tag svg { width: 11px; height: 11px; }
+.part-tag.part-ownership { border-color: var(--info); color: var(--info); background: var(--info-tint); }
+.part-tag.part-disclosure { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+.part-tag.part-ambiguous {
+  border-style: dashed;
+  border-color: var(--warn);
+  color: var(--warn);
+  background: var(--warn-tint);
+}
+
+.replay-request {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.replay-request .path {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.replay-request .arrow { color: var(--ink-3); }
+
+.status-chip {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
+}
+.status-chip.status-ok,
+.status-chip.status-denied { border-color: var(--ok); color: var(--ok); background: var(--ok-tint); }
+.status-chip.status-redirect,
+.status-chip.status-absent { border-color: var(--warn); color: var(--warn); background: var(--warn-tint); }
+.status-chip.status-error { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+
+.actor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0.1rem 0.5rem;
+}
+.actor-chip svg { width: 13px; height: 13px; }
+.actor-chip b { color: var(--ink); font-weight: 600; }
+.actor-chip .role { color: var(--ink-3); }
+
+.replay-why {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-left: 2px solid var(--line-strong);
+  padding-left: 0.55rem;
+}
+
+.replay-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+.mono-check { font-family: var(--mono); color: var(--ink); font-size: 0.72rem; }
+.check-reason { color: var(--ink-2); }
+
+.replay-facts { display: flex; flex-direction: column; gap: 0.4rem; }
+.facts-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 0.2rem;
+}
+.checklist-inline { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+.replay-response {
+  display: grid;
+  grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr);
+  gap: 0.25rem 0.7rem;
+  font-size: var(--fs-xs);
+  margin: 0;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.45rem;
+}
+.replay-response dt { color: var(--ink-3); }
+.replay-response dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+.replay-raw-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+.replay-raw-body p { grid-column: 1 / -1; margin: 0; }
+
+/* ----------------------------------------------------------- verdict panel */
+.replay-verdict {
+  border-top: 1px solid var(--line);
+  background: var(--surface-3);
+  padding: 0.8rem 1rem;
+}
+.verdict-line {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}
+.replay-verdict .note { margin: 0.2rem 0 0; }
+
+/* --------------------------------------------------- playback enhancement */
+/* Without JavaScript every event card is visible: the page is a complete,
+   scrollable evidence timeline. These rules only apply once replay.js has
+   confirmed it is running, so the no-JS view is never broken. */
+.replay[data-enhanced="true"] .replay-event:not(.is-active) { display: none; }
+.replay[data-enhanced="true"] .replay-event.is-active .replay-card { animation: replay-in 180ms ease-out; }
+.replay[data-enhanced="true"] .replay-verdict[data-revealed="false"] { display: none; }
+.replay[data-enhanced="true"] .replay-hint { display: none; }
+
+@keyframes replay-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* -------------------------------------------------------------- utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------ responsive */
+@media (max-width: 900px) {
+  .replay-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .replay-raw-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .replay-summary { grid-template-columns: minmax(0, 1fr); }
+  .replay-event { grid-template-columns: 1.1rem minmax(0, 1fr); gap: 0.5rem; }
+  .replay-events { padding: 0.8rem 0.6rem 1rem; }
+  .replay-card { padding: 0.65rem 0.7rem; }
+  .actor-chip { margin-left: 0; }
+  .replay-time, .replay-offset { margin-left: 0; }
+  .replay-response { grid-template-columns: minmax(0, 1fr); }
+  .replay-response dt { margin-top: 0.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replay[data-enhanced="true"] .replay-event.is-active .replay-card { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .replay-card, .replay-bar, .replay-verdict { border: 1px solid CanvasText; }
+  .replay-marker .dot { background: CanvasText; }
+}
+
+/* ----------------------------------------------------------------- print */
+@media print {
+  .replay-bar, .replay-controls, .replay-hint, .replay-announce { display: none !important; }
+  .replay, .replay-card { background: #fff !important; border-color: #bbb !important; box-shadow: none !important; }
+  .replay-event { display: grid !important; opacity: 1 !important; break-inside: avoid; }
+  .replay-verdict { display: block !important; background: #fff !important; }
+}
+
+.replay-raw-body .mono { margin: 0; font-size: var(--fs-xs); color: var(--ink-2); }
+.replay-raw-body .digest { overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------ loose ends */
+.replay-raw { margin-top: 0.1rem; }
+.replay-raw summary { font-size: var(--fs-xs); }
+.status-chip.status-none { color: var(--ink-3); border-style: dashed; }
+.tight-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: var(--fs-sm); color: var(--ink-2); }
+.tight-list code { font-family: var(--mono); font-size: 0.78em; color: var(--ink); overflow-wrap: anywhere; }
+
+/* Why an evidence part landed on this event: visible, not a tooltip. */
+.replay-basis {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.replay-basis svg { width: 12px; height: 12px; }
+.replay-basis .mono { color: var(--ink-2); font-size: 0.68rem; }
+
+/* An ambiguous evidence association must look different from a settled one. */
+.replay-warn {
+  margin: 0;
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+.replay-warn svg { width: 14px; height: 14px; color: var(--warn); flex: 0 0 auto; margin-top: 0.1rem; }
+.replay-warn b { color: var(--warn); }

@@ -1,0 +1,57 @@
+{% from "_macros.html" import verdict_badge, status_badge, icon %}
+{#- HTMX fragment returned by the four suite actions. It repeats the backend's
+    verdict or status and links to the stored run; it never computes one. -#}
+{% set family_reports_a_verdict = family in ("read-bola", "interaction") %}
+<section class="card result-card" id="suite-result">
+  <div class="card-head">
+    <h2>{{ icon("check") }} New {{ family_spec.label|lower }} recorded</h2>
+    <span class="badge badge-ok mono">stored</span>
+  </div>
+  <div class="card-body">
+    <div class="finding-headline mb-1">
+      {% if family_reports_a_verdict %}
+        {{ verdict_badge(run.verdict) }}
+      {% else %}
+        {{ status_badge(run.status) }}
+      {% endif %}
+      <span class="mono">{{ run.scenario_id }}</span>
+      {% if run.title %}<span class="dim">·</span> {{ run.title }}{% endif %}
+    </div>
+    <p class="reason">
+      {% if run.reason %}
+        {{ run.reason }}
+      {% elif run.summary %}
+        {{ run.summary.confirmed }} confirmed, {{ run.summary.suspected }} suspected,
+        {{ run.summary.safe }} safe, {{ run.summary.inconclusive }} inconclusive,
+        {{ run.summary.skipped }} skipped of {{ run.summary.total }} checks.
+      {% else %}
+        Stored without a run-level verdict; per-check outcomes are on the run page.
+      {% endif %}
+    </p>
+    <div class="grid grid-3 mt-1">
+      {% if run.summary %}
+        <div class="stat stat-compact"><span class="stat-label">Executed</span>
+          <span class="stat-value sm">{{ run.summary.executed }} / {{ run.summary.total }}</span></div>
+        <div class="stat stat-compact"><span class="stat-label">Confirmed</span>
+          <span class="stat-value sm">{{ run.summary.confirmed }}</span></div>
+        <div class="stat stat-compact"><span class="stat-label">Skipped</span>
+          <span class="stat-value sm">{{ run.summary.skipped }}</span></div>
+      {% else %}
+        <div class="stat stat-compact"><span class="stat-label">Requests sent</span>
+          <span class="stat-value sm">{{ run.requests_sent }}</span></div>
+        <div class="stat stat-compact"><span class="stat-label">Blocked by guard</span>
+          <span class="stat-value sm">{{ run.blocked_by_guard }}</span></div>
+        <div class="stat stat-compact"><span class="stat-label">Budget remaining</span>
+          <span class="stat-value sm">{{ run.budget_remaining }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body pt-0">
+    <div class="link-row">
+      <a class="btn btn-primary btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}">Open run</a>
+      <a class="btn btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}/report">Report view</a>
+      <a class="btn btn-sm btn-ghost" href="{{ family_spec.base }}/{{ run.id }}/report?format=html"
+         target="_blank" rel="noopener">Backend HTML report</a>
+    </div>
+  </div>
+</section>

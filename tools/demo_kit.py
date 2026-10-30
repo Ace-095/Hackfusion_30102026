@@ -25,9 +25,11 @@ from pathlib import Path
 
 # Public, documented lab fixtures. Their absence from every surface is asserted,
 # not assumed: these are the values a regression would leak first.
-LAB_SECRETS = ("lab-token-alice", "lab-token-bob", "alice-lab-password", "bob-lab-password",
-               "targetlab-alice-private-marker", "targetlab-bob-private-marker",
-               "targetlab-trace-marker", "targetlab-wrong-password-for-alice")
+LAB_SECRETS = ("lab-token-mallapa", "lab-token-sakshi", "lab-token-harsha",
+               "mallapa-lab-password", "sakshi-lab-password", "harsha-lab-password",
+               "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker",
+               "targetlab-harsha-private-marker", "targetlab-trace-marker",
+               "targetlab-wrong-password-for-mallapa")
 
 _BOLA_ENDPOINTS = {
     "LAB-BOLA-01": "GET /records/{id}", "LAB-BOLA-02": "GET /records/{id}",
@@ -366,6 +368,85 @@ def compare_surfaces(stage, *, run=None, sections=None, p0=None, matrix=None,
     return checker.problems
 
 
+# ------------------------------------------------- CP39 asset matrix surface
+def compare_asset_matrix(matrix, stages, checker=None):
+    """The demo-tenant 3x3 matrix must restate stored checks, never invent one.
+
+    Every tested cell is checked back against the stored run it cites: the same
+    verdict, the same evidence digest, the same status. Untested cells must carry
+    no verdict at all, so missing evidence can never be read as SAFE.
+    """
+    checker = checker or Checker()
+    by_run = {stage["run_id"]: stage for stage in stages
+              if stage.get("kind") == "bola" and not stage.get("projection")}
+    cells = matrix.get("cells") or []
+    summary = matrix.get("summary") or {}
+    checker.equal("asset-matrix-shape", 9, len(cells), "asset matrix cells")
+    accounts = matrix.get("accounts") or []
+    checker.equal("asset-matrix-shape", 3, len(accounts), "matrix accounts")
+    for label, key, values in (
+            ("requesters", "account", {cell.get("requester") for cell in cells}),
+            ("assets", "asset_id", {cell.get("asset_id") for cell in cells})):
+        checker.equal("asset-matrix-shape", 3, len(values), f"matrix {label}")
+        # The grid is exactly the catalog's accounts and assets, not a private list.
+        checker.equal("asset-matrix-shape", {item.get(key) for item in accounts}, values,
+                      f"matrix {label} come from the catalog")
+    for state in ("tested", "untested"):
+        counted = sum(1 for cell in cells if cell.get("state") == state)
+        checker.equal("asset-matrix-summary", counted, summary.get(state), f"{state} cells")
+    for verdict in ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED"):
+        counted = sum(1 for cell in cells if cell.get("verdict") == verdict)
+        checker.equal("asset-matrix-summary", counted, summary.get(verdict.lower()),
+                      f"{verdict} cells")
+    for cell in cells:
+        label = f"{cell.get('requester')} x {cell.get('asset_id')}"
+        evidence = cell.get("evidence")
+        if cell.get("state") == "untested":
+            checker.equal("matrix-missing-evidence", None, cell.get("verdict"),
+                          f"{label} verdict")
+            checker.equal("matrix-missing-evidence", None, evidence, f"{label} evidence")
+            checker.equal("matrix-missing-evidence", "no_evidence", cell.get("actual_access"),
+                          f"{label} observed access")
+            checker.equal("matrix-missing-evidence", 0, cell.get("sources"), f"{label} sources")
+            continue
+        checker.equal("cell-without-evidence", True, evidence is not None, f"{label} evidence")
+        stage = by_run.get((evidence or {}).get("run_id"))
+        checker.equal("cell-cites-unknown-run", True, stage is not None, label)
+        if stage is None:
+            continue
+        check_id = evidence["check_id"]
+        checker.equal("cell-verdict-mismatch", stage["checks"].get(check_id), cell["verdict"],
+                      f"{label} verdict")
+        checker.equal("cell-digest-mismatch", stage["digests"].get(check_id),
+                      evidence["evidence_sha256"], f"{label} digest")
+        checker.equal("cell-status-mismatch", stage["statuses"].get(check_id),
+                      evidence["status"], f"{label} status")
+        checker.equal("cell-missing-reason", True, bool(cell.get("reason")), f"{label} reason")
+        # Observed access is derived from the response, never from the verdict: a 200
+        # is either the account's own record or somebody else's private record, and an
+        # owner cell is never counted as a disclosure.
+        expected_access = ("own_record_returned"
+                           if cell.get("kind") == "legitimate_owner_request"
+                           else "private_record_returned")
+        checker.equal("cell-observed-access",
+                      expected_access if evidence["status"] == 200 else "denied",
+                      cell["actual_access"], f"{label} access from status")
+        if cell.get("kind") == "legitimate_owner_request":
+            checker.equal("owner-cell-disclosure", False, evidence["private_disclosure"],
+                          f"{label} is not a disclosure")
+        else:
+            secure = cell.get("secure") or {}
+            checker.equal("secure-twin-run", evidence["run_id"], secure.get("run_id"),
+                          f"{label} secure twin run")
+            checker.equal("secure-twin-check", True,
+                          secure.get("check_id") in {"LAB-BOLA-05", "LAB-BOLA-06"},
+                          f"{label} secure twin check")
+            checker.equal("secure-twin-verdict", True,
+                          secure.get("verdict") in {"SAFE", "INCONCLUSIVE", "SKIPPED"},
+                          f"{label} secure twin verdict")
+    return checker.problems, checker
+
+
 # ------------------------------------------------------------------ whole run
 def run_demo(client, *, port, database=None):
     """Execute the four demonstration stages and check every surface."""
@@ -393,7 +474,10 @@ def run_demo(client, *, port, database=None):
     compare_surfaces(sci_stage, sections=sci_stage["sections"], p0=sci_stage["p0"],
                      matrix=matrix, checker=checker)
     compare_surfaces(reset_stage, checker=checker)
-    bundle = build_bundle(stages, checker.problems, checker.comparisons)
+    asset_matrix = _get(client, "/api/lab-matrix", "asset matrix")
+    compare_asset_matrix(asset_matrix, stages, checker)
+    bundle = build_bundle(stages, checker.problems, checker.comparisons,
+                          asset_matrix=asset_matrix)
     if database is not None:
         bundle["problems"].extend(check_database_integrity(database))
     return bundle
@@ -414,7 +498,7 @@ def compare_projection(stage, parent, matrix, checker):
     return checker.problems
 
 
-def build_bundle(stages, problems, comparisons):
+def build_bundle(stages, problems, comparisons, asset_matrix=None):
     stages = list(stages)
     summary = {"stages": {stage["id"]: {"verdict": stage["verdict"],
                                         "requests_sent": stage["requests_sent"],
@@ -424,9 +508,17 @@ def build_bundle(stages, problems, comparisons):
     for stage in stages:
         surfaces += sum(1 for name in ("run", "sections", "p0", "html", "matrix")
                         if stage.get(name))
+    if asset_matrix is not None:
+        # The demo-tenant 3x3 matrix is an extra surface: it restates stored checks.
+        surfaces += 1
+        summary["asset_matrix"] = {"tested": asset_matrix["summary"]["tested"],
+                                   "confirmed": asset_matrix["summary"]["confirmed"],
+                                   "safe": asset_matrix["summary"]["safe"],
+                                   "untested": asset_matrix["summary"]["untested"]}
     return {
         "stages": stages, "problems": list(problems), "summary": summary,
         "surfaces_checked": surfaces, "invariants_checked": comparisons,
+        "asset_matrix": asset_matrix,
         "ok": not problems,
     }
 
@@ -482,6 +574,10 @@ def check_honesty_and_redaction(bundle):
         for secret in LAB_SECRETS:
             checker.equal("secret-leak", False, secret in surface_text,
                           f"{stage['id']} leaks {secret[:20]}")
+        if bundle.get("asset_matrix") is not None:
+            checker.equal("secret-leak", False,
+                          secret in json.dumps(bundle["asset_matrix"]),
+                          f"asset matrix leaks {secret[:20]}")
         if stage["kind"] != "reset":
             evaluation = (stage["p0"]["sections"]["executive_summary"]
                           if stage["kind"] else {})
@@ -610,6 +706,7 @@ def audit_database(database):
     from canarygate.database.lab_reset_store import LabResetStore
     from canarygate.database.lab_sci_store import LabSciStore
     from canarygate.report.matrix import build_authorization_matrix
+    from canarygate.scan.lab_matrix import build_lab_matrix
 
     database = Path(database)
     checker = Checker()
@@ -631,7 +728,13 @@ def audit_database(database):
         checker.equal("reset-not-proven", "proven", proof["status"],
                       f"reset proof {proof['id']}")
         checker.equal("reset-incomplete", 4, len(proof["checks"]), "reset checks")
+    # The stored runs must rebuild the same 3x3 matrix offline, with no socket.
+    asset_matrix = build_lab_matrix(bola) if bola else None
+    if asset_matrix is not None:
+        compare_asset_matrix(asset_matrix, stages, checker)
     return {"ok": not checker.problems, "runs_checked": len(stages) + len(proofs),
-            "surfaces": len(stages) * 2 + len(proofs), "invariants_checked": checker.comparisons,
+            "surfaces": len(stages) * 2 + len(proofs) + (1 if asset_matrix else 0),
+            "invariants_checked": checker.comparisons,
             "problems": [str(item) for item in checker.problems],
+            "asset_matrix": asset_matrix,
             "summary": {stage["run_id"]: stage["verdict"] for stage in stages}}

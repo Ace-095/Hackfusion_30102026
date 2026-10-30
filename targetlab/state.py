@@ -11,31 +11,83 @@ the tests cannot drift from the server:
 * ``guarded_route`` - the guarded record route skips ownership for an account
   whose last login attempt was rejected as malformed (the interaction flaw).
 * ``trace_route``   - the error route returns a synthetic stack trace.
+
+Three demo accounts (mallapa, sakshi, harsha) each own one asset, so every ordered
+pair of distinct accounts is a cross-account read the lab can exercise.
 """
+import uuid
 from dataclasses import dataclass, field
 from threading import Lock
 
 LAB_NAME = "targetlab"
 LAB_VERSION = "1.0"
 
-# Two independent accounts with predictable, obviously fake credentials.
+# Three independent demo accounts for a synthetic Digital Asset Management API.
+# The company in the story is fictional; so are the accounts, the assets and every
+# value below. Credentials are predictable on purpose (the lab is loopback-only and
+# documented in docs/TARGETLAB.md) and are never exposed to the browser.
+#
+# The accounts demonstrate *authorization*, not role-based access: every account has
+# the same kind of grant (read your own asset) and differs only in which asset it
+# owns. Role strings are descriptive metadata; nothing in the lab authorizes on them.
 LAB_ACCOUNTS = {
-    "alice": {"password": "alice-lab-password", "role": "user", "token": "lab-token-alice"},
-    "bob": {"password": "bob-lab-password", "role": "user", "token": "lab-token-bob"},
+    "mallapa": {"password": "mallapa-lab-password", "role": "marketing_manager",
+                "title": "Marketing Manager", "token": "lab-token-mallapa"},
+    "sakshi": {"password": "sakshi-lab-password", "role": "brand_designer",
+               "title": "Brand Designer", "token": "lab-token-sakshi"},
+    "harsha": {"password": "harsha-lab-password", "role": "campaign_analyst",
+               "title": "Campaign Analyst", "token": "lab-token-harsha"},
 }
+ACCOUNT_ORDER = tuple(LAB_ACCOUNTS)
 TOKEN_TO_ACCOUNT = {account["token"]: name for name, account in LAB_ACCOUNTS.items()}
 
-# Private markers: the string the scanner must never see unless the lab leaks it.
+# Private markers: the string the scanner must never see unless the lab leaks the
+# record, and the value an owner baseline proves ownership with. Each is distinct,
+# contains no asset id and is not an account name.
 PRIVATE_MARKERS = {
-    "alice": "targetlab-alice-private-marker",
-    "bob": "targetlab-bob-private-marker",
+    "mallapa": "targetlab-mallapa-private-marker",
+    "sakshi": "targetlab-sakshi-private-marker",
+    "harsha": "targetlab-harsha-private-marker",
 }
 TRACE_MARKER = "targetlab-trace-marker"
 
+# One private asset per account. ``id``/``owner``/``private_note`` are the fields the
+# ownership registry and the read-BOLA oracle read; the rest is business context so a
+# judge can see *what* would leak, not only that something did. All values synthetic.
 RECORDS = {
-    "ra": {"id": "ra", "owner": "alice", "private_note": PRIVATE_MARKERS["alice"]},
-    "rb": {"id": "rb", "owner": "bob", "private_note": PRIVATE_MARKERS["bob"]},
+    "MKT-2026-041": {
+        "id": "MKT-2026-041",
+        "asset_id": "MKT-2026-041",
+        "asset_type": "campaign_artwork",
+        "owner": "mallapa",
+        "campaign": "Summer Launch 2026",
+        "launch_date": "2026-11-15",
+        "budget": 250000,
+        "private_note": PRIVATE_MARKERS["mallapa"],
+    },
+    "BRD-2026-018": {
+        "id": "BRD-2026-018",
+        "asset_id": "BRD-2026-018",
+        "asset_type": "brand_identity",
+        "owner": "sakshi",
+        "brand": "Aurelia",
+        "asset_version": "v4.2",
+        "license_status": "Confidential",
+        "private_note": PRIVATE_MARKERS["sakshi"],
+    },
+    "ADS-2026-027": {
+        "id": "ADS-2026-027",
+        "asset_id": "ADS-2026-027",
+        "asset_type": "performance_report",
+        "owner": "harsha",
+        "campaign": "Diwali Acquisition",
+        "roas": 4.8,
+        "customer_acquisition_cost": 182,
+        "private_note": PRIVATE_MARKERS["harsha"],
+    },
 }
+#: One asset per account. Used by the reset proof and by tests.
+ASSET_BY_OWNER = {record["owner"]: record["id"] for record in RECORDS.values()}
 
 # Declared, machine-readable flaw map. Tests and docs read this instead of
 # re-describing the behaviour in prose.
@@ -64,6 +116,10 @@ SECURE_PATHS = ("/records/{record_id}/secure", "/admin/users")
 class LabState:
     """Mutable per-process state. A fresh app instance starts from a clean slate."""
 
+    #: Stable identity for this lab process, published on every response so a
+    #: scanner can tell two lab instances apart even when they reuse a port. It
+    #: carries no ground truth and changes when the process restarts.
+    instance_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     compatibility: set[str] = field(default_factory=set)
     logins: int = 0
     rejected_logins: int = 0
