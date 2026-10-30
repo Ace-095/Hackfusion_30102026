@@ -241,9 +241,35 @@ def cells_from_runs(scenario_runs, authentication_runs=(), validation_runs=()):
     return cells, notes
 
 
-def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=()):
+def cells_from_interactions(interaction_runs=()):
+    """SCI findings become authorization cells where the impact is an access decision."""
+    cells = []
+    for run in interaction_runs:
+        run = as_run_dict(run)
+        if run["interaction_kind"] == "INPUT_VALIDATION+INFORMATION_DISCLOSURE":
+            continue
+        method, path = split_endpoint(run["combined"]["endpoint"])
+        inventory = {item["path"]: item for item in run.get("inventory") or ()}
+        entry = inventory.get(path, {})
+        expected = entry.get("expected_access") or run["combined"].get("expected_access")
+        column = "role" if str(expected or "").startswith("role:") else "other_account_resource"
+        cells.append(_cell(method, path, column, run["verdict"], run["reason"], expected,
+                           entry.get("expected_source") or "offline SCI scenario scope",
+                           f"interaction:{run['scenario_id']}"))
+    return cells
+
+
+def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(),
+                        interaction_runs=()):
     """Every endpoint the stored runs declared, so untested rows stay visible."""
     endpoints = {}
+    for run in interaction_runs:
+        run = as_run_dict(run)
+        for item in run.get("inventory") or ():
+            endpoints.setdefault((item["method"], item["path"]), {
+                "method": item["method"], "path": item["path"],
+                "expected_access": item.get("expected_access"),
+                "expected_source": item.get("expected_source")})
     for run in scenario_runs:
         run = as_run_dict(run)
         for item in run.get("inventory", ()):
@@ -261,8 +287,11 @@ def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(
     return list(endpoints.values())
 
 
-def build_authorization_matrix(scenario_runs, authentication_runs=(), validation_runs=()):
+def build_authorization_matrix(scenario_runs, authentication_runs=(), validation_runs=(),
+                               interaction_runs=()):
     cells, _ = cells_from_runs(scenario_runs, authentication_runs, validation_runs)
-    endpoints = endpoints_from_runs(scenario_runs, authentication_runs, validation_runs)
+    cells += cells_from_interactions(interaction_runs)
+    endpoints = endpoints_from_runs(scenario_runs, authentication_runs, validation_runs,
+                                    interaction_runs)
     return build_matrix(cells, not_contributing={"validation_runs": len(validation_runs)},
                         extra_endpoints=endpoints)

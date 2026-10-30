@@ -11,7 +11,9 @@ import json
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from canarygate.evidence.redaction import canonical_json
-from canarygate.report.matrix import (as_run_dict, build_matrix, cells_from_runs, split_endpoint)
+from canarygate.oracles.interaction import SCI_REMEDIATIONS
+from canarygate.report.matrix import (as_run_dict, build_matrix, cells_from_interactions,
+                                      cells_from_runs, split_endpoint)
 from canarygate.report.scenario import environment
 
 P0_SECTION_KEYS = ("executive_summary", "scope_and_rules", "endpoint_inventory", "findings",
@@ -23,7 +25,7 @@ CATEGORIES = ("Authentication", "Authorization", "Input validation", "Disclosure
 CATEGORY_ALIASES = {"Information disclosure": "Disclosure"}
 VERDICTS = ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED")
 MODES = {"scenario": "offline_scenario", "authentication": "offline_authentication",
-         "validation": "offline_validation"}
+         "validation": "offline_validation", "interaction": "offline_interaction"}
 
 REMEDIATION_CATALOG = {
     "bola": "Enforce object-level ownership checks server-side on every handler.",
@@ -35,6 +37,10 @@ REMEDIATION_CATALOG = {
     "verbose_errors": "Return generic error responses and log the detail server-side only.",
     "excessive_data_exposure": "Filter responses through explicit DTOs and remove sensitive fields.",
     "headers": "Remove server version and debug headers from production responses.",
+    # SCI finding types; the frozen eight above remain unchanged.
+    "sci_authorization": SCI_REMEDIATIONS["sci_authorization"],
+    "sci_authentication": SCI_REMEDIATIONS["sci_authentication"],
+    "sci_disclosure": SCI_REMEDIATIONS["sci_disclosure"],
 }
 
 _RULES = ("Recorded synthetic responses only. The run is offline: no live target, socket, DNS "
@@ -149,7 +155,9 @@ def _role_for(run, account):
 
 def _finding(check_id, category, *, timestamp, endpoint, verdict, reason, account, role,
              expected, observed, source, checklist, curl, evidence_sha256,
-             target_resource="NOT_APPLICABLE", verified_owner="NOT_APPLICABLE"):
+             target_resource="NOT_APPLICABLE", verified_owner="NOT_APPLICABLE",
+             finding_kind="single_control", interaction=None,
+             remediation_key=None, remediation=None):
     key = remediation_key_for(category, check_id)
     method, _, path = endpoint.partition(" ")
     if not path:
@@ -166,9 +174,11 @@ def _finding(check_id, category, *, timestamp, endpoint, verdict, reason, accoun
         "expected": expected, "observed": observed, "expectation_source": source,
         "evidence_checklist": checklist,
         "curl": curl,
-        "remediation": REMEDIATION_CATALOG[key] if verdict == "CONFIRMED" else None,
-        "remediation_key": key if verdict == "CONFIRMED" else None,
+        "remediation": (remediation or REMEDIATION_CATALOG[key]) if verdict == "CONFIRMED" else None,
+        "remediation_key": (remediation_key or key) if verdict == "CONFIRMED" else None,
         "evidence_sha256": evidence_sha256,
+        "finding_kind": finding_kind,
+        "interaction": interaction,
     }
 
 
@@ -280,6 +290,48 @@ def _validation_findings(run):
     return findings
 
 
+def _interaction_category(kind):
+    return "Disclosure" if kind == "INPUT_VALIDATION+INFORMATION_DISCLOSURE" else "Authorization"
+
+
+def _interaction_findings(run):
+    combined = run["combined"]
+    role = _role_for(run, run["accounts"][0])
+    interaction = {
+        "kind": run["interaction_kind"],
+        "controls": list(run["controls"]),
+        "attribution": run["attribution"],
+        "baselines": [{"id": item["id"], "control": item["control"],
+                       "endpoint": item["endpoint"], "verdict": item["verdict"],
+                       "observable": item["observable"], "reason": item["reason"],
+                       "evidence_sha256": item["evidence_sha256"]}
+                      for item in run["baselines"]],
+        "combined": {"endpoint": combined["endpoint"], "action": combined["action"],
+                     "probe": combined["probe"], "executed": combined["executed"],
+                     "permitted": combined["permitted"], "verified": combined["verified"],
+                     "status": combined["status"], "impact": combined["impact"],
+                     "observed": combined["observed"]},
+        "why_not_individual": (
+            "every individual baseline passed and was observable"
+            if run["attribution"] == "interaction_induced"
+            else "no interaction-induced failure could be attributed"),
+    }
+    method, _, path = combined["endpoint"].partition(" ")
+    return [_finding(
+        "SCI-01", _interaction_category(run["interaction_kind"]),
+        timestamp=run["created_at"], endpoint=combined["endpoint"],
+        verdict=run["verdict"], reason=run["reason"], account=run["accounts"][0], role=role,
+        expected="the declared policy for the combined endpoint",
+        observed=combined["observed"], source="offline SCI scenario scope",
+        checklist=run["checklist"],
+        curl=curl_for(method or "GET", path or "NOT_RECORDED", actor=run["accounts"][0]),
+        evidence_sha256=run["baselines"][0]["evidence_sha256"],
+        target_resource=f"the {path or 'combined'} exchange (identifier minimised)",
+        verified_owner="NOT_APPLICABLE — the interaction is about control composition",
+        finding_kind="interaction", interaction=interaction,
+        remediation_key=run["remediation_key"], remediation=run["remediation"])]
+
+
 def _findings(kind, run):
     if kind == "scenario":
         return _scenario_findings(run)
@@ -287,6 +339,8 @@ def _findings(kind, run):
         return _authentication_findings(run)
     if kind == "validation":
         return _validation_findings(run)
+    if kind == "interaction":
+        return _interaction_findings(run)
     raise ValueError("unknown run kind")
 
 
@@ -396,6 +450,17 @@ def _manual(kind, run):
          "value": "resource identifiers are not retained; the report names the resource type "
                   "and verified owner but withholds the id"},
     ]
+    if kind == "interaction":
+        inferences.append({
+            "item": "interaction_attribution", "kind": "inference",
+            "source": "SCI decision engine",
+            "value": (f'{run["attribution"]}: both individual baselines were observably passing'
+                      if run["attribution"] == "interaction_induced"
+                      else f'{run["attribution"]}: no interaction-induced failure attributed')})
+        interventions.append({
+            "item": "sci_baselines", "status": "EXECUTED",
+            "value": [f'{item["id"]}={item["verdict"]}' for item in run["baselines"]],
+            "source": "individual control baselines"})
     if kind == "scenario":
         interventions.append({
             "item": "setup_status", "status": run["setup"]["ownership_verification"],
@@ -434,9 +499,11 @@ def build_p0_sections(kind, run):
         cells, _ = cells_from_runs([run], [], [])
     elif kind == "authentication":
         cells, _ = cells_from_runs([], [run], [])
+    elif kind == "interaction":
+        cells = cells_from_interactions([run])
     else:
         cells = []
-    matrix = build_matrix(cells)
+    matrix = build_matrix(cells, extra_endpoints=_inventory(run))
     sections = {
         "executive_summary": {
             "run_kind": kind, "mode": MODES[kind], "scenario_id": run["scenario_id"],
@@ -487,7 +554,7 @@ def build_p0_report(kind, run):
 def render_p0_report(kind, run):
     report = build_p0_report(kind, run)
     base = {"scenario": "scenario-scans", "authentication": "authentication-scans",
-            "validation": "validation-scans"}[kind]
+            "validation": "validation-scans", "interaction": "interaction-scans"}[kind]
     return environment.get_template("p0.html").render(
         report=report, sections=report.sections, json_block=lambda value: json.dumps(
             value, indent=2, ensure_ascii=True, sort_keys=True),

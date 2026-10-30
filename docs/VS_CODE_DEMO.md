@@ -264,3 +264,44 @@ the evidence cannot drift apart. The checkpoint document
 `docs/checkpoints/32-p0-acceptance-audit.md` states the split verdict: offline
 subset accepted with limitations, complete frozen P0 not accepted (BFLA and live
 validation missing).
+
+### Checkpoint 33 SCI interaction demo
+
+Run this independently of the three core demos; it uses the same API server.
+
+```sh
+.venv/bin/python -m pytest tests/integration/test_sci_scenarios.py tests/security/test_sci_decisions.py -q
+```
+
+Then, with the server running (`.venv/bin/python -m canarygate.api`), open the
+interactive docs at `/docs` and use `POST /api/interaction-scans`:
+
+```json
+{"scenario_id": "synthetic-sci-authz-input-confirmed"}
+```
+
+Expected: `201` with `verdict: "CONFIRMED"`, `attribution: "interaction_induced"`,
+`interaction_kind: "AUTHZ+INPUT_VALIDATION"`, two `SAFE` baselines
+(`AUTHZ-01`, `INPUT-07`) and a combined leg with `impact: "privileged_data"`.
+Take the returned `id` and open:
+
+- `GET /api/interaction-scans/{id}/report?view=sections` — both baselines passing
+  and the leaking combination side by side, with the plain-language statement.
+- `GET /api/interaction-scans/{id}/report?view=p0` — the nine sections, a single
+  `SCI-01` finding with `finding_kind: "interaction"`, the `sci_authorization`
+  remediation and `why_not_individual`.
+- `GET /api/authorization-matrix` — the cell's `source_ref` starts with
+  `interaction:`, so an SCI result cannot be confused with an ordinary BOLA cell.
+
+Prove the engine is not credulous:
+
+```json
+{"scenario_id": "synthetic-sci-individual-failure"}
+{"scenario_id": "synthetic-sci-authz-input-secure"}
+{"scenario_id": "synthetic-sci-variation"}
+```
+
+Expected verdicts: `INCONCLUSIVE` (`individual_failure`), `SAFE` (`no_failure`) and
+`SUSPECTED` (`no_demonstrated_impact`). None of them is `CONFIRMED`; none of them
+carries a remediation. Finally run `tools/p0_audit.py` to show the SCI
+requirements (C1–C7) with their implementation symbols and tests.

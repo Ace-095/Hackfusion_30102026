@@ -17,7 +17,8 @@ _SENSITIVE_KEYS = {"authorization", "proxy-authorization", "cookie", "set-cookie
                    "tokens", "credentials", "credential", "secrets", "cookies", "auth", "bearer",
                    "authorization-header", "x-amz-security-token"}
 _KNOWN_FIXTURE_SECRETS = ("fixture-token-alice", "fixture-token-bob", "malformed-fixture", "synthetic-fixture",
-                          "synthetic-alice-private-note", "synthetic-bob-private-canary")
+                          "synthetic-alice-private-note", "synthetic-bob-private-canary",
+                          "sci-interaction-secret-value")
 _AUTH_VALUE = re.compile(r"(?i)\b(?:bearer|basic)\s+[^\s\"',;]+")
 _JWT_VALUE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\b")
 _SECRET_ASSIGNMENT = re.compile(

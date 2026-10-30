@@ -228,6 +228,36 @@ aggregate, coverage maths, legacy/P0 disjointness). Details and the full table:
 accepted with documented limitations; live validation and BFLA remain absent and
 must not be simulated.
 
+## Checkpoint 33 — SCI (security control interaction)
+
+SCI is additive and does not change any row above. Seven requirements were added
+to `tools/p0_audit.py` (C1–C7) covering the decision oracle, the guarded combined
+execution, persistence/tamper, the frozen nine-section report, matrix
+distinguishability, redaction and API reachability.
+
+| Result | Count |
+|---|---|
+| Requirements audited | 42 |
+| Implemented | 31 |
+| Partial (gap stated) | 9 |
+| Missing | 2 — BFLA, live/organizer validation |
+| Unreachable through the application API | 0 |
+| Test files with a declared evidence class | 46 of 46 |
+| Test files declaring real networking | 0 |
+
+SCI adds 33 tests: `tests/security/test_sci_decisions.py` (14, decision
+precedence) and `tests/integration/test_sci_scenarios.py` (19, all ten bundled
+scenarios through `TestClient(create_app(tmp sqlite))` with sockets patched to
+fail). Ten scenarios cover cases A–H of the SCI acceptance list plus the two
+extra interaction kinds; expected verdicts are `CONFIRMED` (A, redaction, AUTHN+AUTHZ,
+INPUT+DISCLOSURE), `SAFE` (B), `INCONCLUSIVE` (C, D), `SKIPPED` (E, F) and
+`SUSPECTED` (H). Details: `docs/checkpoints/33-sci-interaction.md`; interfaces
+frozen in `docs/INTERFACE_FREEZE.md`.
+
+**Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
+now including SCI, is accepted with documented limitations; live validation and
+BFLA remain absent and must not be simulated.
+
 ## Next blocking work
 
 1. Milestone 30 is complete in code: INPUT-05/06/07 and DISC-01–06 execute

@@ -897,3 +897,45 @@ coverage; stored evidence remains minimized to fixed fixture fields and no
 universal live-data redaction is claimed. Generic verdicts are not persisted or
 reported, production networking remains disabled, and no lab or live target was
 scanned. Full P0 remains blocked; see `docs/P0_ACCEPTANCE_MATRIX.md`.
+
+### Checkpoint 33: SCI is additive, and its evidence is a checklist not a story
+
+SCI was implemented after freezing the existing interfaces
+(`docs/INTERFACE_FREEZE.md`). No P0 route, model, store, verdict rule or score
+was modified. Three decisions did the real work:
+
+First, SCI is an **oracle plus an orchestrator**, not a second scanner.
+`oracles/interaction.py` is pure and returns one of the frozen five verdicts; the
+orchestrator reuses `OfflineValidationRunner`, `RunSafetyGuard` and the scope
+validator. A parallel engine would have let SCI invent evidence the rest of the
+system cannot verify.
+
+Second, a combined result is trustworthy only if the individual controls were
+proved *observable* first. Non-observable baselines produce `INCONCLUSIVE`
+(`incomplete_baseline`), and a control that already failed on its own produces
+`INCONCLUSIVE` (`individual_failure`) rather than a confirmed interaction. Without
+that rule, "the combination leaked" is unfalsifiable: any broken endpoint looks
+like an interaction.
+
+Third, attribution is explicit. A `CONFIRMED` SCI result requires eight checklist
+flags and an `interaction_induced` explanation that names the participating
+controls, so a judge can see why the finding is not an ordinary BOLA or
+input-validation result. A response that merely changes (case H) is `SAFE` on a
+4xx or `SUSPECTED` on an unexplained 200 — never `CONFIRMED` without demonstrated
+impact.
+
+Reporting stays inside the frozen contract: the same nine sections, the same four
+categories, one extra optional key pair (`finding_kind`, `interaction`) and three
+new remediation keys with distinct texts. The matrix marks SCI cells with
+`source_ref: interaction:<scenario>` and, for the disclosure kind, deliberately
+adds no cell at all because no authorization claim was made.
+
+Redaction was extended by one built-in sentinel (`sci-interaction-secret-value`)
+rather than by a new generic pattern, and the test proves `redact()` rewrites that
+sentinel under a non-sensitive key instead of only asserting its absence. This is
+still known-shape coverage: no universal live-data redaction is claimed.
+
+Limitations carried forward: offline synthetic transcripts only, GET-only legs
+with one bounded probe, three declared interaction kinds, one SCI finding per run,
+and no live or lab validation. Complete frozen P0 remains not accepted (BFLA and
+live validation are still missing).

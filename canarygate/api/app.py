@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from canarygate.database.auth_store import AuthenticationStore
 from canarygate.database.scenario_store import ScenarioStore
+from canarygate.database.interaction_store import InteractionStore
 from canarygate.database.validation_store import ValidationStore
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
@@ -20,6 +21,7 @@ from canarygate.report.authentication import (build_authentication_sections,
 from canarygate.report.matrix import AuthorizationMatrix, build_authorization_matrix
 from canarygate.report.p0 import build_p0_report, render_p0_report
 from canarygate.report.scenario import build_scenario_sections, render_scenario_report
+from canarygate.report.interaction import build_interaction_sections, render_interaction_report
 from canarygate.report.validation import build_validation_sections, render_validation_report
 from canarygate.scan.auth_generic import run_authentication_scan
 from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRequest,
@@ -27,6 +29,11 @@ from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRe
 from canarygate.scan.auth_scenarios import build_auth_scenario, runner_for
 from canarygate.scan.models import (ScenarioRun, ScenarioScanRequest, ScenarioSectionReport)
 from canarygate.scan.scenarios import build_scenario, execute_offline_scenario
+from canarygate.scan.interaction_generic import run_offline_interaction
+from canarygate.scan.interaction_models import (InteractionRun, InteractionScanRequest,
+                                                InteractionSectionReport)
+from canarygate.scan.interaction_scenarios import (build_interaction_scenario,
+                                                   runner_for as interaction_runner_for)
 from canarygate.scan.validation_generic import run_offline_validation
 from canarygate.scan.validation_models import (ValidationRun, ValidationScanRequest,
                                                ValidationSectionReport)
@@ -54,6 +61,10 @@ def get_validation_store(request: Request) -> ValidationStore:
     return request.app.state.validation_store
 
 
+def get_interaction_store(request: Request) -> InteractionStore:
+    return request.app.state.interaction_store
+
+
 def _database_call(method, *args):
     try:
         return method(*args)
@@ -70,6 +81,15 @@ def _scenario_call(method, *args):
         raise HTTPException(status_code=500, detail="Stored scenario data failed integrity verification") from None
     except (sqlite3.Error, OSError, ValueError):
         raise HTTPException(status_code=500, detail="Scenario storage unavailable or invalid") from None
+
+
+def _interaction_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500, detail="Stored interaction data failed integrity verification") from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(status_code=500, detail="Interaction storage unavailable or invalid") from None
 
 
 def _validation_call(method, *args):
@@ -325,19 +345,72 @@ def validation_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
+
+
+@router.post("/api/interaction-scans", status_code=201, response_model=InteractionRun)
+def start_interaction_scan(payload: InteractionScanRequest,
+                           store: InteractionStore = Depends(get_interaction_store)):
+    """Run one bundled synthetic SCI interaction scenario; no live target."""
+    try:
+        plan = build_interaction_scenario(payload.scenario_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown offline SCI scenario") from None
+    runner = interaction_runner_for(plan)
+    try:
+        run = run_offline_interaction(plan, runner)
+    finally:
+        runner.close()
+    return _interaction_call(store.save, run)
+
+
+def _find_interaction_run(store, run_id):
+    run = _interaction_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Interaction scan not found")
+    return run
+
+
+@router.get("/api/interaction-scans/{run_id}", response_model=InteractionRun)
+def interaction_scan(run_id: str, store: InteractionStore = Depends(get_interaction_store)):
+    return _find_interaction_run(store, run_id)
+
+
+@router.get("/api/interaction-scans/{run_id}/report", response_model=InteractionSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def interaction_report(run_id: str, format: str = "json", view: str = "run",
+                       store: InteractionStore = Depends(get_interaction_store)):
+    run = _find_interaction_run(store, run_id)
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("interaction", run))
+        return JSONResponse(content=build_p0_report("interaction", run).model_dump(mode="json"))
+    if format == "html":
+        return HTMLResponse(render_interaction_report(run))
+    if view == "sections":
+        return InteractionSectionReport(mode="offline_interaction", id=run_id, run_id=run_id,
+                                        sections=build_interaction_sections(run))
+    return run
+
+
 @router.get("/api/authorization-matrix", response_model=AuthorizationMatrix)
 def authorization_matrix(scenario_store: ScenarioStore = Depends(get_scenario_store),
                          auth_store: AuthenticationStore = Depends(get_auth_store),
-                         validation_store: ValidationStore = Depends(get_validation_store)):
+                         validation_store: ValidationStore = Depends(get_validation_store),
+                         interaction_store: InteractionStore = Depends(get_interaction_store)):
     """Partial authorization coverage over stored offline runs; gaps stay visible."""
     try:
         scenarios = _scenario_call(scenario_store.list)
         authentications = _auth_call(auth_store.list)
         validations = _validation_call(validation_store.list)
+        interactions = _interaction_call(interaction_store.list)
     except HTTPException:
         raise
     try:
-        return build_authorization_matrix(scenarios, authentications, validations)
+        return build_authorization_matrix(scenarios, authentications, validations, interactions)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=500, detail="Authorization matrix could not be built") from None
 
@@ -371,6 +444,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     scenario_store = ScenarioStore(path)
     auth_store = AuthenticationStore(path)
     validation_store = ValidationStore(path)
+    interaction_store = InteractionStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -378,6 +452,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         scenario_store.initialize()
         auth_store.initialize()
         validation_store.initialize()
+        interaction_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
@@ -387,6 +462,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     application.state.scenario_store = scenario_store
     application.state.auth_store = auth_store
     application.state.validation_store = validation_store
+    application.state.interaction_store = interaction_store
     application.include_router(router)
     return application
 

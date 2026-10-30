@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate SCI report</title>
+<style>body{font:16px system-ui;max-width:1040px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{border:1px solid #cfd6de;padding:.45rem;text-align:left;vertical-align:top}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}.safe{color:#1d6b35}.confirmed{color:#a11b1b;font-weight:700}.suspected{color:#8a5b00;font-weight:700}.inconclusive{color:#4a4f8a}.skipped{color:#5b6572}.tag{background:#e8eef5;padding:.1rem .4rem;border-radius:4px;font-weight:700}</style>
+</head><body>
+<h1>CanaryGate SCI report — security control interaction</h1>
+<p class="warning">Synthetic recorded responses only. No live target, socket or DNS request was made; production networking remains disabled. This is not an organizer authorization or a production security assessment.</p>
+<h2>Executive summary</h2>
+<p><strong>Scenario:</strong> {{ run.scenario_id }} — {{ run.title }}</p>
+<p><strong>Interaction:</strong> <span class="tag">{{ run.interaction_kind }}</span> · controls: {{ sections.executive_summary.controls|join(" + ") }}</p>
+<p><strong>Verdict:</strong> <span class="{{ run.verdict|lower }}">{{ run.verdict }}</span> · <strong>Attribution:</strong> {{ run.attribution }}</p>
+<p><strong>Transport:</strong> {{ run.transport }} (network transport enabled: {{ run.network_transport_enabled }}) · <strong>Status:</strong> {{ run.status }} · <strong>Run ID:</strong> {{ run.id }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+<h2>Scope and accounting</h2>
+<pre>{{ json_block(sections.scope_and_accounts) }}</pre>
+<h2>Individual control baselines</h2>
+<table>
+<tr><th>Baseline</th><th>Control</th><th>Endpoint</th><th>Verdict</th><th>Observable</th><th>Reason</th></tr>
+{% for item in run.baselines %}
+<tr><td>{{ item.id }}</td><td>{{ item.control }}</td><td>{{ item.endpoint }}</td><td class="{{ item.verdict|lower }}">{{ item.verdict }}</td><td>{{ item.observable }}</td><td>{{ item.reason }}</td></tr>
+{% endfor %}
+</table>
+<h2>Combined exchange</h2>
+<p>{{ run.combined.endpoint }} · action {{ run.combined.action }} · probe {{ run.combined.probe }} · executed: {{ run.combined.executed }} · permitted: {{ run.combined.permitted }} · verified: {{ run.combined.verified }}</p>
+<p>Observed: {{ run.combined.observed }} · impact: {{ run.combined.impact }} · status: {{ run.combined.status }}</p>
+<pre>{{ json_block(sections.combined) }}</pre>
+<h2>Decision</h2>
+<table><tr><th>Checklist item</th><th>Value</th></tr>
+{% for key, value in run.checklist.items() %}<tr><td>{{ key }}</td><td>{{ value }}</td></tr>{% endfor %}</table>
+<p><strong>Reason:</strong> {{ run.reason }}</p>
+{% if run.remediation %}<p><strong>Remediation:</strong> {{ run.remediation }}</p>{% endif %}
+<pre>{{ json_block(sections.decision) }}</pre>
+<h2>Known limitations</h2>
+<pre>{{ json_block(sections.limitations) }}</pre>
+<h2>Reproduce this offline scenario</h2>
+<p>The recorded target is local and cannot be reached over a network. This command starts a new offline SCI scenario; it does not replay a live target.</p>
+<pre>{{ reproduce }}</pre>
+<p>Machine-readable sections: <code>{{ report_url }}</code></p>
+</body></html>

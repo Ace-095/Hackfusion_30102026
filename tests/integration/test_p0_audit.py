@@ -38,7 +38,9 @@ def test_every_requirement_row_is_well_formed():
     ids = [row["id"] for row in report["rows"]]
     assert len(ids) == len(set(ids))
     for row in report["rows"]:
-        assert row["frozen"].startswith("§"), row["id"]
+        # Every row traces to the frozen document, or to the SCI extension (C-rows),
+        # which is additive and does not change frozen P0 rules.
+        assert row["frozen"].startswith(("§", "SCI")), row["id"]
         assert row["statement"], row["id"]
         assert row["evidence"] in p0_audit.EVIDENCE_LABELS, row["id"]
         if row["status"] in {"implemented", "partial"}:

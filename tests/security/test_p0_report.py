@@ -167,9 +167,14 @@ def test_severity_mapping_is_fixed_and_never_invented():
 
 
 def test_remediation_catalog_has_one_entry_per_finding_type():
+    # The frozen eight finding types, plus the three SCI finding types added by
+    # checkpoint 33. Each key must map to exactly one remediation text.
     assert set(REMEDIATION_CATALOG) == {"bola", "bfla", "missing_authentication",
                                         "token_validation", "input_validation", "verbose_errors",
-                                        "excessive_data_exposure", "headers"}
+                                        "excessive_data_exposure", "headers",
+                                        "sci_authorization", "sci_authentication",
+                                        "sci_disclosure"}
+    assert len(set(REMEDIATION_CATALOG.values())) == len(REMEDIATION_CATALOG)
 
 
 # ---------------------------------------------------------------- redaction

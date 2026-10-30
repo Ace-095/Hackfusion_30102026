@@ -308,3 +308,59 @@ source per item. The report is deliberately conservative: read-BOLA findings
 report the resource type and verified owner account while withholding the
 identifier; ownership is only claimed when the stored checklist proves it, and an
 unverified run says `NOT_VERIFIED` instead of naming an owner.
+
+## SCI interaction scans (checkpoint 33)
+
+An SCI run tests whether two individually correct controls fail *together*. It is
+served alongside the other workflows and reuses the same frozen report, matrix and
+verdict vocabulary.
+
+`POST /api/interaction-scans`
+
+```json
+{"scenario_id": "synthetic-sci-authz-input-confirmed"}
+```
+
+`scenario_id` must be one of the bundled synthetic ids; anything else is `404`.
+There is no way to supply paths, methods, accounts, bodies or a target — the plan
+is built server-side from the bundled registry and validated against the scope.
+
+Response (`InteractionRun`, also returned by `GET /api/interaction-scans/{run_id}`):
+
+| Field | Meaning |
+|---|---|
+| `scenario_id`, `title` | Which bundled scenario ran. |
+| `interaction_kind` | `AUTHZ+INPUT_VALIDATION`, `AUTHN+AUTHZ` or `INPUT_VALIDATION+INFORMATION_DISCLOSURE`. |
+| `controls` | The two participating control names. |
+| `baselines[]` | `id`, `control`, `endpoint`, `action`, `probe`, `verdict`, `reason`, `observable`, `evidence`, `evidence_sha256`. |
+| `combined` | `endpoint`, `action`, `probe`, `executed`, `permitted`, `verified`, `status`, `impact`, `observed`. |
+| `verdict` | One of the five global verdicts; `attribution` explains it. |
+| `attribution` | `interaction_induced`, `individual_failure`, `incomplete_baseline`, `unverified_evidence`, `ambiguous_impact`, `no_demonstrated_impact`, `no_failure`, `not_permitted`. |
+| `remediation_key`, `remediation` | Present only for `CONFIRMED`: `sci_authorization`, `sci_authentication` or `sci_disclosure`. |
+| `checklist` | The eight confirmation flags. |
+| `transcript_sha256` | Hash of the bounded recorded transcript. |
+| `requests_sent`, `blocked_by_guard`, `budget_remaining` | Budget accounting. |
+| `network_transport_enabled` | Always `false`. |
+| `limitations[]` | What this run does not prove. |
+
+`GET /api/interaction-scans/{run_id}/report`
+
+- `format=json|html`, `view=run|sections|p0`.
+- `sections` returns `executive_summary`, `scope_and_accounts`, `baselines`,
+  `combined`, `decision` (including the plain-language `STATEMENT`), `limitations`.
+- `p0` returns the frozen nine sections. The SCI finding is `SCI-01` with
+  `finding_kind: "interaction"` and an `interaction` object holding the kind,
+  participating controls, per-baseline outcomes, combined outcome, attribution,
+  `why_not_individual` and checklist. Ordinary findings keep the default
+  `finding_kind: "single_control"` and a `null` `interaction` object, which is how
+  the frontend must keep the two apart.
+
+`GET /api/authorization-matrix` also aggregates interaction runs. Interaction
+cells carry `source_ref: "interaction:<scenario_id>"` and never mark a cell green
+or red unless the interaction verdict maps to that state. An
+`INPUT_VALIDATION+INFORMATION_DISCLOSURE` interaction contributes no cell; the
+endpoint remains `untested` because no authorization claim was made.
+
+All interaction responses are offline synthetic data. `POST` performs no network
+request: the runner releases recorded responses only after
+`RunSafetyGuard.execution()` permits the exact actor/method/path.

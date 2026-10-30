@@ -97,7 +97,12 @@ def test_report_groups_validation_findings_and_maps_severity(monkeypatch, tmp_pa
         assert disclosure["DISC-03"]["severity"] == "Medium"
         assert disclosure["DISC-03"]["remediation_key"] == "excessive_data_exposure"
         assert len(sections["secured_endpoints"]) >= 0
-        assert sections["authorization_matrix"]["coverage"]["rows"] == 0
+        # No authorization data was observed, so every inventory endpoint row is
+        # present and fully hatched: the gaps are visible, not omitted.
+        coverage = sections["authorization_matrix"]["coverage"]
+        assert coverage["rows"] > 0
+        assert coverage["tested"] == 0
+        assert coverage["untested"] == coverage["cells"] == coverage["rows"] * 4
         assert "Untested cells are marked hatched" in sections["authorization_matrix"]["coverage"]["statement"]
 
 
