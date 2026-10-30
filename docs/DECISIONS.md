@@ -387,6 +387,33 @@ not enforce sequential requests, inspect authentication bodies, validate DNS or
 pin connections. It does not allow resource creation, including when an approval
 reference is present. No live target feature has been enabled.
 
+## Checkpoint 12 — narrow pinned HTTPS read transport
+
+A test-first, unintegrated component in `canarygate.network.pinned_reader` can
+perform only GET operations classified READ_ONLY in an organizer scope with a
+literal organizer IP, HTTPS and in-memory per-account bearer tokens. The exact
+actor/path decision occurs immediately before creating a socket; the IP is used
+without DNS, and TLS verifies the scoped hostname. It is not exposed through the
+API or used by the scanner, but **direct invocation can create real traffic**.
+Do not use it without written organizer authorization and independent review.
+
+No proxies, automatic redirects, cookies, retries, login, writes, arbitrary
+headers or query strings are supported. The reader uses one sequential lock and
+per-instance budget; it stops on network failures, oversized bodies, rate limits,
+lockout or repeated server errors. Raw response bytes are ephemeral and are not
+safe to persist. It has a per-socket timeout but no overall wall-clock deadline;
+the budget is not global across instances. DNS-only scopes, authentication,
+discovery, real data redaction, full central guard integration, response policy
+and end-to-end safety review remain outstanding. These limitations are blockers
+for live scanning, not evidence that it is complete.
+
+Initial 14 tests failed because the component did not exist. A subsequent TLS
+failure test exposed exception details leaking and lack of halt; both were fixed.
+Tests use mocked network sockets plus real TLS over an in-process socket pair,
+including certificate hostname rejection. No external target was contacted.
+Full local suite: 257 passed, one third-party warning. Judge demonstration:
+[checkpoint 12](checkpoints/12-pinned-reader.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

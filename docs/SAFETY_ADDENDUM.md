@@ -17,9 +17,12 @@ precedence for implementation:
    the exact fixture login is allowed; all other state changes are blocked.
 3. **DNS isolation:** an organizer-supplied IP should be preferred for a future
    live implementation. Otherwise only explicitly organizer-approved resolution
-   mechanisms may be used; never query public resolvers. Live DNS validation,
-   pinning and a live transport are **not implemented**. Fixture mode makes no
-   DNS queries and cannot make scanner network connections.
+   mechanisms may be used; never query public resolvers. An experimental,
+   unintegrated HTTPS GET transport can connect directly to an organizer-supplied
+   IP if called from Python; it makes no DNS query. It is not exposed through
+   the API and is not a complete live guard or scanner. Resolver-based scanning
+   and the remaining live safeguards are not implemented. Fixture mode makes
+   no DNS queries and cannot make scanner network connections.
 
 The two added automated checks are in
 `tests/security/test_scope_classifications.py`: classification of dangerous or

@@ -131,3 +131,5 @@ For the scoped enum-validation demonstration, see [checkpoint 9](checkpoints/09-
 For the offline organizer-scope validation demonstration, see [checkpoint 10](checkpoints/10-scope-validation.md).
 
 For the offline preflight policy demonstration, see [checkpoint 11](checkpoints/11-preflight.md).
+
+For the experimental pinned-reader safety tests, see [checkpoint 12](checkpoints/12-pinned-reader.md).
