@@ -418,7 +418,9 @@ including certificate hostname rejection. A follow-up test also caught inherited
 TLS session-key logging, which is now disabled before the handshake. No external
 target was contacted.
 Full local suite: 257 passed, one third-party warning. GitHub Actions run
-`41043336104` passed Ubuntu and Windows for `f9ee1cb`. Judge demonstration:
+`41043336104` passed Ubuntu and Windows for `f9ee1cb`. After the session-key
+logging fix, 258 local tests passed and GitHub Actions run `41043526099` passed
+Ubuntu and Windows for `3e71a2d`. Judge demonstration:
 [checkpoint 12](checkpoints/12-pinned-reader.md).
 
 ## Outstanding checkpoints
