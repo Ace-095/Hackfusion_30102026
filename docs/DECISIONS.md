@@ -512,6 +512,7 @@ token. Both were fixed. Tests cover direct HTTPX bypass attempts, malformed or
 duplicate-key token responses, scope mismatch, missing credentials, redirects,
 redaction and real TLS/HTTP framing via an in-process socketpair. No external
 target was contacted. Full local suite: 293 passed, one third-party warning.
+GitHub Actions run `41046397842` passed Ubuntu and Windows for `5de7aa7`.
 See [judge demo](checkpoints/16-guarded-login.md).
 
 This is not a full recipe/account workflow, identity verification, cookie/API
