@@ -389,7 +389,8 @@ reference is present. No live target feature has been enabled.
 
 ## Checkpoint 12 — narrow pinned HTTPS read transport
 
-A test-first, unintegrated component in `canarygate.network.pinned_reader` can
+At this historical checkpoint, a test-first, unintegrated component in
+`canarygate.network.pinned_reader` could
 perform only GET operations classified READ_ONLY in an organizer scope with a
 literal organizer IP, HTTPS and in-memory per-account bearer tokens. The exact
 actor/path decision occurs immediately before creating a socket; the IP is used
@@ -397,9 +398,8 @@ without DNS, and TLS verifies the scoped hostname. It is not exposed through the
 API or used by the scanner, but **direct invocation can create real traffic**.
 Do not use it without written organizer authorization and independent review.
 
-The experimental wire implementation uses Python `http.client`, whereas the
-frozen spec calls for HTTPX. It is not a completed or approved replacement for
-the specified runner; that mismatch must be resolved before integration.
+At checkpoint 12 the experimental reader used `http.client` directly, a mismatch
+with the specified HTTPX runner. It was removed at checkpoint 13.
 
 No proxies, automatic redirects, cookies, retries, login, writes, arbitrary
 headers or query strings are supported. The reader uses one sequential lock and
@@ -422,6 +422,35 @@ Full local suite: 257 passed, one third-party warning. GitHub Actions run
 logging fix, 258 local tests passed and GitHub Actions run `41043526099` passed
 Ubuntu and Windows for `3e71a2d`. Judge demonstration:
 [checkpoint 12](checkpoints/12-pinned-reader.md).
+
+## Checkpoint 13 — a single guarded HTTPX execution boundary
+
+Test-first boundary cases showed that the old standalone reader was still
+importable and no guarded HTTPX transport existed. The old reader implementation was removed; an import-error-only tombstone
+prevents stale build directories from repackaging it. Its existing socket, real-TLS socketpair, redirect, size, budget, halt, TLS
+key-log and concurrency tests were retained against the HTTPX transport. The
+HTTPX runner now sends through a single custom transport that performs the
+scope/classification decision immediately before opening a pinned socket. The
+transport itself rejects foreign hosts/ports, requests without authorized actor,
+body-bearing GETs and non-GET methods; it replaces all incoming headers with
+fixed scoped headers and never forwards cookies. It suppresses response headers
+and stops after redirects, including when wrapped by an HTTPX client configured
+to follow them. Real sockets and TLS are used only if this experimental Python
+component is explicitly invoked; tests use mocks or a local socketpair only.
+
+The HTTPX transport uses `http.client` only as its low-level HTTP/1.1 wire
+implementation over the pinned, certificate-verified socket; the application
+request/response interface and runner are HTTPX. No functional standalone reader remains. A wheel built over a stale build
+directory was inspected to verify that only the inert tombstone is packaged. This is still not an integrated or approved live scanner:
+only bearer-authenticated GETs to a supplied literal IP are supported, token
+identity is not verified, response headers are not yet available to disclosure
+checks, and login, DNS-only scopes, shared run budgets, absolute deadlines,
+production evidence and full live safety review are missing. The fixture scanner
+continues to use its separate in-process mock transport, not the live boundary.
+
+The full local suite passed 263 tests with one third-party warning. See
+[judge demo](checkpoints/13-guarded-httpx.md). This is a conservative subset,
+not completion of P0 or authorization to scan a real target.
 
 ## Outstanding checkpoints
 

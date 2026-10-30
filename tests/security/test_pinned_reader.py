@@ -59,25 +59,25 @@ def mocked_wire(monkeypatch):
         events.append(('socket', family, kind))
         return FakeSocket(events)
     monkeypatch.setattr(socket, 'socket', sock)
-    from canarygate.network import pinned_reader
+    from canarygate.network import guarded_httpx
     class FakeTLS:
         def wrap_socket(self, connection, *, server_hostname):
             events.append(('tls', server_hostname))
             return connection
-    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: FakeTLS())
-    monkeypatch.setattr(pinned_reader.http.client, 'HTTPConnection', lambda *a, **k: FakeHTTP(events, responses))
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: FakeTLS())
+    monkeypatch.setattr(guarded_httpx.http.client, 'HTTPConnection', lambda *a, **k: FakeHTTP(events, responses))
     return events, responses
 
 
 def reader():
-    from canarygate.network.pinned_reader import PinnedReader
-    return PinnedReader(load_authorized_scope(SCOPE), {'alice': 'token-alice', 'bob': 'token-bob'})
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    return GuardedHTTPXRunner(load_authorized_scope(SCOPE), {'alice': 'token-alice', 'bob': 'token-bob'})
 
 
 def test_pins_socket_and_retains_tls_hostname_and_host_header(mocked_wire):
     events, _ = mocked_wire
     result = reader().get('alice', '/items')
-    assert result.status == 200 and result.body == b'{"ok":true}'
+    assert result.status_code == 200 and result.content == b'{"ok":true}'
     assert ('connect', ('203.0.113.12', 443)) in events
     assert ('tls', 'api.organizer.example') in events
     request = next(e for e in events if e[0] == 'request')
@@ -100,7 +100,7 @@ def test_unlisted_or_destructive_requests_never_connect(mocked_wire, actor, path
 def test_redirect_is_observed_but_not_followed(mocked_wire):
     events, responses = mocked_wire
     responses.appendleft(FakeResponse(302, b''))
-    assert reader().get('alice', '/items').status == 302
+    assert reader().get('alice', '/items').status_code == 302
     assert sum(e[0] == 'connect' for e in events) == 1
 
 
@@ -128,14 +128,14 @@ def test_lockout_and_repeated_server_errors_halt(mocked_wire):
 
 
 def test_requires_literal_organizer_ip_and_valid_private_credentials(mocked_wire):
-    from canarygate.network.pinned_reader import PinnedReader
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
     data = load_authorized_scope(SCOPE).model_dump()
     data['organizer_ip'] = None; data['approved_resolver'] = 'organizer_approved_system'
     scope = load_authorized_scope(__import__('yaml').safe_dump(data))
-    with pytest.raises(ValueError): PinnedReader(scope, {'alice': 'token-alice'})
+    with pytest.raises(ValueError): GuardedHTTPXRunner(scope, {'alice': 'token-alice'})
     scope = load_authorized_scope(SCOPE)
     for tokens in ({'eve': 'token'}, {'alice': 'bad\r\nX-Evil: x'}, {'alice': ''}):
-        with pytest.raises(ValueError): PinnedReader(scope, tokens)
+        with pytest.raises(ValueError): GuardedHTTPXRunner(scope, tokens)
     assert not mocked_wire[0]
 
 
@@ -156,16 +156,16 @@ def test_rate_limit_halts_before_next_socket(mocked_wire):
     events, responses = mocked_wire
     responses.appendleft(FakeResponse(429, b''))
     client = reader()
-    assert client.get('alice', '/items').status == 429
+    assert client.get('alice', '/items').status_code == 429
     with pytest.raises(ValueError, match='halted'): client.get('alice', '/items')
     assert sum(e[0] == 'connect' for e in events) == 1
 
 
 def test_ip_v6_pinning_and_tls_hostname(mocked_wire):
     events, _ = mocked_wire
-    from canarygate.network.pinned_reader import PinnedReader
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
     scope = load_authorized_scope(SCOPE.replace('203.0.113.12', '2001:db8::12'))
-    assert PinnedReader(scope, {'alice': 'token-alice'}).get('alice', '/items').status == 200
+    assert GuardedHTTPXRunner(scope, {'alice': 'token-alice'}).get('alice', '/items').status_code == 200
     assert ('socket', socket.AF_INET6, socket.SOCK_STREAM) in events
     assert ('connect', ('2001:db8::12', 443)) in events
     assert ('tls', 'api.organizer.example') in events
@@ -181,15 +181,15 @@ def test_secrets_and_raw_body_not_in_result_representation(mocked_wire):
 
 
 def test_http_is_blocked_before_connection(mocked_wire):
-    from canarygate.network.pinned_reader import PinnedReader
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
     scope = load_authorized_scope(SCOPE.replace('scheme: https', 'scheme: http'))
-    with pytest.raises(ValueError): PinnedReader(scope, {'alice': 'token'})
+    with pytest.raises(ValueError): GuardedHTTPXRunner(scope, {'alice': 'token'})
     assert not mocked_wire[0]
 
 
 def test_real_http_serialization_with_mocked_socket(monkeypatch):
     import io
-    from canarygate.network import pinned_reader
+    from canarygate.network import guarded_httpx
     wire = []
     class WireSocket:
         def settimeout(self, timeout): pass
@@ -203,9 +203,9 @@ def test_real_http_serialization_with_mocked_socket(monkeypatch):
             wire.append(('tls', server_hostname)); return connection
     monkeypatch.setattr(socket, 'socket', lambda *a: WireSocket())
     monkeypatch.setattr(socket, 'getaddrinfo', lambda *a, **k: pytest.fail('DNS invoked'))
-    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: TLS())
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: TLS())
     response = reader().get('alice', '/items')
-    assert response.status == 302 and response.body == b''
+    assert response.status_code == 302 and response.content == b''
     assert [e for e in wire if e[0] == 'connect'] == [('connect', ('203.0.113.12', 443))]
     request = b''.join(e[1] for e in wire if e[0] == 'sent')
     assert request.startswith(b'GET /items HTTP/1.1\r\n')
@@ -234,7 +234,7 @@ def test_sequential_execution_and_budget_under_concurrency(mocked_wire, monkeypa
     monkeypatch.setattr(FakeHTTP, 'request', tracked)
     client = reader()
     def attempt(_):
-        try: return client.get('alice', '/items').status
+        try: return client.get('alice', '/items').status_code
         except ValueError: return None
     with ThreadPoolExecutor(max_workers=6) as pool:
         assert list(pool.map(attempt, range(6))).count(200) == 3
@@ -256,7 +256,7 @@ def test_real_tls_certificate_verification_over_socketpair(monkeypatch, hostname
     import ssl
     import threading
     from pathlib import Path
-    from canarygate.network import pinned_reader
+    from canarygate.network import guarded_httpx
 
     fixtures = Path(__file__).parents[1] / 'fixtures' / 'tls'
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -283,13 +283,13 @@ def test_real_tls_certificate_verification_over_socketpair(monkeypatch, hostname
             assert address == ('203.0.113.12', 443)
     monkeypatch.setattr(socket, 'socket', lambda *args: FakeConnect())
     monkeypatch.setattr(socket, 'getaddrinfo', lambda *args, **kwargs: pytest.fail('DNS invoked'))
-    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: client_context)
-    from canarygate.network.pinned_reader import PinnedReader
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: client_context)
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
     scope = load_authorized_scope(SCOPE.replace('api.organizer.example', hostname))
     try:
-        instance = PinnedReader(scope, {'alice': 'token-alice'})
+        instance = GuardedHTTPXRunner(scope, {'alice': 'token-alice'})
         if expect_success:
-            assert instance.get('alice', '/items').body == b'{}'
+            assert instance.get('alice', '/items').content == b'{}'
         else:
             with pytest.raises(ValueError): instance.get('alice', '/items')
             with pytest.raises(ValueError, match='halted'): instance.get('alice', '/items')
@@ -305,11 +305,11 @@ def test_real_tls_certificate_verification_over_socketpair(monkeypatch, hostname
 
 
 def test_tls_setup_failure_halts_without_exposing_exception_details(mocked_wire, monkeypatch):
-    from canarygate.network import pinned_reader
+    from canarygate.network import guarded_httpx
     class BadTLS:
         def wrap_socket(self, *args, **kwargs):
             raise ValueError('internal diagnostic token-alice')
-    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: BadTLS())
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: BadTLS())
     client = reader()
     with pytest.raises(ValueError) as error:
         client.get('alice', '/items')
@@ -319,12 +319,50 @@ def test_tls_setup_failure_halts_without_exposing_exception_details(mocked_wire,
 
 
 def test_tls_key_logging_is_disabled_before_handshake(mocked_wire, monkeypatch):
-    from canarygate.network import pinned_reader
+    from canarygate.network import guarded_httpx
     class TLSWithKeyLog:
         keylog_filename = '/tmp/should-not-receive-session-secrets'
         def wrap_socket(self, connection, *, server_hostname):
             assert self.keylog_filename is None
             return connection
     context = TLSWithKeyLog()
-    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: context)
-    assert reader().get('alice', '/items').status == 200
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: context)
+    assert reader().get('alice', '/items').status_code == 200
+
+
+def test_direct_httpx_transport_replaces_all_untrusted_headers(mocked_wire):
+    import httpx
+    from canarygate.network.guarded_httpx import GuardedHTTPXTransport
+    events, _ = mocked_wire
+    transport = GuardedHTTPXTransport(load_authorized_scope(SCOPE), {'alice': 'token-alice'})
+    request = httpx.Request('GET', 'https://api.organizer.example/items',
+                            headers={'Host': 'evil.invalid', 'Authorization': 'Bearer attacker',
+                                     'Cookie': 'session=secret', 'X-Forwarded-Host': 'evil.invalid'},
+                            extensions={'canary_actor': 'alice'})
+    assert transport.handle_request(request).status_code == 200
+    headers = next(e[3] for e in events if e[0] == 'request')
+    assert headers['Host'] == 'api.organizer.example:443'
+    assert headers['Authorization'] == 'Bearer token-alice'
+    assert 'Cookie' not in headers and 'X-Forwarded-Host' not in headers
+
+
+def test_httpx_redirect_cannot_follow_even_with_insecure_caller_configuration(mocked_wire):
+    import httpx
+    from canarygate.network.guarded_httpx import GuardedHTTPXTransport
+    events, responses = mocked_wire
+    responses.appendleft(FakeResponse(302, b''))
+    transport = GuardedHTTPXTransport(load_authorized_scope(SCOPE), {'alice': 'token-alice'})
+    with httpx.Client(transport=transport, follow_redirects=True, trust_env=False) as client:
+        result = client.get('https://api.organizer.example/items', extensions={'canary_actor': 'alice'})
+    assert result.status_code == 302
+    assert sum(e[0] == 'connect' for e in events) == 1
+
+
+def test_streaming_request_body_fails_before_socket(mocked_wire):
+    import httpx
+    from canarygate.network.guarded_httpx import GuardedHTTPXTransport
+    transport = GuardedHTTPXTransport(load_authorized_scope(SCOPE), {'alice': 'token-alice'})
+    request = httpx.Request('GET', 'https://api.organizer.example/items', content=iter([b'payload']),
+                            extensions={'canary_actor': 'alice'})
+    with pytest.raises(ValueError): transport.handle_request(request)
+    assert not any(e[0] == 'socket' for e in mocked_wire[0])

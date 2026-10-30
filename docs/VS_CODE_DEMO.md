@@ -133,3 +133,5 @@ For the offline organizer-scope validation demonstration, see [checkpoint 10](ch
 For the offline preflight policy demonstration, see [checkpoint 11](checkpoints/11-preflight.md).
 
 For the experimental pinned-reader safety tests, see [checkpoint 12](checkpoints/12-pinned-reader.md).
+
+For the guarded HTTPX boundary tests, see [checkpoint 13](checkpoints/13-guarded-httpx.md).

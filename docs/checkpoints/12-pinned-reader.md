@@ -1,4 +1,7 @@
-# Checkpoint 12: experimental pinned HTTPS read component
+# Checkpoint 12: experimental pinned HTTPS read component (superseded)
+
+The standalone reader implementation was removed in [checkpoint 13](13-guarded-httpx.md).
+Its safety regression tests now exercise the guarded HTTPX boundary instead.
 
 **Not live-scan ready.** This narrowly scoped Python component is not integrated
 into the scanner or API. Calling it directly with real scope and credentials can
