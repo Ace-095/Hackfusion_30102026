@@ -559,6 +559,25 @@ verified ownership, live-data evidence, end-to-end safety review and the
 remaining backend requirements are still outstanding. Tests contact no
 external target or DNS service.
 
+## Checkpoint 19 — bounded read-only resource harvest
+
+Test-first cases added an in-memory, non-reporting private-list harvest through
+the guarded HTTPX runner. It first observes two distinct account profiles, then
+reads one explicitly scoped list as each account. A list must be bounded,
+nonempty, unambiguous JSON with safe unique IDs and owner fields matching the
+respective account. Overlap, mixed owners, missing data, budget exhaustion and
+malformed responses are inconclusive; shared/public/unknown models and unscoped
+setup are skipped before requests. Raw identifiers are excluded from repr and
+must never be persisted by this component.
+
+`HARVESTED` means only that two disjoint lists were observed. It is **not** a
+verified ownership registry, proof of privacy, evidence or a BOLA verdict. Owner
+detail baselines, independently reviewed expected policy, cross-user private
+disclosure, redaction and report integration remain necessary. The helper is not
+connected to the scanner or API. Tests use mocks only, with no external traffic.
+The full local suite passed 334 tests, one third-party warning. See
+[judge demo](checkpoints/19-resource-harvest.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

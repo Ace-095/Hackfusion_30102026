@@ -879,3 +879,117 @@ def test_identity_pair_halts_when_second_profile_matches_other_account(mocked_wi
     result = observe_identity_pair(runner, actor_a='alice', actor_b='bob', path='/profile', identity_field='username')
     assert result.status == 'MISMATCH'
     with pytest.raises(ValueError, match='halted'): runner.get('alice', '/items')
+
+
+def _discovery_runner(mocked_wire, *, budget=6):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope_text = SCOPE.replace('request_budget: 3', f'request_budget: {budget}')
+    scope_text += '\n - {method: GET, path: /profile, classification: READ_ONLY}\n'
+    return GuardedHTTPXRunner(load_authorized_scope(scope_text), {'alice': 'token-alice', 'bob': 'token-bob'})
+
+
+def _queue_responses(mocked_wire, responses):
+    for status, body in reversed(responses):
+        mocked_wire[1].appendleft(FakeResponse(status, body))
+
+
+def test_bounded_discovery_harvests_only_after_both_profile_controls(mocked_wire):
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire)
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'),
+                                   (200, b'[{"id":"a-secret-id","owner":"alice"}]'),
+                                   (200, b'[{"id":"b-secret-id","owner":"bob"}]')])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status == 'HARVESTED' and result.lists_disjoint is True
+    assert result.ids_a == ('a-secret-id',) and result.ids_b == ('b-secret-id',)
+    assert 'secret-id' not in repr(result) and 'token-alice' not in repr(result)
+    requests = [e for e in mocked_wire[0] if e[0] == 'request']
+    assert [(e[1], e[2]) for e in requests] == [('GET', '/profile'), ('GET', '/profile'), ('GET', '/items'), ('GET', '/items')]
+
+
+@pytest.mark.parametrize('bad_body', [
+    b'[]', b'{}', b'not-json', b'[{"id":"x","owner":"bob"}]',
+    b'[{"id":"../escape","owner":"alice"}]',
+    b'[{"id":"x","id":"x","owner":"alice"}]',
+    b'[{"id":"x","owner":"alice"},{"id":"x","owner":"alice"}]',
+])
+def test_discovery_rejects_incomplete_or_ambiguous_owner_list(mocked_wire, bad_body):
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire)
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'), (200, bad_body)])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ids_a == () and result.ids_b == ()
+    assert sum(e[0] == 'request' for e in mocked_wire[0]) == 3
+
+
+def test_discovery_overlap_is_not_claimed_private_ownership(mocked_wire):
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire)
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'),
+                                   (200, b'[{"id":"same","owner":"alice"}]'),
+                                   (200, b'[{"id":"same","owner":"bob"}]')])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.lists_disjoint is False
+    assert result.ids_a == () and result.ids_b == ()
+
+
+@pytest.mark.parametrize('model', ['shared', 'public', 'unknown'])
+def test_discovery_skips_non_private_or_unknown_models_without_requests(mocked_wire, model):
+    from canarygate.seed.discovery import harvest_private_lists
+    result = harvest_private_lists(_discovery_runner(mocked_wire), actor_a='alice', actor_b='bob',
+                                   profile_path='/profile', identity_field='username', list_path='/items',
+                                   id_field='id', owner_field='owner', ownership_model=model)
+    assert result.status == 'SKIPPED' and not mocked_wire[0]
+
+
+def test_discovery_does_not_run_lists_if_identity_control_fails(mocked_wire):
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire)
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"alice"}')])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status != 'HARVESTED'
+    assert [(e[1], e[2]) for e in mocked_wire[0] if e[0] == 'request'] == [('GET', '/profile'), ('GET', '/profile')]
+
+
+def test_discovery_rejects_oversized_list_without_truncating(mocked_wire):
+    import json
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire)
+    many = json.dumps([{'id': f'x{i}', 'owner': 'alice'} for i in range(21)]).encode()
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'), (200, many)])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ids_a == ()
+
+
+def test_discovery_budget_exhaustion_exposes_no_partial_identifiers(mocked_wire):
+    from canarygate.seed.discovery import harvest_private_lists
+    runner = _discovery_runner(mocked_wire, budget=3)
+    _queue_responses(mocked_wire, [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'),
+                                   (200, b'[{"id":"a-private-id","owner":"alice"}]')])
+    result = harvest_private_lists(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                   identity_field='username', list_path='/items', id_field='id',
+                                   owner_field='owner', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ids_a == () and 'a-private-id' not in repr(result)
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 3
+
+
+@pytest.mark.parametrize('list_path,id_field,owner_field', [
+    ('/unlisted', 'id', 'owner'), ('/items?x=1', 'id', 'owner'),
+    ('/items', 'owner', 'owner'), ('/items', 'id.name', 'owner'),
+])
+def test_discovery_invalid_setup_skips_before_profile_requests(mocked_wire, list_path, id_field, owner_field):
+    from canarygate.seed.discovery import harvest_private_lists
+    result = harvest_private_lists(_discovery_runner(mocked_wire), actor_a='alice', actor_b='bob',
+                                   profile_path='/profile', identity_field='username', list_path=list_path,
+                                   id_field=id_field, owner_field=owner_field, ownership_model='private')
+    assert result.status == 'SKIPPED' and not mocked_wire[0]

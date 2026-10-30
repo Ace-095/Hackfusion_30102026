@@ -145,3 +145,5 @@ For guarded authentication verification, see [checkpoint 16](checkpoints/16-guar
 For the explicit profile observation tests, see [checkpoint 17](checkpoints/17-identity-observation.md).
 
 For the two-account identity observation tests, see [checkpoint 18](checkpoints/18-identity-pair.md).
+
+For bounded read-only resource harvesting, see [checkpoint 19](checkpoints/19-resource-harvest.md).
