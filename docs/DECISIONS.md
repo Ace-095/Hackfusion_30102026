@@ -460,7 +460,8 @@ shared budget, sequential execution lock, halt state and server-error streak.
 Multiple guarded HTTPX runners can be explicitly given the same guard, so a
 request, rate limit, redirect or failure in one runner affects the entire shared
 run. Tests initially failed because the guard did not exist. Full local suite:
-270 passed, one third-party warning. See [judge demo](checkpoints/14-run-guard.md).
+270 passed, one third-party warning. GitHub Actions run `41045516009` passed
+Ubuntu and Windows for `9b91345`. See [judge demo](checkpoints/14-run-guard.md).
 
 This does not yet integrate a real scanner. A caller must explicitly share the
 same guard; creating a new guard creates a new independent run. An eventual scan
