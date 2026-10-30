@@ -579,6 +579,25 @@ The full local suite passed 334 tests, one third-party warning. GitHub Actions
 run `41047263116` passed Ubuntu and Windows for `eab894d`. See
 [judge demo](checkpoints/19-resource-harvest.md).
 
+## Checkpoint 20 — conservative owner-baseline observations
+
+Test-first cases added an in-memory helper that first performs the existing
+account-profile and disjoint-list controls, then reads both owners' exact scoped
+detail paths. It requires matching ID/owner fields and distinct, unmasked,
+non-identifier private-field strings. Invalid templates, unscoped detail paths,
+missing/masked/duplicate/ambiguous data and budget failures do not produce a
+baseline. Follow-up tests caught masked values, public identifier fields and a
+value derived from an ID being accepted; those now fail closed. The result
+cannot be constructed with `ownership_verified=True` and never returns a BOLA
+verdict. Identifiers and private values remain in memory, are omitted from repr,
+and are **not approved for serialization or storage**.
+
+These are observations only, not verified ownership, policy or separate
+cross-user disclosure evidence. No live scan or API integration is enabled.
+Tests used synthetic responses and mock sockets; no external target was contacted.
+Full local suite: 360 passed, one third-party warning. See
+[judge demo](checkpoints/20-owner-baselines.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

@@ -147,3 +147,5 @@ For the explicit profile observation tests, see [checkpoint 17](checkpoints/17-i
 For the two-account identity observation tests, see [checkpoint 18](checkpoints/18-identity-pair.md).
 
 For bounded read-only resource harvesting, see [checkpoint 19](checkpoints/19-resource-harvest.md).
+
+For owner-baseline observation tests, see [checkpoint 20](checkpoints/20-owner-baselines.md).

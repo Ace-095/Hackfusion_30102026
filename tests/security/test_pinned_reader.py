@@ -993,3 +993,119 @@ def test_discovery_invalid_setup_skips_before_profile_requests(mocked_wire, list
                                    profile_path='/profile', identity_field='username', list_path=list_path,
                                    id_field=id_field, owner_field=owner_field, ownership_model='private')
     assert result.status == 'SKIPPED' and not mocked_wire[0]
+
+
+def _ownership_runner(mocked_wire, *, budget=8, include_b=True):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope_text = SCOPE.replace('request_budget: 3', f'request_budget: {budget}')
+    scope_text += '\n - {method: GET, path: /profile, classification: READ_ONLY}\n'
+    scope_text += ' - {method: GET, path: /items/a-id, classification: READ_ONLY}\n'
+    if include_b:
+        scope_text += ' - {method: GET, path: /items/b-id, classification: READ_ONLY}\n'
+    return GuardedHTTPXRunner(load_authorized_scope(scope_text), {'alice': 'token-alice', 'bob': 'token-bob'})
+
+
+def _ownership_responses():
+    return [(200, b'{"username":"alice"}'), (200, b'{"username":"bob"}'),
+            (200, b'[{"id":"a-id","owner":"alice"}]'), (200, b'[{"id":"b-id","owner":"bob"}]'),
+            (200, b'{"id":"a-id","owner":"alice","private_note":"alice private marker"}'),
+            (200, b'{"id":"b-id","owner":"bob","private_note":"bob private marker"}')]
+
+
+def test_owner_baselines_require_profiles_lists_and_scoped_detail_reads(mocked_wire):
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    _queue_responses(mocked_wire, _ownership_responses())
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'BASELINES_OBSERVED'
+    assert result.ownership_verified is False  # still needs reviewed policy and independent live evidence
+    assert 'private marker' not in repr(result) and 'a-id' not in repr(result) and 'b-id' not in repr(result)
+    assert [(e[1], e[2]) for e in mocked_wire[0] if e[0] == 'request'] == [
+        ('GET', '/profile'), ('GET', '/profile'), ('GET', '/items'), ('GET', '/items'),
+        ('GET', '/items/a-id'), ('GET', '/items/b-id')]
+
+
+@pytest.mark.parametrize('bad_b', [
+    b'{"id":"b-id"}', b'{"id":"b-id","owner":"alice","private_note":"bob private marker"}',
+    b'{"id":"other","owner":"bob","private_note":"bob private marker"}',
+    b'{"id":"b-id","owner":"bob","private_note":"alice private marker"}',
+    b'{"id":"b-id","owner":"bob","private_note":"[REDACTED]"}',
+    b'{"id":"b-id","owner":"bob","private_note":"b-id"}',
+    b'{"id":"b-id","owner":"bob","private_note":null}',
+])
+def test_owner_baselines_never_accept_missing_ambiguous_or_shared_private_data(mocked_wire, bad_b):
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    responses = _ownership_responses(); responses[-1] = (200, bad_b)
+    _queue_responses(mocked_wire, responses)
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ownership_verified is False
+
+
+def test_owner_baselines_skip_unscoped_detail_before_detail_requests(mocked_wire):
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire, include_b=False)
+    _queue_responses(mocked_wire, _ownership_responses()[:4])
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'SKIPPED' and result.ownership_verified is False
+    assert sum(e[0] == 'request' for e in mocked_wire[0]) == 4
+
+
+@pytest.mark.parametrize('template', ['/items/{id}?x=1', '/items/../{id}', 'https://evil.invalid/{id}', '/items/{id}/{id}', '/items/%7Bid%7D'])
+def test_owner_baselines_skip_ambiguous_detail_templates_without_requests(mocked_wire, template):
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template=template,
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'SKIPPED' and not mocked_wire[0]
+
+
+@pytest.mark.parametrize('value', ['******', '****1234', '[MASKED]', '<redacted>', 'masked'])
+def test_owner_baselines_reject_masked_private_markers(mocked_wire, value):
+    import json
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    responses = _ownership_responses()
+    responses[-1] = (200, json.dumps({'id': 'b-id', 'owner': 'bob', 'private_note': value}).encode())
+    _queue_responses(mocked_wire, responses)
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ownership_verified is False
+
+
+@pytest.mark.parametrize('private_field', ['id', 'owner', 'status', 'ID', 'OWNER'])
+def test_owner_baselines_never_treat_public_identifier_fields_as_private(mocked_wire, private_field):
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='record_key', owner_field='owner_name', private_field=private_field,
+                                    ownership_model='private')
+    assert result.status == 'SKIPPED' and not mocked_wire[0]
+
+
+def test_owner_baseline_rejects_value_derived_from_public_resource_id(mocked_wire):
+    import json
+    from canarygate.seed.ownership import observe_owner_baselines
+    runner = _ownership_runner(mocked_wire)
+    responses = _ownership_responses()
+    responses[-1] = (200, json.dumps({'id': 'b-id', 'owner': 'bob', 'private_note': 'record b-id'}).encode())
+    _queue_responses(mocked_wire, responses)
+    result = observe_owner_baselines(runner, actor_a='alice', actor_b='bob', profile_path='/profile',
+                                    identity_field='username', list_path='/items', detail_template='/items/{id}',
+                                    id_field='id', owner_field='owner', private_field='private_note', ownership_model='private')
+    assert result.status == 'INCONCLUSIVE' and result.ownership_verified is False
+
+
+def test_owner_observation_cannot_be_constructed_as_verified():
+    from canarygate.seed.ownership import OwnerBaselineObservation
+    with pytest.raises(TypeError):
+        OwnerBaselineObservation('BASELINES_OBSERVED', 'not a verification', ownership_verified=True)

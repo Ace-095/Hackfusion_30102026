@@ -70,7 +70,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 16 demo](docs/checkpoints/16-guarded-login.md), and
 [checkpoint 17 demo](docs/checkpoints/17-identity-observation.md), and
 [checkpoint 18 demo](docs/checkpoints/18-identity-pair.md), and
-[checkpoint 19 demo](docs/checkpoints/19-resource-harvest.md).
+[checkpoint 19 demo](docs/checkpoints/19-resource-harvest.md), and
+[checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md).
 
 ## Run the fixture API locally
 
