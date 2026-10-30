@@ -481,7 +481,8 @@ monotonic deadline and a watchdog that interrupts the active socket; it performs
 TLS handshake only after the watchdog can track the wrapped socket. Network
 failure or deadline expiry halts the shared run. Tests cover stalled handshake,
 stalled headers/body and a slow-drip response without real target traffic. The
-local full suite passed 274 tests with one third-party warning.
+local full suite passed 274 tests with one third-party warning. GitHub Actions
+run `41045822373` passed Ubuntu and Windows for `0b3a326`.
 
 The timer addresses network waits, not an independently verified hard execution
 time bound for arbitrary Python computation, thread starvation or local system
