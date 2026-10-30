@@ -378,7 +378,8 @@ failed because the preflight module was absent. Follow-up tests exposed that
 Pydantic `model_copy(update=...)` bypasses validation; construction now validates
 a serialized copy of the scope. The offline decision budget is protected by a
 lock and a concurrent test cannot overspend it. Full local suite: 232 passed,
-one third-party warning. See [judge demo](checkpoints/11-preflight.md).
+one third-party warning. GitHub Actions run `41042037520` passed Ubuntu and
+Windows for commit `6eb1078`. See [judge demo](checkpoints/11-preflight.md).
 
 This policy model is not connected to any runner or transport and is not a live
 guard. Its per-instance decision counter is not a live request budget; it does
