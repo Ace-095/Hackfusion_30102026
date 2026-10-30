@@ -42,17 +42,26 @@ MAX_FORM_BYTES = 3 * MAX_SPEC_BYTES
 _UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 #: Navigation is a flat list because the UI is deliberately small.
-NAV = (
-    ("dashboard", "/ui/", "Dashboard"),
-    ("findings", "/ui/findings", "Findings"),
-    ("endpoints", "/ui/endpoints", "API inventory"),
-    ("matrix", "/ui/matrix", "Authorization matrix"),
-    ("scans", "/ui/scans", "Read-BOLA scans"),
-    ("suites", "/ui/suites", "Test suites"),
-    ("reports", "/ui/reports", "Reports"),
-    ("configure", "/ui/configure", "Scan configuration"),
-    ("setup", "/ui/setup", "Setup & readiness"),
-    ("spec", "/ui/spec", "Spec inspection"),
+#: Grouped, flat navigation: (group label, [(key, href, label, icon)]).
+NAV_GROUPS = (
+    ("Overview", (
+        ("dashboard", "/ui/", "Dashboard", "dashboard"),
+        ("findings", "/ui/findings", "Findings", "findings"),
+    )),
+    ("Analysis", (
+        ("endpoints", "/ui/endpoints", "API inventory", "inventory"),
+        ("matrix", "/ui/matrix", "Authorization matrix", "matrix"),
+    )),
+    ("Runs and evidence", (
+        ("scans", "/ui/scans", "Read-BOLA scans", "scans"),
+        ("suites", "/ui/suites", "Test suites", "suites"),
+        ("reports", "/ui/reports", "Reports", "reports"),
+    )),
+    ("Configuration", (
+        ("configure", "/ui/configure", "Scan configuration", "config"),
+        ("setup", "/ui/setup", "Setup & readiness", "setup"),
+        ("spec", "/ui/spec", "Spec inspection", "spec"),
+    )),
 )
 
 #: Shown on every page. These statements come from the backend's own contract.
@@ -118,7 +127,7 @@ def _is_htmx(request: Request) -> bool:
 def _page(request: Request, template: str, active: str, http_status: int = 200, **context):
     base = {
         "active": active,
-        "nav": NAV,
+        "nav_groups": NAV_GROUPS,
         "build_facts": BUILD_FACTS,
         "provisional": True,
     }
@@ -369,10 +378,32 @@ def dashboard(request: Request):
 
 @router.get("/ui/endpoints")
 def endpoints_page(request: Request):
-    result = _guard(request, lambda: _api().endpoints()["endpoints"])
-    if not isinstance(result, list):
+    def build():
+        api = _api()
+        return api.endpoints()["endpoints"], _newest_first(api.findings(store=_store(request))["findings"])
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
         return result
-    return _page(request, "endpoints.html", "endpoints", endpoints=result)
+    endpoints, runs = result
+    # Backend runs name a concrete path (e.g. /items/bob-item); map them onto the
+    # templated inventory row they belong to. No matching is invented: a run that
+    # fits no template is reported separately.
+    by_endpoint: dict[str, list[dict]] = {}
+    for run in runs:
+        by_endpoint.setdefault(run["endpoint"], []).append(run)
+    rows = []
+    for endpoint in endpoints:
+        label = f"{endpoint['method']} {endpoint['path']}"
+        rows.append({"endpoint": endpoint, "label": label, "runs": by_endpoint.get(label, [])})
+    matched = {row["label"] for row in rows if row["runs"]}
+    unmatched = [run for run in runs if run["endpoint"] not in matched]
+    access_counts: dict[str, int] = {}
+    for row in rows:
+        access = row["endpoint"]["expected_access"]
+        access_counts[access] = access_counts.get(access, 0) + 1
+    return _page(request, "endpoints.html", "endpoints", rows=rows,
+                 run_count=len(runs), unmatched=unmatched, access_counts=access_counts)
 
 
 @router.get("/ui/setup")
@@ -526,6 +557,26 @@ def suite_run_page(request: Request, family: str, run_id: str):
 @router.get("/ui/spec")
 def spec_page(request: Request):
     return _page(request, "spec.html", "spec", result=None)
+
+
+@router.get("/ui/scans/{run_id}/report")
+def report_view(request: Request, run_id: str):
+    """Render the backend's own nine-section projection as a printable report."""
+    def build():
+        api = _api()
+        run = api.scan(run_id=run_id, store=_store(request))
+        response = api.report(run_id=run_id, view="sections", format="json",
+                              store=_store(request))
+        # The backend's section view is dispatched as a JSONResponse; decode it
+        # without re-implementing any section logic in the UI.
+        payload = response if isinstance(response, dict) else json.loads(response.body)
+        return run, payload["sections"]
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
+        return result
+    run, sections = result
+    return _page(request, "report_view.html", "reports", run=run, sections=sections)
 
 
 # --------------------------------------------------------------------------- #

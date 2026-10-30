@@ -58,6 +58,17 @@ def flag(value) -> str:
     return "not recorded"
 
 
+def humanize(value: str) -> str:
+    """Turn a backend key into a readable label without changing its meaning."""
+    return str(value).replace("_", " ").strip()
+
+
+def pct(value, total) -> int:
+    if not total:
+        return 0
+    return int(round(value / total * 100))
+
+
 def short_id(value: str | None, keep: int = 8) -> str:
     if not value:
         return "—"
@@ -78,6 +89,8 @@ def build_templates() -> Jinja2Templates:
     environment.filters["pretty_json"] = pretty_json
     environment.filters["flag"] = flag
     environment.filters["short_id"] = short_id
+    environment.filters["humanize"] = humanize
+    environment.filters["pct"] = pct
     return Jinja2Templates(env=environment)
 
 

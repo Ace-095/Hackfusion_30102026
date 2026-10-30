@@ -1,25 +1,29 @@
 {% extends "base.html" %}
-{% from "_macros.html" import verdict_badge, empty_state %}
+{% from "_macros.html" import page_head, journey, verdict_badge, stat, empty,
+                              verdict_legend, icon, meter %}
 {% block title %}Authorization matrix{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <div>
-    <h1>Authorization matrix</h1>
-    <p class="page-sub">
-      Actor × endpoint access. Cells come from stored backend runs
-      (<span class="mono">GET /api/matrix</span>) laid over the backend inventory
-      (<span class="mono">GET /api/endpoints</span>). A combination with no run is
-      labelled <em>not assessed</em> — it is never assumed safe.
-    </p>
-  </div>
-</section>
+{% call page_head("Analysis",
+                 "Authorization matrix",
+                 "Actor × endpoint access. Cells come from stored backend runs
+                  (GET /api/matrix) laid over the backend inventory (GET /api/endpoints).
+                  A combination with no run is labelled not assessed — never assumed safe.",
+                 trail=[("Dashboard", "/ui/"), ("Matrix", None)]) %}
+  <a class="btn btn-sm" href="/ui/findings">Open findings</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/reports">Reports</a>
+{% endcall %}
+
+{{ journey("matrix") }}
 
 <div class="alert alert-warn">
-  <strong>Coverage is partial by design.</strong>
-  The backend records a cell only when it actually executed a test for that endpoint
-  and actor. There is no BFLA cell generation and no fabricated grid: empty cells are
-  missing coverage, not a pass. The complete matrix is P1 in the specification.
+  {{ icon("warning") }}
+  <div>
+    <b>Coverage is partial by design.</b>
+    The backend records a cell only when it actually executed a test for that endpoint and
+    actor. There is no BFLA cell generation and no fabricated grid: empty cells are missing
+    coverage, not a pass. The complete matrix is P1 in the specification.
+  </div>
 </div>
 
 <section class="grid grid-4" aria-label="Matrix coverage">
@@ -28,90 +32,91 @@
     <span class="stat-value">{{ grid.assessed }} / {{ grid.total }}</span>
     <span class="stat-foot">from {{ run_count }} stored run(s)</span>
   </div>
-  <div class="stat">
-    <span class="stat-label">Endpoints</span>
-    <span class="stat-value">{{ grid.rows|length }}</span>
-    <span class="stat-foot">inventory rows</span>
-  </div>
+  {{ stat("Endpoints", grid.rows|length, "inventory rows") }}
   <div class="stat">
     <span class="stat-label">Actors</span>
     <span class="stat-value">{{ grid.actors|length }}</span>
-    <span class="stat-foot">
-      {% if grid.actors %}{{ grid.actors|join(", ") }}{% else %}none exercised yet{% endif %}
-    </span>
+    <span class="stat-foot">{% if grid.actors %}{{ grid.actors|join(", ") }}{% else %}none exercised yet{% endif %}</span>
   </div>
   <div class="stat">
     <span class="stat-label">Coverage</span>
-    <span class="stat-value">
-      {{ ((grid.assessed / grid.total * 100)|round(0, 'floor')|int) if grid.total else 0 }}%
-    </span>
+    <span class="stat-value">{{ grid.assessed|pct(grid.total) }}%</span>
     <span class="stat-foot">assessed of all combinations</span>
   </div>
 </section>
 
 {% if grid.rows and grid.actors %}
-<section class="card">
-  <header class="card-head">
-    <h2>Access grid</h2>
-    <span class="dim small">one badge per endpoint/actor combination</span>
-  </header>
-  <div class="table-scroll">
-    <table class="table matrix-table">
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("matrix") }} Access grid</h2>
+    <span class="hint">latest stored run per combination · click a badge to open the finding</span>
+  </div>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <caption class="visually-hidden">
+        Endpoint by actor matrix. Cells show the latest verdict, or “not assessed” when no
+        run exists for that combination.
+      </caption>
       <thead>
         <tr>
           <th scope="col">Endpoint</th>
           {% for actor in grid.actors %}
           <th scope="col" class="mono">{{ actor }}</th>
           {% endfor %}
-          <th scope="col">Assessed</th>
+          <th scope="col" class="assessment">Assessed</th>
         </tr>
       </thead>
       <tbody>
         {% for row in grid.rows %}
         <tr>
-          <th scope="row" class="mono">{{ row.endpoint }}</th>
+          <th scope="row">{{ row.endpoint }}</th>
           {% for cell in row.cells %}
           <td>
             {% if cell.run %}
-              <a href="/ui/scans/{{ cell.run.id }}" title="open run">{{ verdict_badge(cell.run.verdict) }}</a>
+              <a href="/ui/scans/{{ cell.run.id }}" title="open finding">{{ verdict_badge(cell.run.verdict) }}</a>
             {% else %}
               <span class="badge badge-empty">not assessed</span>
             {% endif %}
           </td>
           {% endfor %}
-          <td class="mono small">{{ row.assessed }} / {{ row.cells|length }}</td>
+          <td class="assessment">{{ row.assessed }} / {{ row.cells|length }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="note dim">The latest stored run wins for a repeated combination. Rows marked
-    <span class="badge badge-empty">not assessed</span> are a gap in coverage, not evidence
-    of safety or vulnerability.</p>
-</section>
+  <div class="card-body bordered-top">
+    {{ meter(grid.assessed, grid.total, "Overall coverage",
+             ("ok" if grid.assessed == grid.total and grid.total else ("warn" if grid.assessed else None))) }}
+    <p class="note">Rows marked <span class="badge badge-empty">not assessed</span> are a gap
+      in coverage, not evidence of safety or vulnerability.</p>
+  </div>
+  <div class="card-foot">{{ verdict_legend() }}</div>
+</div>
 {% else %}
-  {{ empty_state("No grid yet",
-     "The backend has no stored run, so no actor has exercised an endpoint. Run the
-      fixture scan to populate the first cell.") }}
+<div class="card">
+  <div class="card-body">
+    {{ empty("No grid yet",
+             "The backend has no stored run, so no actor has exercised an endpoint. Run the
+              fixture scan to populate the first cell.",
+             "/ui/scans", "Go to scans") }}
+  </div>
+</div>
 {% endif %}
 
-<section class="card">
-  <header class="card-head">
-    <h2>Recorded cells</h2>
-    <span class="dim small mono">GET /api/matrix</span>
-  </header>
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("database") }} Recorded cells</h2>
+    <span class="hint mono">GET /api/matrix</span>
+  </div>
   {% if cells %}
   <div class="table-scroll">
     <table class="table table-wide" id="matrix-table">
       <thead>
         <tr>
-          <th scope="col">Endpoint</th>
-          <th scope="col">Actor</th>
-          <th scope="col">Target resource</th>
-          <th scope="col">Expected access</th>
-          <th scope="col">Expected source</th>
-          <th scope="col">Verdict</th>
-          <th scope="col">Run</th>
+          <th scope="col">Endpoint</th><th scope="col">Actor</th><th scope="col">Target resource</th>
+          <th scope="col">Expected access</th><th scope="col">Expected source</th>
+          <th scope="col">Verdict</th><th scope="col">Run</th>
         </tr>
       </thead>
       <tbody>
@@ -130,21 +135,25 @@
     </table>
   </div>
   {% else %}
-    {{ empty_state("The matrix is empty",
-       "No fixture run has been stored, so the backend has no cells to report.") }}
+  <div class="card-body">
+    {{ empty("The matrix is empty",
+             "No fixture run has been stored, so the backend has no cells to report.") }}
+  </div>
   {% endif %}
-</section>
+</div>
 
 <section class="card">
-  <header class="card-head"><h2>Reading a cell</h2></header>
-  <ul class="bullets">
-    <li><span class="mono">expected_access</span> is a claim with provenance. When it is
-      <span class="mono">unknown</span>, no CONFIRMED verdict is possible.</li>
-    <li><strong>SAFE</strong> means the behaviour matched the expected access for that
-      actor, and only when the oracle actually ran.</li>
-    <li><strong>INCONCLUSIVE</strong> and <strong>SKIPPED</strong> are honest gaps; they
-      are shown in the grid rather than hidden.</li>
-    <li>BFLA cells are P1 and are not produced by this build.</li>
-  </ul>
+  <div class="card-head"><h2>{{ icon("info") }} Reading a cell</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li><span class="mono">expected_access</span> is a claim with provenance. When it is
+        <span class="mono">unknown</span>, no CONFIRMED verdict is possible.</li>
+      <li><b>SAFE</b> means the behaviour matched the expected access for that actor, and
+        only when the oracle actually ran.</li>
+      <li><b>INCONCLUSIVE</b> and <b>SKIPPED</b> are honest gaps; they appear in the grid
+        rather than being hidden.</li>
+      <li>BFLA cells are P1 and are not produced by this build.</li>
+    </ul>
+  </div>
 </section>
 {% endblock %}

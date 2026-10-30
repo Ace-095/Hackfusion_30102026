@@ -1,111 +1,147 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import page_head, journey, empty, icon %}
 {% block title %}Test suites{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <div>
-    <h1>Test suites</h1>
-    <p class="page-sub">
-      Bundled, deterministic offline transcripts. They exercise the guarded pipeline
-      without any network transport: the scope, accounts and responses are synthetic
-      recordings bundled with the backend.
-    </p>
-  </div>
-</section>
+{% call page_head("Runs",
+                 "Test suites",
+                 "Bundled, deterministic offline transcripts. They exercise the guarded
+                  pipeline without any network transport: scope, accounts and responses are
+                  synthetic recordings bundled with the backend.",
+                 trail=[("Dashboard", "/ui/"), ("Test suites", None)]) %}
+  <a class="btn btn-sm btn-ghost" href="/ui/reports">Suite reports</a>
+{% endcall %}
+
+{{ journey("scans") }}
 
 <div class="alert alert-warn">
-  <strong>These are recorded scenarios, not live tests.</strong>
-  Each run reports <span class="mono">transport=offline_transcript</span> and
-  <span class="mono">network_transport_enabled=false</span>. They demonstrate the
-  decision logic; they do not prove anything about a real API.
+  {{ icon("warning") }}
+  <div>
+    <b>Recorded scenarios, not live tests.</b>
+    Each run reports <span class="mono">transport=offline_transcript</span> and
+    <span class="mono">network_transport_enabled=false</span>. They demonstrate the decision
+    logic; they do not prove anything about a real API.
+  </div>
 </div>
 
 <section id="suite-panel" aria-live="polite"></section>
 
 <div class="grid grid-2">
   <section class="card">
-    <header class="card-head">
-      <h2>Read-BOLA scenarios</h2>
-      <span class="dim small mono">POST /api/scenario-scans</span>
-    </header>
-    <p class="note">
-      Runs the full read-BOLA decision path for one transcript: ownership evidence,
-      disclosure evidence, the ten-key checklist and a verdict.
-    </p>
-    <form class="form" method="post" action="/ui/actions/scenario-scan"
-          hx-post="/ui/actions/scenario-scan" hx-target="#suite-panel" hx-swap="innerHTML"
-          hx-indicator="#scenario-spinner" hx-disabled-elt="find button">
-      <label class="field">
-        <span>Bundled scenario id</span>
-        <select name="scenario_id" required>
-          {% for scenario in catalog.read_bola %}
-          <option value="{{ scenario.id }}">{{ scenario.id }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="form-actions">
-        <button class="btn btn-primary" type="submit">Run read-BOLA scenario</button>
-        <span id="scenario-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
-      </div>
-      <p class="note dim">Scenario ids come from the backend registry; this page does not
-        invent or rename them.</p>
-    </form>
+    <div class="card-head">
+      <h2>{{ icon("shield") }} Read-BOLA scenarios</h2>
+      <span class="hint mono">POST /api/scenario-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Runs the full read-BOLA decision path for one transcript: ownership
+        evidence, disclosure evidence, the decision checklist and a verdict.</p>
+      <form class="form" method="post" action="/ui/actions/scenario-scan"
+            hx-post="/ui/actions/scenario-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#scenario-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario id</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.read_bola %}
+            <option value="{{ scenario.id }}">{{ scenario.id }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run read-BOLA scenario</button>
+          <span id="scenario-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+        <p class="note dim-2">Scenario ids come from the backend registry; this page does not
+          invent or rename them.</p>
+      </form>
+    </div>
+    <div class="card-foot">
+      <details class="disclosure">
+        <summary>Bundled ids ({{ catalog.read_bola|length }})</summary>
+        <div class="disclosure-body">
+          <ul class="inline-list">
+            {% for scenario in catalog.read_bola %}
+            <li class="mono xs">{{ scenario.id }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </details>
+    </div>
   </section>
 
   <section class="card">
-    <header class="card-head">
-      <h2>Authentication scenarios</h2>
-      <span class="dim small mono">POST /api/authentication-scans</span>
-    </header>
-    <p class="note">
-      Runs the eight P0 authentication checks (AUTHN-01 … AUTHN-08) for one token
-      transcript. Inapplicable checks are reported as SKIPPED with a reason.
-    </p>
-    <form class="form" method="post" action="/ui/actions/authentication-scan"
-          hx-post="/ui/actions/authentication-scan" hx-target="#suite-panel" hx-swap="innerHTML"
-          hx-indicator="#auth-spinner" hx-disabled-elt="find button">
-      <label class="field">
-        <span>Bundled scenario</span>
-        <select name="scenario_id" required>
-          {% for scenario in catalog.authentication %}
-          <option value="{{ scenario.id }}">
-            {{ scenario.id }}{% if scenario.title %} — {{ scenario.title }}{% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="form-actions">
-        <button class="btn btn-primary" type="submit">Run authentication scenario</button>
-        <span id="auth-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
-      </div>
-    </form>
+    <div class="card-head">
+      <h2>{{ icon("key") }} Authentication scenarios</h2>
+      <span class="hint mono">POST /api/authentication-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Runs the eight P0 authentication checks (AUTHN-01 … AUTHN-08) for one
+        token transcript. Inapplicable checks are reported as SKIPPED with a reason.</p>
+      <form class="form" method="post" action="/ui/actions/authentication-scan"
+            hx-post="/ui/actions/authentication-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#auth-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.authentication %}
+            <option value="{{ scenario.id }}">
+              {{ scenario.id }}{% if scenario.title %} — {{ scenario.title }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run authentication scenario</button>
+          <span id="auth-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      Titles are the backend's own scenario titles, not predicted outcomes.
+    </div>
   </section>
 </div>
 
-<section class="card">
-  <header class="card-head"><h2>Open a previous suite run</h2></header>
-  <p class="note">
-    Suite runs persist in the local database, but the backend has no list endpoint for
-    them yet, so this UI cannot enumerate past runs. Use the run id it returned.
-  </p>
-  <form class="form" method="get" action="/ui/reports/lookup">
-    <label class="field">
-      <span>Family</span>
-      <select name="family">
-        <option value="read-bola">Read-BOLA scenario</option>
-        <option value="authentication">Authentication scenario</option>
-      </select>
-    </label>
-    <label class="field">
-      <span>Run id</span>
-      <input type="text" name="run_id" required placeholder="36-character UUID">
-    </label>
-    <button class="btn btn-ghost" type="submit">Open run</button>
-  </form>
-</section>
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("search") }} Open a previous suite run</h2></div>
+    <div class="card-body">
+      <p class="note">Suite runs persist in the local database, but the backend has no list
+        endpoint for them yet, so this UI cannot enumerate past runs. Use the run id it
+        returned.</p>
+      <form class="form" method="get" action="/ui/reports/lookup">
+        <div class="field-row-2">
+          <label class="field">
+            <span>Family</span>
+            <select name="family">
+              <option value="read-bola">Read-BOLA scenario</option>
+              <option value="authentication">Authentication scenario</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Run id</span>
+            <input type="text" name="run_id" required placeholder="36-character UUID">
+          </label>
+        </div>
+        <div class="form-actions"><button class="btn" type="submit">Open run</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What a suite run demonstrates</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>Read-BOLA</b> — the decision path that turns ownership proof and private-data
+          disclosure into a verdict, including honest non-CONFIRMED outcomes.</li>
+        <li><b>Authentication</b> — missing, malformed, wrong-scheme, crafted-JWT and API-key
+          probes, with the effective-identity change required before a probe can be CONFIRMED.</li>
+        <li>Every run records request counters and limits the backend applied.</li>
+      </ul>
+    </div>
+  </section>
+</div>
 
 {% if not catalog.read_bola and not catalog.authentication %}
-  {{ empty_state("No bundled scenarios", "The backend registry returned no scenario ids.") }}
+  {{ empty("No bundled scenarios", "The backend registry returned no scenario ids.") }}
 {% endif %}
 {% endblock %}

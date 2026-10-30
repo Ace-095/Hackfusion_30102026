@@ -1,29 +1,35 @@
-{% from "_macros.html" import verdict_badge, status_badge %}
+{% from "_macros.html" import verdict_badge, status_badge, icon %}
 {#- HTMX fragment returned by POST /ui/actions/fixture-scan. -#}
 <section class="card result-card" id="fixture-result">
-  <header class="card-head">
-    <h2>New fixture run recorded</h2>
+  <div class="card-head">
+    <h2>{{ icon("check") }} New fixture run recorded</h2>
     <span class="badge badge-ok mono">stored</span>
-  </header>
-  <p class="result-line">
-    {{ verdict_badge(run.verdict) }}
-    <span class="mono">{{ run.endpoint }}</span>
-    <span class="dim">·</span>
-    <span class="mono">{{ run.actor }} → {{ run.target_resource }}</span>
-  </p>
-  <p class="reason">{{ run.reason }}</p>
-  <ul class="flag-list">
-    <li><span class="mono small">ownership gate</span> {{ status_badge(run.setup.ownership_verification) }}</li>
-    <li><span class="mono small">BOLA coverage</span> {{ status_badge(run.setup.bola_coverage) }}</li>
-    <li><span class="mono small">verified owner</span> <span class="mono">{{ run.verified_owner }}</span></li>
-    <li><span class="mono small">expected access</span> <span class="pill">{{ run.expected_access }}</span></li>
-    <li><span class="mono small">requests sent</span> <span class="mono">{{ run.constraints.requests_sent }}</span></li>
-  </ul>
-  <div class="link-row">
-    <a class="btn btn-primary btn-sm" href="/ui/scans/{{ run.id }}">Open run</a>
-    <a class="btn btn-ghost btn-sm" href="/ui/scans/{{ run.id }}/evidence">Evidence</a>
-    <a class="btn btn-ghost btn-sm" href="/api/reports/{{ run.id }}?format=html"
-       target="_blank" rel="noopener">Backend HTML report</a>
-    <a class="btn btn-ghost btn-sm" href="/ui/scans">Reload list</a>
+  </div>
+  <div class="card-body">
+    <div class="finding-headline mb-1">
+      {{ verdict_badge(run.verdict) }}
+      <span class="mono">{{ run.endpoint }}</span>
+      <span class="dim">·</span>
+      <span class="mono">{{ run.actor }} → {{ run.target_resource }}</span>
+    </div>
+    <p class="reason">{{ run.reason }}</p>
+    <div class="grid grid-3 mt-1">
+      <div class="stat stat-compact"><span class="stat-label">Ownership gate</span>
+        <span class="stat-value sm">{{ status_badge(run.setup.ownership_verification) }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">BOLA coverage</span>
+        <span class="stat-value sm">{{ status_badge(run.setup.bola_coverage) }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">Requests sent</span>
+        <span class="stat-value sm">{{ run.constraints.requests_sent }}</span></div>
+    </div>
+  </div>
+  <div class="card-foot">
+    <div class="link-row">
+      <a class="btn btn-primary btn-sm" href="/ui/scans/{{ run.id }}">Open finding</a>
+      <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/evidence">Evidence</a>
+      <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ run.id }}/report">Report view</a>
+      <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}?format=html"
+         target="_blank" rel="noopener">Backend HTML</a>
+      <a class="btn btn-sm btn-ghost" href="/ui/scans">Reload list</a>
+    </div>
   </div>
 </section>

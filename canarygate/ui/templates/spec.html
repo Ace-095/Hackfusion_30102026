@@ -1,61 +1,85 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_head, empty, icon %}
 {% block title %}Spec inspection{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <div>
-    <h1>Spec inspection</h1>
-    <p class="page-sub">
-      Parses an OpenAPI 3.0/3.1 document in memory and shows the endpoint inventory with
-      expected access and provenance. Inspection only: nothing is saved, no target is
-      selected and no scan is started.
-    </p>
-  </div>
-</section>
+{% call page_head("Configuration",
+                 "Spec inspection",
+                 "Parses an OpenAPI 3.0/3.1 document in memory and shows the endpoint
+                  inventory with expected access and provenance. Inspection only: nothing is
+                  saved, no target is selected and no scan is started.",
+                 trail=[("Dashboard", "/ui/"), ("Spec inspection", None)]) %}
+  <a class="btn btn-sm btn-ghost" href="/ui/endpoints">Fixture inventory</a>
+{% endcall %}
 
 <div class="alert alert-info">
-  <strong>Bounded parser.</strong>
-  This is not full OpenAPI validation. It requires a <span class="mono">paths</span>
-  mapping, resolves local <span class="mono">$ref</span> pointers only, rejects remote
-  references, merge keys and duplicate keys, and limits input to 128 KiB of UTF-8.
+  {{ icon("info") }}
+  <div>
+    <b>Bounded parser.</b>
+    This is not full OpenAPI validation. It requires a <span class="mono">paths</span>
+    mapping, resolves local <span class="mono">$ref</span> pointers only, rejects remote
+    references, merge keys and duplicate keys, and limits input to 128 KiB of UTF-8.
+  </div>
 </div>
 
 <section class="card">
-  <header class="card-head"><h2>Inspect a document</h2></header>
-  <form class="form" method="post" action="/ui/actions/spec-inspect"
-        hx-post="/ui/actions/spec-inspect" hx-target="#spec-panel" hx-swap="innerHTML"
-        hx-indicator="#spec-spinner" hx-disabled-elt="find button">
-    <label class="field">
-      <span>Choose a local file (optional — it fills the text area; nothing is uploaded to a third party)</span>
-      <input type="file" accept=".yaml,.yml,.json,application/json,text/yaml" data-spec-file>
-    </label>
-    <label class="field">
-      <span>YAML or JSON document</span>
-      <textarea name="document" rows="12" spellcheck="false" class="mono"
-                placeholder="openapi: 3.0.3&#10;info:&#10;  title: Example&#10;paths:&#10;  /items:&#10;    get:&#10;      responses:&#10;        '200': {description: ok}"></textarea>
-    </label>
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Inspect document</button>
-      <span id="spec-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
-      <span class="note dim">Only send synthetic or explicitly authorized specifications.</span>
-    </div>
-  </form>
+  <div class="card-head">
+    <h2>{{ icon("spec") }} Inspect a document</h2>
+    <span class="hint">in-memory · never scanned</span>
+  </div>
+  <div class="card-body">
+    <form class="form" method="post" action="/ui/actions/spec-inspect"
+          hx-post="/ui/actions/spec-inspect" hx-target="#spec-panel" hx-swap="innerHTML"
+          hx-indicator="#spec-spinner" hx-disabled-elt="find button">
+      <label class="field">
+        <span>Choose a local file (optional — it fills the text area, nothing is uploaded)</span>
+        <input type="file" accept=".yaml,.yml,.json,application/json,text/yaml" data-spec-file>
+      </label>
+      <label class="field">
+        <span>YAML or JSON document</span>
+        <textarea name="document" rows="12" spellcheck="false" class="mono"
+                  placeholder="openapi: 3.0.3&#10;info:&#10;  title: Example&#10;paths:&#10;  /items:&#10;    get:&#10;      responses:&#10;        '200': {description: ok}"></textarea>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{{ icon("search") }} Inspect document</button>
+        <span id="spec-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        <span class="note">Only send synthetic or explicitly authorized specifications.</span>
+      </div>
+    </form>
+  </div>
 </section>
 
 <section id="spec-panel" aria-live="polite">
   {% if result %}{% include "partials/spec_result.html" %}{% endif %}
 </section>
 
-<section class="card">
-  <header class="card-head"><h2>Why uploads are separate from scans</h2></header>
-  <ul class="bullets">
-    <li>The fixture scanner in this build is bound to the bundled synthetic fixture. It
-      cannot be pointed at an uploaded specification.</li>
-    <li>Uploaded documents are not persisted, so they cannot become stored evidence.</li>
-    <li>The response echoes parameter details from the document; that is not a production
-      secret-redaction system.</li>
-    <li>Connecting an uploaded specification to a live scan requires the guarded runner,
-      a written scope and organizer authorization. That is not implemented.</li>
-  </ul>
-</section>
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Why uploads are separate from scans</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li>The fixture scanner is bound to the bundled synthetic fixture and cannot be
+          pointed at an uploaded specification.</li>
+        <li>Uploaded documents are not persisted, so they cannot become stored evidence.</li>
+        <li>The response echoes parameter details from the document; that is not a production
+          secret-redaction system.</li>
+        <li>Connecting an uploaded specification to a live scan requires the guarded runner,
+          a written scope and organizer authorization — not implemented.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What the parser returns</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        <div class="kv-row"><dt>mode</dt><dd class="mono">inventory_only</dd></div>
+        <div class="kv-row"><dt>live_scanning</dt><dd class="mono">false</dd></div>
+        <div class="kv-row"><dt>sha256</dt><dd>SHA-256 of the exact bytes you submitted</dd></div>
+        <div class="kv-row"><dt>endpoints</dt><dd>method, path, parameters, declared security,
+          expected access and its provenance</dd></div>
+      </dl>
+    </div>
+  </section>
+</div>
 {% endblock %}

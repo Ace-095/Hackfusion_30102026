@@ -1,24 +1,26 @@
-{% from "_macros.html" import empty_state %}
+{% from "_macros.html" import empty, icon, method_chip %}
 <section class="card" id="spec-result">
-  <header class="card-head">
-    <h2>Inspection result</h2>
+  <div class="card-head">
+    <h2>{{ icon("spec") }} Inspection result</h2>
     <span class="badge badge-info mono">mode={{ result.mode }}</span>
-  </header>
-  <div class="grid grid-3">
-    <div class="stat stat-compact">
-      <span class="stat-label">Endpoints parsed</span>
-      <span class="stat-value">{{ result.endpoint_count }}</span>
-    </div>
-    <div class="stat stat-compact">
-      <span class="stat-label">Live scanning</span>
-      <span class="stat-value small mono">{{ result.live_scanning|lower }}</span>
-    </div>
-    <div class="stat stat-compact">
-      <span class="stat-label">Document SHA-256</span>
-      <span class="stat-value small mono break">{{ result.sha256 }}</span>
-    </div>
   </div>
-  <p class="note">{{ result.message }}</p>
+  <div class="card-body">
+    <div class="grid grid-3">
+      <div class="stat stat-compact">
+        <span class="stat-label">Endpoints parsed</span>
+        <span class="stat-value">{{ result.endpoint_count }}</span>
+      </div>
+      <div class="stat stat-compact">
+        <span class="stat-label">Live scanning</span>
+        <span class="stat-value sm mono">{{ result.live_scanning|lower }}</span>
+      </div>
+      <div class="stat stat-compact">
+        <span class="stat-label">Document SHA-256</span>
+        <span class="stat-value sm mono wrap">{{ result.sha256 }}</span>
+      </div>
+    </div>
+    <p class="note">{{ result.message }}</p>
+  </div>
 
   {% if result.endpoints %}
   <div class="table-scroll">
@@ -30,7 +32,7 @@
       <tbody>
         {% for endpoint in result.endpoints %}
         <tr>
-          <td><span class="method method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span></td>
+          <td>{{ method_chip(endpoint.method) }}</td>
           <td class="mono">{{ endpoint.path }}</td>
           <td><span class="pill">{{ endpoint.expected_access }}</span></td>
           <td class="mono small">{{ endpoint.expected_source }}</td>
@@ -45,7 +47,7 @@
             {% if endpoint.parameters %}
               <ul class="inline-list">
                 {% for parameter in endpoint.parameters %}
-                <li class="mono small">{{ parameter.name }}
+                <li class="mono xs">{{ parameter.name }}
                   <span class="dim">({{ parameter['in'] }}{% if parameter.required %}, required{% endif %})</span></li>
                 {% endfor %}
               </ul>
@@ -57,6 +59,10 @@
     </table>
   </div>
   {% else %}
-    {{ empty_state("The document declared no endpoints") }}
+    <div class="card-body">{{ empty("The document declared no endpoints") }}</div>
   {% endif %}
+  <div class="card-foot">
+    Nothing was saved and no scan was started. The fixture scanner is not connected to this
+    document.
+  </div>
 </section>

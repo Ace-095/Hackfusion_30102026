@@ -1,7 +1,11 @@
+{% from "_macros.html" import icon %}
 {#- HTMX fragment: keeps a failed action inside the page instead of replacing it. -#}
 <div class="alert alert-danger" role="alert">
-  <p><strong>Request failed — HTTP {{ status_code }}</strong></p>
-  <p class="mono small">{{ detail }}</p>
-  <p class="small">Nothing was stored or changed by this failed request. Reload the page
-    to see the current backend state.</p>
+  {{ icon("warning") }}
+  <div>
+    <b>Request failed — HTTP {{ status_code }}</b>
+    <div class="small mt-0">{{ detail }}</div>
+    <div class="note mt-0">Nothing was stored or changed by this failed
+      request. Reload the page to see the current backend state.</div>
+  </div>
 </div>

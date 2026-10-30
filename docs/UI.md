@@ -17,15 +17,21 @@ If the backend cannot establish something, the page says so.
 | --- | --- | --- |
 | Rendering | Jinja2 server-side templates | No client-side framework, no build step, no bundler |
 | Interactions | Vendored HTMX 2.0.4 (`canarygate/ui/static/vendor/htmx.min.js`) | Every action also works as a plain form POST without JavaScript |
-| Styling | Hand-written CSS (`static/css/app.css`) | Dark console theme, responsive, print styles |
-| Behaviour | ~120 lines of vanilla JS (`static/js/app.js`) | Mobile nav, table filter, file-into-textarea, busy/error feedback |
+| Styling | Hand-written CSS (`static/css/app.css`) | Dark security-operations theme, design tokens, responsive, print, reduced-motion and forced-colors support |
+| Behaviour | ~150 lines of vanilla JS (`static/js/app.js`), optional | Mobile nav, table filter, copy buttons, print button, busy state, inline error fragments |
 | Assets | Served by the app itself at `/ui/static/...` | No CDN, no web fonts, no analytics, no external requests |
 | Data | `canarygate.api.app` handlers called **in-process** | The UI never re-implements a verdict or a counter |
 
-Pages: dashboard, endpoint inventory, setup & readiness, read-BOLA scan list, scan
-detail, evidence/observations, authorization matrix, reports, test suites, suite
-run detail, spec inspection, error page. The UI is mounted at `/ui/`; `/`
-redirects there.
+Pages: dashboard, endpoint inventory, setup & readiness, findings, read-BOLA scan
+list, scan detail, evidence/observations, report view, authorization matrix,
+reports, test suites, suite run detail, spec inspection, configuration, error
+page. The UI is mounted at `/ui/`; `/` redirects there.
+
+Every page renders the same shell: a grouped sidebar (`NAV_GROUPS` in
+`routes.py`), a breadcrumb trail, and — on the core review pages — a numbered
+**review journey** (Dashboard → Endpoints → Findings/Scan → Ownership proof →
+Disclosure proof → Matrix → Report) that links straight to the next artifact. A
+judge can walk that strip without being told what to click.
 
 ## 2. File map
 
@@ -34,10 +40,12 @@ canarygate/ui/
 ├── __init__.py            # package docstring only
 ├── app.py                 # FRONTEND ENTRYPOINT: backend app + UI mounted at runtime
 ├── routes.py              # HTML routes, form actions, view helpers
-├── templating.py          # Jinja2 environment, filters (verdict/status badges, JSON, tri-state)
+├── templating.py          # Jinja2 environment, filters (verdict/status badges, JSON, tri-state,
+│                          #   humanize, pct, short_id)
 ├── templates/
 │   ├── base.html          # shell: banner, navigation, footer, local assets
-│   ├── _macros.html       # badges, key/value rows, evidence card, constraints panel, report links
+│   ├── _macros.html       # design-system components: badges, chips, stat, meter, empty/unavailable,
+│   │                      #   journey, evidence proof, checklist grid, constraints panel, report links
 │   ├── dashboard.html     # health, posture, gates, latest verdict, distribution, recent runs
 │   ├── findings.html      # verdict-grouped findings, check-level findings, coverage gaps
 │   ├── configure.html     # read-only bundled scope/recipe/spec + disabled config form
@@ -48,6 +56,7 @@ canarygate/ui/
 │   ├── evidence.html      # minimized observations behind the verdict
 │   ├── matrix.html        # run-derived authorization cells
 │   ├── reports.html       # links to backend-generated HTML/JSON reports
+│   ├── report_view.html   # backend `?view=sections` rendered in-page, print-friendly
 │   ├── suites.html        # read-BOLA + authentication scenario runners
 │   ├── suite_run.html     # scenario run / authentication run detail
 │   ├── spec.html          # in-memory OpenAPI inspection
@@ -136,6 +145,7 @@ surface as a server error and stay visible in logs.
 | `POST /ui/actions/authentication-scan` | `api.start_authentication_scan` | 303 → `/ui/suites/authentication/{id}` | fragment in `#suite-panel` |
 | `POST /ui/actions/spec-inspect` | `spec.parser.parse_inventory` | full `/ui/spec` page with result | fragment in `#spec-panel` |
 | `GET /ui/reports/lookup` | — (validates then redirects) | 303 to the suite run | same |
+| `GET /ui/scans/{id}/report` | `api.report(..., view="sections")` | full page, 9 backend sections | same |
 
 Forms are parsed by `_form_fields()` in `routes.py`, which reads a urlencoded body
 directly. That avoids adding `python-multipart` as a dependency; the body is
@@ -154,6 +164,7 @@ capped at 384 KiB and the document itself at the parser's 128 KiB limit.
 | `/ui/findings` | One place for every conclusion | open-finding count, CONFIRMED findings with reason + remediation + evidence flags, SUSPECTED, check-level findings (AUTHN/INPUT/DISC), SAFE list, coverage gaps | `GET /api/findings` (grouping only) | run fixture scan, drill into run/evidence/report | "No findings yet"; explicit "severity is not in the contract" note |
 | `/ui/configure` | What the backend is configured to do | bundled `scope.yaml`, `recipe.json`, `fixture.yaml`, recipe returned by `fixture_recipe()` (canary redacted), disabled config form with reasons | none (reads backend package files + recipe function) | none — read-only by design | empty state if package files are missing |
 | `/ui/matrix` | Actor × endpoint access | grid: inventory rows × accounts the backend demonstrated, each cell a verdict or **not assessed**; plus the recorded cell table | `GET /api/matrix` + `GET /api/endpoints` + `GET /api/findings` | open run from a cell | "No grid yet"; assessed/total coverage; explicit partial-coverage warning |
+| `/ui/scans/{id}/report` | The backend's own report, re-rendered from `?view=sections` | the 9 sections (`executive_summary` … `constraint_checklist`) with their backend titles and values, plus a link to the backend HTML/JSON originals | `GET /api/reports/{id}?format=json&view=sections` | print (`window.print`), open HTML/JSON | 404 page if the report cannot be generated; a section the backend omits is simply absent, never filled in |
 | `/ui/reports` | Canonical reports | stored runs with links to HTML, JSON run, JSON sections, JSON + observations | `GET /api/findings` (links go to `/api/reports/...`) | open suite run by id | "No reports yet"; documented missing list endpoints |
 | `/ui/suites` | Bundled offline transcripts | scenario ids from backend registries (auth titles come from the plans) | `POST /api/scenario-scans`, `POST /api/authentication-scans` | run read-BOLA / authentication scenario | inline 404/422 fragment; empty catalog state |
 | `/ui/suites/read-bola/{id}` | Scenario detail | verdict, reason, remediation, scope, recipe, policy, both evidence parts, 10-key checklist, constraints, inventory, limitations | `GET /api/scenario-scans/{id}` | backend HTML/JSON report | 404 page; "No evidence recorded for this phase" |
@@ -209,7 +220,7 @@ Contract changes to the frozen models or the existing routes were **not** made.
 
 ## 7. Tests
 
-`tests/integration/test_ui_pages.py` (17 tests, run with the rest of the suite):
+`tests/integration/test_ui_pages.py` (20 tests, run with the rest of the suite — 629 total):
 
 | Test | What it actually proves |
 | --- | --- |
@@ -230,9 +241,14 @@ Contract changes to the frozen models or the existing routes were **not** made.
 | `test_configure_page_is_read_only_and_redacts_secrets` | Bundled scope/recipe/spec are shown, the canary value is redacted, `Save`/`Start` are disabled with the reason, and viewing stores nothing |
 | `test_matrix_grid_marks_unassessed_cells_instead_of_guessing` | Grid renders inventory rows × demonstrated accounts, unassessed combinations are labelled, and `assessed / total` equals recorded runs vs. the full grid |
 
+| `test_report_view_renders_backend_sections_and_prints` | `/ui/scans/{id}/report` renders the backend's own 9 sections and titles, keeps a single `<h1>`, and offers a print control |
+| `test_journey_links_the_review_path_on_core_pages` | The numbered journey appears on every core page, marks the current step, and links onward to endpoints and the run report |
+| `test_accessibility_basics_on_every_page` | Every page (including 404 states) has exactly one `<h1>`, a skip link to `#main`, `lang`, a labelled nav with exactly one `aria-current`, no `<img>` without text alternatives and no inline styles |
+
 Not covered yet: real-browser rendering (no headless browser in this environment),
-accessibility audit with a screen reader, JavaScript-disabled manual pass, and
-visual regression. Those belong to the design pass.
+screen-reader audit, a manual keyboard-only pass, and pixel-level visual
+regression. Everything above is asserted on the served HTML/CSS, which is the
+limit of what the test environment can prove.
 
 ## 8. Running it
 
@@ -256,21 +272,49 @@ python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
 The server stays local-only, unauthenticated and fixture-only. Do not bind it to a
 public interface, and do not present fixture verdicts as live-target results.
 
-## 9. Next design pass (not started, by agreement)
+## 9. Design system (shipped in this pass)
 
-1. Visual identity: typography scale, spacing tokens, denser tables, sticky table
-   headers, verdict colour legend, dark/light toggle.
-2. Drill-downs: endpoint → runs for that endpoint; actor → runs for that actor.
-3. Server-side pagination and sorting for large run lists (needs G1/G2).
-4. A compare view for "same endpoint, different actors" (works with today's data).
-5. Report page: embed the backend HTML report in a framed view with a clear
-   "generated by the backend" label, or re-render sections from
-   `?view=sections` (no new contracts needed).
-6. Accessibility: focus traps for details panels, skip links per section,
-   contrast checks, keyboard-only run.
-7. Print stylesheet for the report view.
-8. Only after the core pipeline is frozen: an async scan with progress (G3).
+The visual and usability pass has been **done** (it is what shipped in this
+checkpoint). What exists now:
 
+1. **Design tokens.** `app.css` starts with one `:root` block: colour roles
+   (`--bg`, `--panel`, `--line`, `--ink`, `--ink-2`, `--ink-3`, verdict tones),
+   a type scale, radii, shadows and spacing. Verdict colours are used *only* for
+   verdicts and status; the rest of the interface is neutral so the evidence
+   stands out.
+2. **Components, not one-off markup.** `_macros.html` exposes `verdict_badge`,
+   `status_badge`, `tri`, `method_chip`, `stat`, `meter`, `empty`, `unavailable`,
+   `kv`, `json_details`, `checklist_grid`, `evidence_proof`, `constraints_panel`,
+   `journey`, `crumbs`, `page_head`, `verdict_legend` and the report link sets.
+   Pages compose these, so a verdict looks identical on the dashboard, the
+   findings list, the run page and the report.
+3. **Evidence-first layout.** Every run page shows expected access next to the
+   observed outcome, then ownership proof and disclosure proof side by side, each
+   with its own anchor (`#proof-ownership`, `#proof-disclosure`). Raw JSON lives
+   in collapsed `<details>` blocks, never above the conclusion it supports.
+4. **Information density.** Run and endpoint tables are compact with sticky,
+   uppercase headers and tabular numerals. Long run ids shorten through the
+   `short_id` filter (the link still points at the full id); values that are
+   shortened or abbreviated carry a `title` with the full text.
+5. **States before decoration.** `empty`, `unavailable`, `alert-*` and the error
+   page cover no-data, fixture-only, and backend-refused cases. Nothing animates
+   except a short, reduced-motion-aware busy indicator.
+6. **Accessibility.** Skip link, one `<h1>` per page, labelled landmarks, visible
+   focus rings, `aria-current` for the active nav item, `aria-live` on action
+   panels, tri-state values spelled out ("not recorded" rather than a blank cell),
+   ≥4.5:1 body contrast, `prefers-reduced-motion` and `forced-colors` support.
+7. **No inline styles.** All spacing is tokenised utility classes, so the pages
+   stay compatible with a strict CSP and print cleanly.
+8. **Print.** Report and run pages drop navigation, flatten cards and keep
+   headers with their tables.
+
+Still open, and deliberately not faked:
+
+* Server-side pagination/sorting for very large run lists (needs the list
+  endpoints in G1/G2).
+* An async scan with progress (needs G3).
+* A compare view for "same endpoint, different actors" — possible with today's
+  data, but it needs a product decision about which two runs to compare.
 
 ## 10. Backend read-only guarantee
 

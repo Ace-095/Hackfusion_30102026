@@ -65,14 +65,19 @@ def test_ui_scan_action_renders_the_same_run_the_api_returns(tmp_path):
         assert api_run["verified_owner"] in body
         assert api_run["target_resource"] in body
         # Both evidence parts and the decision checklist are rendered from the API.
-        assert "1 · Ownership evidence" in body and "2 · Disclosure evidence" in body
+        assert 'id="proof-ownership"' in body and 'id="proof-disclosure"' in body
+        assert "Ownership evidence" in body and "Disclosure evidence" in body
+        # Keys are rendered with underscores humanised for readability.
         for key in api_run["bola_checklist"]:
-            assert key in body
+            assert key.replace("_", " ") in body
         assert api_run["evidence"]["ownership"]["sha256"] in body
         # Constraints are the backend's counters, including the zero-violation rows.
         assert str(api_run["constraints"]["requests_sent"]) in body
-        assert "Out-of-scope requests executed: 0" in body
-        assert "Destructive requests executed: 0" in body
+        assert '<span class="stat-label">Out of scope executed</span>' in body
+        assert '<span class="stat-label">Destructive executed</span>' in body
+        assert '<span class="stat-label">Out of scope executed</span>' in body
+        assert '<span class="stat-label">Destructive executed</span>' in body
+        assert '<span class="stat-label">External executed</span>' in body
 
         # The run is stored exactly once and the list/matrix now reflect it.
         findings = client.get("/api/findings").json()["findings"]
@@ -237,7 +242,7 @@ def test_ui_pages_use_the_same_backend_handlers_as_the_json_api(tmp_path):
         matrix = client.get("/api/matrix").json()["cells"]
         scans_page = client.get("/ui/scans").text
         matrix_page = client.get("/ui/matrix").text
-        assert f"{len(findings)} stored run(s)" in scans_page
+        assert f'<span class="stat-label">Stored runs</span><span class="stat-value">{len(findings)}</span>' in scans_page
         for run in findings:
             assert run["endpoint"] in scans_page
             assert run["id"][:8] in scans_page
@@ -349,7 +354,7 @@ def test_configure_page_is_read_only_and_redacts_secrets(tmp_path):
         # Editing is disabled, and the page says why.
         assert "This page is read-only, deliberately." in body
         assert 'disabled' in body
-        assert "no backend endpoint accepts this" in body
+        assert "no backend endpoint accepts this configuration" in " ".join(body.split())
         # And nothing was configured by viewing it.
         assert client.get("/api/findings").json()["findings"] == []
 
@@ -376,3 +381,80 @@ def test_matrix_grid_marks_unassessed_cells_instead_of_guessing(tmp_path):
         assessed = len(runs)
         total = len(endpoints) * len(actors)
         assert f"{assessed} / {total}" in body
+
+
+def test_report_view_renders_backend_sections_and_prints(tmp_path):
+    with _client(tmp_path) as client:
+        run = client.post("/ui/actions/fixture-scan", follow_redirects=False)
+        run_id = run.headers["location"].rsplit("/", 1)[-1]
+        sections = client.get(f"/api/reports/{run_id}?view=sections").json()["sections"]
+        response = client.get(f"/ui/scans/{run_id}/report")
+        assert response.status_code == 200
+        body = response.text
+
+        # Every backend section key is rendered, with a human title.
+        assert len(sections) == 9
+        for title in ("Executive summary", "Scope, accounts and seeding", "Endpoint inventory",
+                      "Findings", "Secured endpoints that passed", "Skipped and inconclusive",
+                      "Authorization matrix", "Manual interventions and inferences",
+                      "Constraint checklist"):
+            assert title in body, title
+        assert "Executive summary" in body
+        assert "Constraint checklist" in body
+        assert "Secured endpoints that passed" in body
+        # Values come from the backend projection, not from the template.
+        summary = sections["executive_summary"]
+        assert summary["bola_verdict"] in body
+        for value in summary["verdict_counts"].values():
+            assert str(value) in body
+        assert sections["scope_accounts_seeding"]["scope"] in body
+        # Printable, and honest about scope.
+        assert "data-print" in body
+        assert "fixture projection, not the full frozen P0 report" in body
+        assert "print" in client.get("/ui/static/css/app.css").text
+
+
+def test_journey_links_the_review_path_on_core_pages(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        for path, current in [("/ui/", "Dashboard"), ("/ui/findings", "Finding"),
+                              (f"/ui/scans/{run_id}", "Finding"),
+                              (f"/ui/scans/{run_id}/evidence", "Ownership proof"),
+                              (f"/ui/scans/{run_id}/report", "Report"),
+                              ("/ui/matrix", "Matrix")]:
+            body = client.get(path).text
+            assert 'aria-label="Review journey"' in body, path
+            assert f'aria-current="step"' in body, path
+            # The current step is marked, and the rest of the path is reachable.
+            marker = body.split('class="journey"', 1)[1]
+            assert current in marker, path
+            assert "/ui/endpoints" in marker
+            # With a run in context the final step points at that run's report.
+            assert "/ui/reports" in marker or "/ui/scans/" in marker
+
+
+def test_accessibility_basics_on_every_page(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        pages = PATHS + [f"/ui/scans/{run_id}", f"/ui/scans/{run_id}/evidence",
+                         f"/ui/scans/{run_id}/report"]
+        # An unknown run renders the error state, which deliberately highlights no
+        # navigation section; it is covered separately for the shared shell.
+        pages.append("/ui/scans/00000000-0000-0000-0000-000000000000")
+        for path in pages:
+            body = client.get(path).text
+            is_error_state = path.endswith("00000000-0000-0000-0000-000000000000")
+            assert body.count("<h1") == 1, path          # one page title
+            assert 'class="skip-link" href="#main"' in body, path
+            assert 'id="main"' in body, path
+            assert 'lang="en"' in body, path
+            assert 'aria-label="Main navigation"' in body, path
+            # Exactly one primary nav item is aria-current="page"; the breadcrumb
+            # crumb and journey step use their own markers, which is allowed.
+            nav = body.split('id="site-nav"', 1)[1].split("</nav>", 1)[0]
+            expected = 0 if is_error_state else 1
+            assert nav.count('aria-current="page"') == expected, path
+            assert "<img" not in body, path              # no unlabelled images
+            assert "style=" not in body.replace('style="width:', ""), path

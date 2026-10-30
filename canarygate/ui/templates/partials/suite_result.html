@@ -1,48 +1,54 @@
-{% from "_macros.html" import verdict_badge, status_badge %}
+{% from "_macros.html" import verdict_badge, status_badge, icon %}
 {#- HTMX fragment returned by the two suite actions. -#}
 <section class="card result-card" id="suite-result">
-  <header class="card-head">
-    <h2>New {{ "read-BOLA" if family == "read-bola" else "authentication" }} run recorded</h2>
+  <div class="card-head">
+    <h2>{{ icon("check") }} New {{ "read-BOLA" if family == "read-bola" else "authentication" }} run recorded</h2>
     <span class="badge badge-ok mono">stored</span>
-  </header>
-  <p class="result-line">
-    {% if family == "read-bola" %}
-      {{ verdict_badge(run.verdict) }}
-      <span class="mono">{{ run.scenario_id }}</span>
-    {% else %}
-      {{ status_badge(run.status) }}
-      <span class="mono">{{ run.scenario_id }}</span>
-      <span class="dim">·</span> {{ run.title }}
-    {% endif %}
-  </p>
-  <p class="reason">
-    {% if family == "read-bola" %}
-      {{ run.reason }}
-    {% else %}
-      {{ run.summary.confirmed }} confirmed, {{ run.summary.suspected }} suspected,
-      {{ run.summary.safe }} safe, {{ run.summary.inconclusive }} inconclusive,
-      {{ run.summary.skipped }} skipped of {{ run.summary.total }} checks.
-    {% endif %}
-  </p>
-  {% if family == "read-bola" %}
-  <ul class="flag-list">
-    <li><span class="mono small">ownership</span> {{ status_badge(run.setup.ownership_verification) }}</li>
-    <li><span class="mono small">BOLA coverage</span> {{ status_badge(run.setup.bola_coverage) }}</li>
-    <li><span class="mono small">requests sent</span> <span class="mono">{{ run.constraints.requests_sent }}</span></li>
-    <li><span class="mono small">transport</span> <span class="mono">{{ run.transport }}</span></li>
-  </ul>
-  {% else %}
-  <ul class="flag-list">
-    <li><span class="mono small">executed</span> <span class="mono">{{ run.summary.executed }} / {{ run.summary.total }}</span></li>
-    <li><span class="mono small">confirmed</span> <span class="mono">{{ run.summary.confirmed }}</span></li>
-    <li><span class="mono small">skipped</span> <span class="mono">{{ run.summary.skipped }}</span></li>
-    <li><span class="mono small">scheme</span> <span class="mono">{{ run.scheme }}</span></li>
-  </ul>
-  {% endif %}
-  <div class="link-row">
-    <a class="btn btn-primary btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}">Open run</a>
-    <a class="btn btn-ghost btn-sm"
-       href="/api/{{ 'scenario-scans' if family == 'read-bola' else 'authentication-scans' }}/{{ run.id }}/report?format=html"
-       target="_blank" rel="noopener">Backend HTML report</a>
+  </div>
+  <div class="card-body">
+    <div class="finding-headline mb-1">
+      {% if family == "read-bola" %}
+        {{ verdict_badge(run.verdict) }}
+        <span class="mono">{{ run.scenario_id }}</span>
+      {% else %}
+        {{ status_badge(run.status) }}
+        <span class="mono">{{ run.scenario_id }}</span>
+        <span class="dim">·</span> {{ run.title }}
+      {% endif %}
+    </div>
+    <p class="reason">
+      {% if family == "read-bola" %}
+        {{ run.reason }}
+      {% else %}
+        {{ run.summary.confirmed }} confirmed, {{ run.summary.suspected }} suspected,
+        {{ run.summary.safe }} safe, {{ run.summary.inconclusive }} inconclusive,
+        {{ run.summary.skipped }} skipped of {{ run.summary.total }} checks.
+      {% endif %}
+    </p>
+    <div class="grid grid-3 mt-1">
+      {% if family == "read-bola" %}
+      <div class="stat stat-compact"><span class="stat-label">Ownership</span>
+        <span class="stat-value sm">{{ status_badge(run.setup.ownership_verification) }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">BOLA coverage</span>
+        <span class="stat-value sm">{{ status_badge(run.setup.bola_coverage) }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">Requests sent</span>
+        <span class="stat-value sm">{{ run.constraints.requests_sent }}</span></div>
+      {% else %}
+      <div class="stat stat-compact"><span class="stat-label">Executed</span>
+        <span class="stat-value sm">{{ run.summary.executed }} / {{ run.summary.total }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">Confirmed</span>
+        <span class="stat-value sm">{{ run.summary.confirmed }}</span></div>
+      <div class="stat stat-compact"><span class="stat-label">Skipped</span>
+        <span class="stat-value sm">{{ run.summary.skipped }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body pt-0">
+    <div class="link-row">
+      <a class="btn btn-primary btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}">Open run</a>
+      <a class="btn btn-sm btn-ghost"
+         href="/api/{{ 'scenario-scans' if family == 'read-bola' else 'authentication-scans' }}/{{ run.id }}/report?format=html"
+         target="_blank" rel="noopener">Backend HTML report</a>
+    </div>
   </div>
 </section>
