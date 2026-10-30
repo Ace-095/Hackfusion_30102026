@@ -8,12 +8,19 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from canarygate.database.auth_store import AuthenticationStore
 from canarygate.database.scenario_store import ScenarioStore
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
 from canarygate.report.fixture import build_fixture_sections, render_fixture_report
+from canarygate.report.authentication import (build_authentication_sections,
+                                              render_authentication_report)
 from canarygate.report.scenario import build_scenario_sections, render_scenario_report
+from canarygate.scan.auth_generic import run_authentication_scan
+from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRequest,
+                                         AuthenticationSectionReport)
+from canarygate.scan.auth_scenarios import build_auth_scenario, runner_for
 from canarygate.scan.models import (ScenarioRun, ScenarioScanRequest, ScenarioSectionReport)
 from canarygate.scan.scenarios import build_scenario, execute_offline_scenario
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
@@ -29,6 +36,10 @@ def get_store(request: Request) -> FixtureStore:
 
 def get_scenario_store(request: Request) -> ScenarioStore:
     return request.app.state.scenario_store
+
+
+def get_auth_store(request: Request) -> AuthenticationStore:
+    return request.app.state.auth_store
 
 
 def _database_call(method, *args):
@@ -47,6 +58,15 @@ def _scenario_call(method, *args):
         raise HTTPException(status_code=500, detail="Stored scenario data failed integrity verification") from None
     except (sqlite3.Error, OSError, ValueError):
         raise HTTPException(status_code=500, detail="Scenario storage unavailable or invalid") from None
+
+
+def _auth_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500, detail="Stored authentication data failed integrity verification") from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(status_code=500, detail="Authentication storage unavailable or invalid") from None
 
 
 @router.get("/api/health", response_model=Health)
@@ -182,6 +202,51 @@ def scenario_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
+@router.post("/api/authentication-scans", status_code=201, response_model=AuthenticationRun)
+def start_authentication_scan(payload: AuthenticationScanRequest,
+                              store: AuthenticationStore = Depends(get_auth_store)):
+    """Run one bundled synthetic offline authentication scenario; no live target."""
+    try:
+        plan = build_auth_scenario(payload.scenario_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown offline authentication scenario") from None
+    runner = runner_for(plan)
+    try:
+        run = run_authentication_scan(runner, plan)
+    finally:
+        runner.close()
+    return _auth_call(store.save, run)
+
+
+def _find_auth_run(store, run_id):
+    run = _auth_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Authentication scan not found")
+    return run
+
+
+@router.get("/api/authentication-scans/{run_id}", response_model=AuthenticationRun)
+def authentication_scan(run_id: str, store: AuthenticationStore = Depends(get_auth_store)):
+    return _find_auth_run(store, run_id)
+
+
+@router.get("/api/authentication-scans/{run_id}/report", response_model=AuthenticationSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def authentication_report(run_id: str, format: str = "json", view: str = "run",
+                          store: AuthenticationStore = Depends(get_auth_store)):
+    run = _find_auth_run(store, run_id)
+    if view not in {"run", "sections"}:
+        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    if format == "html":
+        return HTMLResponse(render_authentication_report(run))
+    if view == "sections":
+        return AuthenticationSectionReport(mode="offline_authentication", id=run_id, run_id=run_id,
+                                           sections=build_authentication_sections(run))
+    return run
+
+
 @router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle | FixtureSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def report(run_id: str, format: str = "json", include_observations: bool = False, view: str = "run",
@@ -209,11 +274,13 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     path = database_path if database_path is not None else default_database_path()
     store = FixtureStore(path)
     scenario_store = ScenarioStore(path)
+    auth_store = AuthenticationStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         store.initialize()
         scenario_store.initialize()
+        auth_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
@@ -221,6 +288,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                           docs_url=None, redoc_url=None, lifespan=lifespan)
     application.state.store = store
     application.state.scenario_store = scenario_store
+    application.state.auth_store = auth_store
     application.include_router(router)
     return application
 

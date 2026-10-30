@@ -14,6 +14,10 @@ from yaml.tokens import AliasToken, AnchorToken
 from canarygate.models.scope import ScopeConfig
 
 MAX_SCOPE_BYTES = 64 * 1024
+AUTH_PROBE_NAMES = ("missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
+                    "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse")
+AuthProbeName = Literal["missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
+                        "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse"]
 
 
 class _ScopeLoader(yaml.SafeLoader):
@@ -60,6 +64,8 @@ class AuthorizedOperation(BaseModel):
     path: str
     classification: Literal["READ_ONLY", "AUTHENTICATION", "STATE_CHANGING", "DESTRUCTIVE"]
     creation_authorization_reference: str | None = None
+    # Crafted-credential probes run only where the written scope permits them.
+    auth_probes: tuple[AuthProbeName, ...] = ()
 
     @field_validator("path")
     @classmethod
@@ -78,6 +84,11 @@ class AuthorizedOperation(BaseModel):
     def classification_rules(self):
         if self.classification == "READ_ONLY" and self.method not in {"GET", "HEAD", "OPTIONS"}:
             raise ValueError("read-only classification conflicts with method")
+        if self.auth_probes:
+            if self.method != "GET" or self.classification != "READ_ONLY":
+                raise ValueError("authentication probes require an exact read-only GET operation")
+            if len(set(self.auth_probes)) != len(self.auth_probes):
+                raise ValueError("duplicate authentication probe")
         if self.classification == "AUTHENTICATION" and self.method != "POST":
             raise ValueError("only an exact POST login can be classified as authentication")
         if self.classification == "STATE_CHANGING":
@@ -107,6 +118,13 @@ class AuthorizedScope(ScopeConfig):
             for field in ("allowed_methods", "accounts", "operations"):
                 if isinstance(value.get(field), list):
                     value[field] = tuple(value[field])
+            operations = []
+            for operation in value.get("operations") or ():
+                if isinstance(operation, dict) and isinstance(operation.get("auth_probes"), list):
+                    operation = {**operation, "auth_probes": tuple(operation["auth_probes"])}
+                operations.append(operation)
+            if operations:
+                value["operations"] = tuple(operations)
         return value
 
     @field_validator("hostname")

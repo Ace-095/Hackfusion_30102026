@@ -167,8 +167,11 @@ path, adversarial redaction tests and a JWT metadata helper; see
 `docs/checkpoints/27-generic-integration.md`. Checkpoint 28 connects the generic
 workflow to the application with a recorded offline transport, SQLite
 persistence and consistent JSON/HTML scenario reports; see
-`docs/checkpoints/28-generic-scan-integration.md`. Production networking remains
-disabled and none of these documents indicates P0 or production acceptance.
+`docs/checkpoints/28-generic-scan-integration.md`. Checkpoint 29 adds the
+remaining P0 authentication checks (AUTHN-04a/04b/05/06/08) over the same
+recorded transport; see `docs/checkpoints/29-authentication-checks.md`.
+Production networking remains disabled and none of these documents indicates P0
+or production acceptance.
 
 ### Checkpoint 28 offline scenario demo
 
@@ -184,3 +187,20 @@ Repeat with `synthetic-secure` (checked denial) and `synthetic-metadata`
 (inconclusive), plus `synthetic-pagination-limit` and `synthetic-guard-block`
 for skipped outcomes. The scenario report is local synthetic evidence, not an
 organizer-target or live scan.
+
+
+### Checkpoint 29 authentication demo
+
+With the local API running as above:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/authentication-scans \
+  -H "content-type: application/json" -d '{"scenario_id": "synthetic-jwt-sub-confirmed"}'
+curl -sS "http://127.0.0.1:8000/api/authentication-scans/<id>/report?view=sections"
+curl -sS "http://127.0.0.1:8000/api/authentication-scans/<id>/report?format=html"
+```
+
+Show `synthetic-jwt-secure` (SAFE), `synthetic-jwt-role-confirmed` (CONFIRMED
+admin capability), `synthetic-jwt-no-observability` (INCONCLUSIVE/SUSPECTED) and
+`synthetic-jwt-opaque` (SKIPPED reasons). The report states that JWT claims are
+unverified; no live endpoint or real credential is used.

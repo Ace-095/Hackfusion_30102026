@@ -32,6 +32,10 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/scenario-scans/{id}` | `ScenarioRun`, or 404 |
 | `GET /api/scenario-scans/{id}/report?view=sections` | Scenario section JSON for the same stored run |
 | `GET /api/scenario-scans/{id}/report?format=html` | HTML scenario report from the same sections |
+| `POST /api/authentication-scans` | Sync offline authentication scan; body `{scenario_id}`; returns `AuthenticationRun` (201) |
+| `GET /api/authentication-scans/{id}` | `AuthenticationRun`, or 404 |
+| `GET /api/authentication-scans/{id}/report?view=sections` | Authentication section JSON for the same stored run |
+| `GET /api/authentication-scans/{id}/report?format=html` | HTML authentication report from the same sections |
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
@@ -182,3 +186,38 @@ denial are alternatives; CONFIRMED requires the ownership and disclosure
 prerequisites, not every checklist boolean. Stored payload/evidence hashes detect
 accidental or naive database changes and yield a generic 500; they are not
 signatures. The API remains local-only and unauthenticated: do not expose it.
+
+
+## Offline authentication scans (checkpoint 29)
+
+`POST /api/authentication-scans` accepts exactly
+`{"scenario_id": "<bundled-id>"}`. There is no field for a token, header,
+credential, target or transcript; unknown ids return 404 and unexpected fields
+return 422. Bundled ids are `synthetic-jwt-secure`,
+`synthetic-jwt-sub-confirmed`, `synthetic-jwt-role-confirmed`,
+`synthetic-jwt-no-observability`, `synthetic-jwt-opaque`, `synthetic-api-key`
+and `synthetic-api-key-accepted`.
+
+Every run carries the eight P0 authentication checks in canonical order:
+`AUTHN-01`, `AUTHN-02`, `AUTHN-03`, `AUTHN-04a`, `AUTHN-04b`, `AUTHN-05`,
+`AUTHN-06` and `AUTHN-08`. `mode` is `offline_authentication`, `transport` is
+`offline_transcript`, `network_transport_enabled` is `false`,
+`claims_unverified` is `true` and `signature_verification` is
+`"not_performed"`.
+
+Checks that cannot apply are SKIPPED with an explicit reason: a non-JWT token
+skips AUTHN-04a/04b/05 with the frozen wording, an API without a declared logout
+skips AUTHN-06, and a non-API-key scheme skips AUTHN-08. An accepted crafted
+token with no observable effect is SUSPECTED or INCONCLUSIVE, never SAFE.
+`summary.executed` and `sections.outcome.executed` list the checks that actually
+executed.
+
+Runs are stored in `authentication_runs` with a payload hash and survive
+restarts; tampering yields a generic 500. Evidence is minimized to probe name,
+status, coarse identity/capability effect and checklist flags: no tokens,
+crafted tokens, API keys, headers or raw bodies are stored or returned.
+`GET .../report?view=sections` returns `executive_summary`,
+`scope_and_accounts`, `authentication_checks`, `outcome`, `claims_policy`,
+`constraints` and `limitations`; the HTML report renders the same projection.
+This is an authentication-specific report, not the frozen nine-section contract.
+The API remains local-only and unauthenticated: do not expose it.

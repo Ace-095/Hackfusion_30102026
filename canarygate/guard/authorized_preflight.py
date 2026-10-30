@@ -19,7 +19,8 @@ class AuthorizedPreflight:
         # Pydantic model_copy(update=...) does not validate updates.
         scope = AuthorizedScope.model_validate(scope.model_dump())
         self._accounts = frozenset(account.account for account in scope.accounts)
-        self._operations = {(op.method, scope.origin + op.path): op.classification for op in scope.operations}
+        self._operations = {(op.method, scope.origin + op.path): (op.classification, frozenset(op.auth_probes))
+                            for op in scope.operations}
         self._methods = frozenset(scope.allowed_methods)
         self._remaining = scope.request_budget
         self._lock = Lock()
@@ -29,16 +30,22 @@ class AuthorizedPreflight:
         with self._lock:
             return self._remaining
 
-    def check(self, actor: str, method: str, url: str) -> str:
-        """Consume one decision; no URL normalization, DNS, or IO is performed."""
+    def check(self, actor: str, method: str, url: str, *, probe: str | None = None) -> str:
+        """Consume one decision; no URL normalization, DNS, or IO is performed.
+
+        A probe is permitted only where the validated scope declares it on that
+        exact operation; the probe never replaces the method/URL/actor checks.
+        """
         if not all(isinstance(item, str) for item in (actor, method, url)):
             raise ValueError("invalid request metadata")
         with self._lock:
             check_common(actor, method, self._accounts, self._methods, self._remaining)
-            classification = self._operations.get((method, url))
+            classification, probes = self._operations.get((method, url), (None, frozenset()))
             if not ((classification == "READ_ONLY" and method in {"GET", "HEAD", "OPTIONS"})
                     or (classification == "AUTHENTICATION" and method == "POST")):
                 raise ValueError("operation not permitted by preflight")
+            if probe is not None and probe not in probes:
+                raise ValueError("authentication probe not permitted by scope")
             if self._remaining <= 0:
                 raise ValueError("decision budget exhausted")
             self._remaining -= 1

@@ -1,17 +1,18 @@
-# CanaryGate v3.2 — P0 acceptance audit (checkpoint 28)
+# CanaryGate v3.2 — P0 acceptance audit (checkpoint 29)
 
 **Gate: NOT ACCEPTED.** This is an implementation/test audit, not a claim of
 production readiness or live validation. Tests below use synthetic fixtures,
 mocked HTTP, or in-process socketpairs; no target scanner traffic was sent to
 VAmPI, crAPI, an organizer API, or the internet. The public API can only run
-its bundled fixture and six bundled synthetic offline scenarios. Production
-networking remains disabled. “Partial” means specific tested behavior exists,
+its bundled fixture and bundled synthetic offline scenarios (read-BOLA and
+authentication). Production networking remains disabled. “Partial” means specific tested behavior exists,
 not that the frozen requirement is complete. Checkpoint 27 added the shared
 fixture/mocked-HTTPX ownership registry and oracle; checkpoint 28 connects that
 generic path to the application through a bounded recorded transport, SQLite
-persistence, API access and consistent JSON/HTML scenario reports. The recorded
-transport is still synthetic data, not live validation, and no live target has
-been contacted.
+persistence, API access and consistent JSON/HTML scenario reports. Checkpoint 29
+adds AUTHN-04a/04b/05/06/08 as guarded probes over the same recorded transport,
+with explicit SKIPPED/INCONCLUSIVE outcomes. The recorded transport is still
+synthetic data, not live validation, and no live target has been contacted.
 The user-directed `docs/SAFETY_ADDENDUM.md` overrides the recipe target and
 classification/DNS details in the frozen document.
 
@@ -25,6 +26,7 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | Fixture | In-process `FixtureRunner`/`FixtureTarget`; no socket is created. Used by R1/R2/R4/R5/R6/R7/R9/R10 and all persisted-report tests. |
 | Mocked HTTP | Disabled `GuardedHTTPXTransport` with fake HTTP/TLS/socket objects; DNS functions fail the test if called. Used by R3/R5/C1–C3/recipe/adversarial-17–21 and the transport-reuse test. |
 | Recorded offline | `OfflineGuardedRunner` releases bounded synthetic transcript responses after `RunSafetyGuard`; no sockets exist. Used by the scenario API/persistence/report tests. |
+| Recorded offline authentication | `OfflineAuthRunner` releases probe responses only where the validated scope declares that probe, after the same `RunSafetyGuard`; no sockets exist. Used by the authentication API/persistence/report tests. |
 | Real networking | **None.** No cited test opens a live connection, resolves a public name, scans VAmPI/crAPI or contacts an organizer target. |
 
 ## Implementation index
@@ -33,7 +35,7 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 |---|---|---|
 | R1 inventory / R2 access provenance | `canarygate/spec/parser.py`, `canarygate/offline/scan.py` | Fixture; parser unit inputs |
 | R3 accounts/roles/login | `canarygate/accounts/*`, `canarygate/offline/target.py`, `canarygate/network/{guarded_httpx,boundary}.py`, `canarygate/scan/offline.py` | Fixture; mocked HTTP; recorded offline pre-provisioned synthetic credentials |
-| R4 authentication | `canarygate/offline/auth_checks.py`, `canarygate/oracles/authentication.py` | Fixture; decode-only unit tests |
+| R4 authentication | `canarygate/offline/auth_checks.py`, `canarygate/oracles/authentication.py`, `canarygate/oracles/authn_probes.py`, `canarygate/scan/auth_{transcript,runner,plan,generic,scenarios,models}.py` | Fixture; decode-only unit tests; recorded offline authentication |
 | R5 read-BOLA | `canarygate/seed/registry.py`, `canarygate/oracles/read_bola.py`, `canarygate/scan/{generic,offline,plan,transcript,scenarios}.py` | Fixture; mocked HTTP; recorded offline workflow |
 | R6 input validation | `canarygate/offline/input_checks.py`, `canarygate/oracles/validation.py` | Fixture |
 | R7 disclosure | `canarygate/oracles/disclosure.py`, `canarygate/evidence/redaction.py` | Fixture; redaction unit inputs |
@@ -42,7 +44,7 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | C1–C3 guard/limits/traffic | `canarygate/guard/{policy,safety_guard,run_guard,authorized_preflight}.py`, `canarygate/network/{boundary,guarded_httpx}.py`, `canarygate/scan/offline.py`, `canarygate/scope/*` | Fixture; mocked HTTP; recorded offline |
 | Recipe/ownership/pagination | `canarygate/seed/{recipe,registry}.py` | Fixture; mocked HTTP |
 | Reports | `canarygate/report/{fixture,scenario}.py`, `canarygate/report/templates/{fixture,scenario}.html`, `canarygate/api/{app,schemas}.py` | Fixture and recorded offline; API `TestClient` |
-| End-to-end | `canarygate/offline/scan.py`, `canarygate/scan/{generic,scenarios}.py`, `canarygate/api/app.py`, `canarygate/database/{store,scenario_store}.py` | Fixture and recorded offline; API `TestClient`; sockets/DNS blocked |
+| End-to-end | `canarygate/offline/scan.py`, `canarygate/scan/{generic,scenarios,auth_generic,auth_scenarios}.py`, `canarygate/api/app.py`, `canarygate/database/{store,scenario_store,auth_store}.py` | Fixture and recorded offline; API `TestClient`; sockets/DNS blocked |
 
 
 ## Frozen section 4 / traceability requirements
@@ -65,21 +67,23 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 
 ## Individual authentication checks (§8)
 
-All statuses below are fixture-only (or decode-only unit tests) and therefore
-**partial**, unless explicitly marked missing. No row uses real networking. AUTHN-07's scoped synthetic health helper is not present in the
-bundled fixture inventory, so the default run honestly reports SKIPPED.
+Statuses below are fixture-only, decode-only unit tests, or recorded offline
+authentication runs, and are therefore **partial**, unless explicitly marked
+missing. No row uses real networking. AUTHN-07's scoped synthetic health helper
+is not present in the bundled fixture inventory, so the default run honestly
+reports SKIPPED.
 
 | ID | Status | Executed and tested behavior / gap |
 |---|---|---|
 | AUTHN-01 | Partial | Missing bearer on Alice's protected fixture item; bypass, denial, empty/redirect and scope/size cases in `test_auth_checks.py`. Unexpected, malformed, duplicate-key, private-leaking denial bodies are INCONCLUSIVE (`test_p0_acceptance.py::test_auth_denial_with_unchecked_or_leaking_body_is_not_safe`). |
 | AUTHN-02 | Partial | Fixed malformed fixture bearer, same tests and denial-body safeguards; no generic token mechanism. |
 | AUTHN-03 | Partial | Fixed wrong-scheme fixture credential, same tests; no generic scheme discovery. |
-| AUTHN-04a | Missing | Strict JWT-format heuristic and SKIPPED reasons in `test_authentication.py`; checkpoint 27 added bounded, unverified claim metadata (`inspect_jwt_metadata`, `test_jwt_metadata.py`) but no sub-tampering probe or effective-identity oracle. |
-| AUTHN-04b | Missing | Same format/skip behavior and metadata helper; no role-tampering probe or observable admin-capability check. |
-| AUTHN-05 | Missing | JWT heuristic and skip only; no `alg:none` probe. Metadata decoding never verifies a signature or authorizes a request. |
-| AUTHN-06 | Missing | Explicitly SKIPPED; no logout/reuse test. No unapproved logout is sent. |
+| AUTHN-04a | Partial | Recorded offline probe: `craft_token` retains the original signature and changes `sub` only; the decision needs an observable identity change (`test_authentication_probes.py::test_subject_tampering_requires_an_observable_identity_change`). `synthetic-jwt-sub-confirmed` is CONFIRMED with `identity_effect: target` through `POST /api/authentication-scans` (`test_authentication_scenario.py::test_scenario_verdicts_through_the_application`). No live target, no signature verification, no supplied credentials. |
+| AUTHN-04b | Partial | Same crafting path for `role`; only an observed admin capability confirms, acceptance without capability is SUSPECTED, and a missing admin endpoint is INCONCLUSIVE (`test_role_tampering_requires_an_observed_admin_capability`). `synthetic-jwt-role-confirmed` is CONFIRMED through the API. No live admin endpoint and no signature verification. |
+| AUTHN-05 | Partial | Unsigned `alg:none` token with an empty signature (`test_crafting_a_role_token_and_an_alg_none_token`); checked denial is SAFE, acceptance with an honoured identity is CONFIRMED, acceptance without an observable effect is SUSPECTED, and neither is ever SAFE (`test_alg_none_acceptance_is_never_safe`). Recorded offline only. |
+| AUTHN-06 | Partial | Reported behaviour only: checked post-logout rejection is SAFE, a still-accepted token is SUSPECTED (never CONFIRMED), and an API without a declared logout is SKIPPED with an explicit reason (`test_logout_reuse_reports_behaviour_and_never_confirms`, `test_skipped_checks_stay_explicit_and_never_become_safe`). The logout POST is a recorded synthetic response; no live session is destroyed. |
 | AUTHN-07 | Partial | Optional exact `/public-health` fixture operation: only declared public, scoped GET, missing credentials, 200 **and exact known body** can pass; wrong body/status is inconclusive and unscoped/undeclared is skipped before mock handler (`test_p0_acceptance.py::test_public_endpoint_check_is_scoped_and_not_just_http_200`). Not generic, and the bundled OpenAPI/scope does not declare it. |
-| AUTHN-08 | Missing | Explicitly SKIPPED; no missing/invalid API-key probe. |
+| AUTHN-08 | Partial | API-key scheme only: missing and invalid keys must both be rejected for SAFE; either accepted with an identity is CONFIRMED; a non-API-key scheme is SKIPPED (`test_api_key_decision_uses_the_strictest_of_both_observations`, `synthetic-api-key`, `synthetic-api-key-accepted`). Recorded offline only. |
 
 ## Input and disclosure (§9)
 
@@ -155,6 +159,21 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 | 20 Classified destructive/unknown GET blocked | Partial | `test_scope_classifications.py::test_operation_classification_blocks_destructive_and_unknown_get_before_transport` covers fixture; prototype tests likewise, not an enabled integration. |
 | 21 No public DNS / offline network | Partial | Fixture no DNS test above; approved-resolver-based live execution not implemented. |
 
+## Checkpoint 29 authentication status
+
+| Requirement | Status | Evidence and remaining gap |
+|---|---|---|
+| Frozen AUTHN definitions used, not inferred | Implemented | §8 rows and verdict table quoted in `docs/checkpoints/29-authentication-checks.md`; the skip wording matches the frozen text (`test_skip_reasons_are_the_frozen_spec_wording`). |
+| AUTHN-04a/04b/05 crafted-token probes | Partial | `canarygate/oracles/authn_probes.py` + `canarygate/scan/auth_runner.py`; probes are declared per exact scoped operation and authorized by `AuthorizedPreflight` before release. Recorded offline only; no signature verification or key material. |
+| AUTHN-06 logout reuse | Partial | Executes only when the plan declares a scoped POST logout and a pre-logout identity baseline; otherwise SKIPPED. Behavioural observation, never CONFIRMED. |
+| AUTHN-08 API key | Partial | Missing and invalid keys both required to reject before SAFE; combined with the strictest precedence. Only the API-key scenarios exercise it. |
+| Claims explicitly unverified | Implemented | Every run carries `claims_unverified: true` and `signature_verification: "not_performed"`; evidence stores a coarse identity effect, never a claim value (`test_reports_project_every_check_consistently`). |
+| Malformed responses cannot be SAFE | Implemented | Exact denial-body contract; non-object/unobservable bodies are INCONCLUSIVE; mutated responses fail provenance and become INCONCLUSIVE (`test_malformed_probe_bodies_cannot_become_safe`, `test_unverifiable_probe_response_marks_only_that_check_inconclusive`). |
+| Persistence, API and reports | Partial | `authentication_runs` with payload hash, `POST/GET /api/authentication-scans`, `?view=sections`, `?format=html`; restart/tamper and JSON/HTML consistency tests. Authentication-specific projection, not the frozen nine-section report. |
+| Credential redaction | Partial | Tokens, crafted tokens, API keys and raw bodies absent from the run, sections, HTML and raw SQLite bytes (`test_credentials_never_reach_storage_or_reports`). Known-shape synthetic data only. |
+| Production networking | Disabled | The offline runner has no socket, DNS, redirect or retry; CI and tests patch `socket.connect`/`getaddrinfo` to fail. |
+| Live/supplied-target authentication | Missing | No organizer target, no supplied tokens, no live session; readiness is not claimed. |
+
 ## Checkpoint 28 generic workflow status
 
 | Requirement | Status | Evidence and remaining gap |
@@ -170,13 +189,10 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 
 ## Next blocking work
 
-1. Milestone 29: remaining P0 authentication checks — crafted-token behavior
-   only where separately authorized, plus logout/API-key applicability — with
-   SKIPPED/INCONCLUSIVE instead of inferred SAFE.
-2. Milestone 30: remaining input-validation and disclosure checks, including an
-   approved JSON/string operation and broader output coverage.
-3. Milestone 31: complete the report contract — nine sections for generic runs,
-   full authorization matrix and manual-intervention/inference capture.
-4. Milestone 32: full P0 regression and acceptance audit. Do not claim P0.
-5. Only after production guard/DNS/secret review and explicit written organizer
+1. Milestone 30: remaining input-validation and disclosure checks (INPUT-05–07,
+   broader DISC coverage), including an approved JSON/string operation.
+2. Milestone 31: complete the report contract — the frozen nine sections for
+   generic runs, the full authorization matrix and manual-intervention capture.
+3. Milestone 32: full P0 regression and acceptance audit. Do not claim P0.
+4. Only after production guard/DNS/secret review and explicit written organizer
    authorization, run supplied-target acceptance and record scope and results.

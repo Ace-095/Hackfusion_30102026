@@ -721,6 +721,34 @@ cannot accept a host, URL, transcript or credential. Repeated runs are stored in
 demonstration, not live-target validation, and the full nine-section report,
 remaining P0 checks and production guard review are still outstanding.
 
+### Checkpoint 29: authentication probes reuse the recorded guarded transport
+
+AUTHN-04a/04b/05/06/08 are implemented as explicitly permitted probes on the
+checkpoint-28 offline transport rather than a second execution path. The
+validated scope gains `auth_probes` per exact read operation, and
+`AuthorizedPreflight.check` now rejects a probe that the scope did not declare
+for that method and URL, in the same decision as the actor, method, URL and
+budget. `RunSafetyGuard.authorize` passes the probe through, so blocked probes
+are counted and cannot release a recorded response.
+
+JWT claims are decoded only to build a tampered token that retains the original
+signature segment; no key material exists, no signature is verified, and no
+decoded claim is treated as identity or privilege. Run records state
+`claims_unverified: true` and `signature_verification: "not_performed"`.
+
+Decisions follow the frozen table: a checked 401/403 is SAFE; an accepted `sub`
+change that shows the other account is CONFIRMED; an accepted `role` change that
+grants the declared admin capability is CONFIRMED; acceptance without an
+observable effect is SUSPECTED or INCONCLUSIVE; a missing identity or admin
+endpoint is INCONCLUSIVE; a non-JWT token is SKIPPED with the frozen wording.
+AUTHN-06 reports observed behaviour and never confirms. AUTHN-08 requires both
+missing and invalid API keys to be rejected before SAFE.
+
+Authentication runs are stored in a separate `authentication_runs` table with a
+strict model, minimized evidence and payload hashes. The API exposes only
+bundled scenario ids, never a token, transcript or target. This remains offline
+synthetic evidence, not live validation or P0 acceptance.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

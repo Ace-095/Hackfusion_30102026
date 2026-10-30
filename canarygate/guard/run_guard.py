@@ -39,9 +39,9 @@ class RunSafetyGuard:
                 raise ValueError("execution halted")
             yield
 
-    def authorize(self, actor, method, url):
+    def authorize(self, actor, method, url, *, probe=None):
         try:
-            return self._policy.check(actor, method, url)
+            return self._policy.check(actor, method, url, probe=probe)
         except ValueError:
             with self._lock:
                 self._blocked += 1
