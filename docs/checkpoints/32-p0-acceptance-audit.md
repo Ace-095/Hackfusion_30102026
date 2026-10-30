@@ -179,12 +179,17 @@ policy ingestion. None of those exist today, and none should be simulated.
 
 ## Results
 
-- `.venv/bin/python tools/run_ci_tests.py` → **709 passed** (689 + 20 new: 3
-  report-field tests, 6 consistency, 9 adversarial, 2 audit).
+- `.venv/bin/python tools/run_ci_tests.py` → **710 passed** (689 + 21 new: 3
+  report-field tests, 6 consistency, 9 adversarial, 3 audit).
 - `python -m compileall -q canarygate tests tools` clean.
 - Audit exit code 0; 35 requirements, 24 implemented, 9 partial, 2 missing, 0
   unreachable.
-- CI: to be recorded after the commit is pushed.
+- CI run `41067428963` failed on Windows only: the audit compared POSIX registry
+  keys against native Windows paths, so every test file looked unclassified. The
+  audit now normalises to POSIX, and
+  `test_windows_style_test_paths_are_normalised` would fail if that regressed.
+- CI run `41067835938` on `86dc74c`: **ubuntu-latest and windows-latest both
+  succeeded**.
 
 ## Limitations of this audit
 

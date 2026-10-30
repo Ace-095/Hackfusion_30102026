@@ -351,7 +351,8 @@ REQUIREMENTS = (
         "A1", "integration", "§15", "The acceptance audit itself is reproducible and complete",
         ("tools.p0_audit:run_audit",),
         ("tests/integration/test_p0_audit.py::test_audit_is_clean_and_covers_every_test_file",
-         "tests/integration/test_p0_audit.py::test_every_requirement_row_is_well_formed"),
+         "tests/integration/test_p0_audit.py::test_every_requirement_row_is_well_formed",
+         "tests/integration/test_p0_audit.py::test_windows_style_test_paths_are_normalised"),
         "in_process_api", "implemented"),
 )
 
