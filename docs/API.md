@@ -449,3 +449,52 @@ The run (`LabBolaRun`) contains:
 appears as a red `other_account_resource` cell and the secure route as a green one,
 both labelled `lab_bola:<scenario>[:route]` so they stay distinguishable from
 offline scenario and SCI cells.
+
+## TargetLab control-interaction validation (checkpoint 37)
+
+Real HTTPS requests to a running TargetLab, decided by the existing SCI engine.
+**Controlled validation** of our own loopback lab, not live-organizer scanning.
+
+`POST /api/lab-sci-scans`
+
+```json
+{"port": 8765, "request_budget": 16}
+```
+
+`port` is 1024–65535 and `request_budget` is 8–40; the interaction needs 11
+requests, so a smaller budget degrades to `INCONCLUSIVE` rather than a verdict.
+No host, path, account or credential may be supplied. Requires
+`CANARYGATE_TARGETLAB_CA` (`400` without it); a refused, redirected or
+unreachable lab answers `502` and stores nothing.
+
+The run is an `InteractionRun` with `mode: "targetlab_sci"`:
+
+| Field | Meaning |
+|---|---|
+| `verdict`, `attribution` | `CONFIRMED`/`interaction_induced` only when both baselines passed, the combined read verified, and it disclosed the owner's marker. |
+| `baselines[2]` | `SCI-AUTHZ` (guarded read denied) and `SCI-AUTHN` (rejected login), each with `evidence.sequence`, `status`, `verified`. |
+| `combined` | `GET /records/{id}/guarded` after the rejected login: `status`, `impact`, `verified`. |
+| `disclosure` | `marker_matches_owner_baseline`, `marker_withheld`, actor/owner. No marker value is stored. |
+| `ownership` | registry result: verified identities, owner baselines, cross-list isolation; identifiers withheld. |
+| `transport` | `destination: "127.0.0.1"`, pinned test CA, redirects refused, no retries, no DNS, `live_target_contacted: false`. |
+| `network_transport_enabled`, `integration_origin` | `true` and `loopback_lab`; an offline run cannot claim either. |
+
+- `GET /api/lab-sci-scans/{run_id}` — the stored run.
+- `GET /api/lab-sci-scans/{run_id}/report?view=sections[&reset=<proof_id>]` —
+  executive summary, scope and transport, baselines, combined, decision,
+  disclosure, ownership, **evaluation** (ground truth scored after the run) and
+  limitations. An attached reset proof appears as `reset_verification`; a proof
+  from another port is refused with `400`.
+- `GET /api/lab-sci-scans/{run_id}/report?view=p0` — the frozen nine sections with
+  one `SCI-01` finding (category `Authorization`, `High` when confirmed,
+  remediation key `sci_authentication`).
+- `GET /api/lab-sci-scans/{run_id}/report?format=html` — either projection as HTML.
+
+`POST /api/lab-sci-resets` — the same body. Records a separate four-check proof
+that a rejected login sets the lab condition and a successful login clears it. It
+uses two guarded runs (7 + 1 requests) because a run may authenticate an account
+only once. Results are `proven`/`not_proven`; this is a scenario outcome, not a
+security verdict. `GET /api/lab-sci-resets/{proof_id}` returns it.
+
+`GET /api/authorization-matrix` aggregates these runs too: the guarded route
+appears as a red `other_account_resource` cell labelled `lab_sci:targetlab-sci`.

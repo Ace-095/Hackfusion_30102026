@@ -242,8 +242,8 @@ distinguishability, redaction and API reachability.
 | Partial (gap stated) | 9 |
 | Missing | 2 — BFLA, live/organizer validation |
 | Unreachable through the application API | 0 |
-| Test files with a declared evidence class | 52 of 52 |
-| Loopback-only test files (`loopback_tls`) | 4 |
+| Test files with a declared evidence class | 55 of 55 |
+| Loopback-only test files (`loopback_tls`) | 6 |
 | Real-networking test files | 0 |
 | Collected tests | 760 |
 | Test files declaring real networking | 0 |
@@ -277,6 +277,13 @@ records a checked denial on the secure route. Six checks match the lab's declare
 ground truth 6/6, and the ground truth is scored only after the verdicts. This adds
 six audit rows (L1–L6) and changes no P0 requirement, verdict rule or gate:
 **48 requirements, 851 tests, 52 classified files.**
+
+Checkpoint 37 adds real control-interaction validation: the loopback lab runs
+deny → rejected login → leak through the existing SCI engine (`CONFIRMED`,
+`interaction_induced`), a separate two-run scenario proves the lab condition resets,
+and the declared ground truth is scored only when a report is built. Twelve new
+audit rows (L7–L12) record it; no P0 requirement, verdict rule or gate changes:
+**54 requirements, 903 tests, 55 classified files.**
 
 **Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
 now including SCI, is accepted with documented limitations; live validation and

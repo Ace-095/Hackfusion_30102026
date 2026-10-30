@@ -278,7 +278,8 @@ class TargetLabRunner(GuardedReadRunner):
         return response
 
     def _validate_probe(self, path, probe):
-        if probe not in ("control", "extra_property", "malformed_json", "special_characters"):
+        if probe not in ("control", "extra_property", "malformed_json", "special_characters",
+                         "wrong_password"):
             raise ValueError("unknown input probe")
         operation = next((op for op in self._scope.operations
                           if op.method == "POST" and op.path == path), None)

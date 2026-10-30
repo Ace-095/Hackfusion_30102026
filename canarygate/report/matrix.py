@@ -241,8 +241,13 @@ def cells_from_runs(scenario_runs, authentication_runs=(), validation_runs=()):
     return cells, notes
 
 
-def cells_from_interactions(interaction_runs=()):
-    """SCI findings become authorization cells where the impact is an access decision."""
+def cells_from_interactions(interaction_runs=(), *, prefix="interaction",
+                            origin="offline SCI scenario scope"):
+    """SCI findings become authorization cells where the impact is an access decision.
+
+    ``prefix`` keeps real loopback runs distinguishable from offline scenarios in
+    the same matrix, without a second cell builder.
+    """
     cells = []
     for run in interaction_runs:
         run = as_run_dict(run)
@@ -254,8 +259,8 @@ def cells_from_interactions(interaction_runs=()):
         expected = entry.get("expected_access") or run["combined"].get("expected_access")
         column = "role" if str(expected or "").startswith("role:") else "other_account_resource"
         cells.append(_cell(method, path, column, run["verdict"], run["reason"], expected,
-                           entry.get("expected_source") or "offline SCI scenario scope",
-                           f"interaction:{run['scenario_id']}"))
+                           entry.get("expected_source") or run.get("policy_source") or origin,
+                           f"{prefix}:{run['scenario_id']}"))
     return cells
 
 
@@ -316,10 +321,10 @@ def _lab_endpoint_reason(run, key):
 
 
 def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(),
-                        interaction_runs=(), lab_bola_runs=()):
+                        interaction_runs=(), lab_bola_runs=(), lab_sci_runs=()):
     """Every endpoint the stored runs declared, so untested rows stay visible."""
     endpoints = {}
-    for run in tuple(interaction_runs) + tuple(lab_bola_runs):
+    for run in tuple(interaction_runs) + tuple(lab_bola_runs) + tuple(lab_sci_runs):
         run = as_run_dict(run)
         for item in run.get("inventory") or ():
             endpoints.setdefault((item["method"], item["path"]), {
@@ -344,12 +349,15 @@ def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(
 
 
 def build_authorization_matrix(scenario_runs, authentication_runs=(), validation_runs=(),
-                               interaction_runs=(), lab_bola_runs=()):
+                               interaction_runs=(), lab_bola_runs=(), lab_sci_runs=()):
     cells, _ = cells_from_runs(scenario_runs, authentication_runs, validation_runs)
     cells += cells_from_interactions(interaction_runs)
+    cells += cells_from_interactions(lab_sci_runs, prefix="lab_sci",
+                                     origin="targetlab declared interaction policy")
     cells += cells_from_lab_bola(lab_bola_runs)
     endpoints = endpoints_from_runs(scenario_runs, authentication_runs, validation_runs,
-                                    interaction_runs, lab_bola_runs)
+                                    interaction_runs, lab_bola_runs, lab_sci_runs)
     return build_matrix(cells, not_contributing={"validation_runs": len(validation_runs),
-                                                "lab_bola_runs": len(lab_bola_runs)},
+                                                "lab_bola_runs": len(lab_bola_runs),
+                                                "lab_sci_runs": len(lab_sci_runs)},
                         extra_endpoints=endpoints)

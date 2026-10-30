@@ -13,6 +13,8 @@ from canarygate.database.auth_store import AuthenticationStore
 from canarygate.database.scenario_store import ScenarioStore
 from canarygate.database.interaction_store import InteractionStore
 from canarygate.database.lab_bola_store import LabBolaStore
+from canarygate.database.lab_reset_store import LabResetStore
+from canarygate.database.lab_sci_store import LabSciStore
 from canarygate.database.lab_store import LabStore
 from canarygate.database.validation_store import ValidationStore
 from canarygate.database.store import FixtureStore, default_database_path
@@ -27,6 +29,7 @@ from canarygate.report.scenario import build_scenario_sections, render_scenario_
 from canarygate.report.interaction import build_interaction_sections, render_interaction_report
 from canarygate.report.lab import build_lab_sections, render_lab_report
 from canarygate.report.lab_bola import build_lab_bola_sections, render_lab_bola_report
+from canarygate.report.lab_sci import build_lab_sci_sections, render_lab_sci_report
 from canarygate.report.validation import build_validation_sections, render_validation_report
 from canarygate.scan.auth_generic import run_authentication_scan
 from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRequest,
@@ -44,6 +47,9 @@ from canarygate.scan.lab_bola import run_lab_bola_scan
 from canarygate.scan.lab_bola_models import LabBolaRun, LabBolaScanRequest, LabBolaSectionReport
 from canarygate.scan.lab_bola_scenarios import build_bola_plan
 from canarygate.scan.lab_generic import run_lab_evidence
+from canarygate.scan.lab_sci import run_lab_sci_reset, run_lab_sci_scan
+from canarygate.scan.lab_sci_models import (LabResetProof, LabSciScanRequest, LabSciSectionReport)
+from canarygate.scan.lab_sci_scenarios import build_sci_plan
 from canarygate.scan.lab_models import LabRun, LabScanRequest, LabSectionReport
 from canarygate.scan.lab_scenarios import build_lab_plan
 from canarygate.scan.validation_generic import run_offline_validation
@@ -83,6 +89,14 @@ def get_lab_store(request: Request) -> LabStore:
 
 def get_lab_bola_store(request: Request) -> LabBolaStore:
     return request.app.state.lab_bola_store
+
+
+def get_lab_sci_store(request: Request) -> LabSciStore:
+    return request.app.state.lab_sci_store
+
+
+def get_lab_reset_store(request: Request) -> LabResetStore:
+    return request.app.state.lab_reset_store
 
 
 def _database_call(method, *args):
@@ -547,12 +561,124 @@ def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
+def _open_targetlab_runner(port, *, budget, ca_file):
+    """Build the fixed plan and one guarded runner; 400 on invalid configuration."""
+    from canarygate.network.targetlab import TargetLabRunner
+
+    try:
+        plan = build_sci_plan(port, budget=budget)
+        return plan, TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid TargetLab SCI configuration") from None
+
+
+@router.post("/api/lab-sci-scans", status_code=201, response_model=InteractionRun)
+def start_lab_sci_scan(payload: LabSciScanRequest,
+                       store: LabSciStore = Depends(get_lab_sci_store)):
+    """Run the fixed control-interaction validation against a loopback TargetLab."""
+    ca_file = os.environ.get("CANARYGATE_TARGETLAB_CA")
+    if not ca_file:
+        raise HTTPException(status_code=400,
+                            detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
+    plan, runner = _open_targetlab_runner(payload.port, budget=payload.request_budget,
+                                          ca_file=ca_file)
+    try:
+        run = run_lab_sci_scan(plan, runner)
+    except (TargetLabRefused, OSError):
+        raise HTTPException(status_code=502,
+                            detail="TargetLab request refused or failed; no evidence was stored") from None
+    finally:
+        runner.close()
+    if run.requests_sent == 0:
+        raise HTTPException(status_code=502,
+                            detail="TargetLab could not be reached; no evidence was stored")
+    return _lab_bola_call(store.save, run)
+
+
+@router.get("/api/lab-sci-scans/{run_id}", response_model=InteractionRun)
+def lab_sci_scan(run_id: str, store: LabSciStore = Depends(get_lab_sci_store)):
+    run = _lab_bola_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="TargetLab SCI run not found")
+    return run
+
+
+@router.get("/api/lab-sci-scans/{run_id}/report", response_model=LabSciSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def lab_sci_report(run_id: str, format: str = "json", view: str = "run", reset: str = "",
+                   store: LabSciStore = Depends(get_lab_sci_store),
+                   resets: LabResetStore = Depends(get_lab_reset_store)):
+    run = _lab_bola_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="TargetLab SCI run not found")
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    proof = None
+    if reset:
+        proof = _lab_bola_call(resets.get, reset)
+        if proof is None:
+            raise HTTPException(status_code=404, detail="TargetLab reset proof not found")
+        if proof["port"] != run["scope"]["port"]:
+            raise HTTPException(status_code=400,
+                                detail="The reset proof belongs to another TargetLab port")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("lab_sci", run))
+        return JSONResponse(content=build_p0_report("lab_sci", run).model_dump(mode="json"))
+    if format == "html":
+        return HTMLResponse(render_lab_sci_report(run, reset_proof=proof))
+    if view == "sections":
+        return LabSciSectionReport(mode="targetlab_sci", id=run_id, run_id=run_id,
+                                   sections=build_lab_sci_sections(run, reset_proof=proof))
+    return run
+
+
+@router.post("/api/lab-sci-resets", status_code=201, response_model=LabResetProof)
+def start_lab_sci_reset(payload: LabSciScanRequest,
+                        store: LabResetStore = Depends(get_lab_reset_store)):
+    """Prove the lab condition is set by a rejected login and cleared by a success."""
+    ca_file = os.environ.get("CANARYGATE_TARGETLAB_CA")
+    if not ca_file:
+        raise HTTPException(status_code=400,
+                            detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
+    runners = []
+    try:
+        plan, first = _open_targetlab_runner(payload.port, budget=payload.request_budget,
+                                             ca_file=ca_file)
+        runners.append(first)
+        from canarygate.network.targetlab import TargetLabRunner
+        second = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
+        runners.append(second)
+        proof = run_lab_sci_reset(plan, first, second)
+    except (TargetLabRefused, OSError):
+        raise HTTPException(status_code=502,
+                            detail="TargetLab request refused or failed; nothing was stored") from None
+    finally:
+        for runner in runners:
+            runner.close()
+    if proof.requests["total"] == 0:
+        raise HTTPException(status_code=502,
+                            detail="TargetLab could not be reached; nothing was stored")
+    return _lab_bola_call(store.save, proof)
+
+
+@router.get("/api/lab-sci-resets/{proof_id}", response_model=LabResetProof)
+def lab_sci_reset(proof_id: str, store: LabResetStore = Depends(get_lab_reset_store)):
+    proof = _lab_bola_call(store.get, proof_id)
+    if proof is None:
+        raise HTTPException(status_code=404, detail="TargetLab reset proof not found")
+    return proof
+
+
 @router.get("/api/authorization-matrix", response_model=AuthorizationMatrix)
 def authorization_matrix(scenario_store: ScenarioStore = Depends(get_scenario_store),
                          auth_store: AuthenticationStore = Depends(get_auth_store),
                          validation_store: ValidationStore = Depends(get_validation_store),
                          interaction_store: InteractionStore = Depends(get_interaction_store),
-                         lab_bola_store: LabBolaStore = Depends(get_lab_bola_store)):
+                         lab_bola_store: LabBolaStore = Depends(get_lab_bola_store),
+                         lab_sci_store: LabSciStore = Depends(get_lab_sci_store)):
     """Partial authorization coverage over stored offline runs; gaps stay visible."""
     try:
         scenarios = _scenario_call(scenario_store.list)
@@ -560,11 +686,12 @@ def authorization_matrix(scenario_store: ScenarioStore = Depends(get_scenario_st
         validations = _validation_call(validation_store.list)
         interactions = _interaction_call(interaction_store.list)
         lab_runs = _lab_bola_call(lab_bola_store.list)
+        lab_sci_runs = _lab_bola_call(lab_sci_store.list)
     except HTTPException:
         raise
     try:
         return build_authorization_matrix(scenarios, authentications, validations, interactions,
-                                          lab_runs)
+                                          lab_runs, lab_sci_runs)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=500, detail="Authorization matrix could not be built") from None
 
@@ -601,6 +728,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     interaction_store = InteractionStore(path)
     lab_store = LabStore(path)
     lab_bola_store = LabBolaStore(path)
+    lab_sci_store = LabSciStore(path)
+    lab_reset_store = LabResetStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -611,6 +740,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         interaction_store.initialize()
         lab_store.initialize()
         lab_bola_store.initialize()
+        lab_sci_store.initialize()
+        lab_reset_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
@@ -623,6 +754,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     application.state.interaction_store = interaction_store
     application.state.lab_store = lab_store
     application.state.lab_bola_store = lab_bola_store
+    application.state.lab_sci_store = lab_sci_store
+    application.state.lab_reset_store = lab_reset_store
     application.include_router(router)
     return application
 

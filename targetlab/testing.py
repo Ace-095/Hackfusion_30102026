@@ -64,6 +64,16 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):  # noqa: N802 - required by BaseHTTPRequestHandler
+        self._respond()
+
+    def do_POST(self):  # noqa: N802 - required by BaseHTTPRequestHandler
+        self._respond()
+
+    def _respond(self):
+        if getattr(self, "command", None) == "POST":
+            length = int(self.headers.get("Content-Length") or 0)
+            if 0 < length <= 65536:
+                self.rfile.read(length)
         type(self).hits += 1
         if type(self).status != 200:
             body = b'{"error":"synthetic"}'

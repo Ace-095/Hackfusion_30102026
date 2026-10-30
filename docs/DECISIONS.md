@@ -1039,3 +1039,32 @@ The lab gains one route: `GET /records`, a correct, owner-isolated collection.
 Without a discovery endpoint the ownership registry could not verify cross-list
 isolation, and a BOLA claim without that check would not meet the frozen evidence
 requirement.
+
+### Checkpoint 37: one engine, one sequence, one separate proof
+
+The interaction is the first place where the *order* of requests carries the
+finding. Keeping that inside one guarded run was the only way to make the claim
+honest: the denial, the rejected login and the leak happened sequentially under
+one budget, and the transport verified each response in the run that produced it.
+
+Reusing `decide()` meant the lab could not special-case itself. The one oracle
+change is a hardening found while writing the adversarial tests: an interaction
+with a single baseline used to be judged as if the missing control had passed. It
+now fails closed.
+
+The probe name `wrong_password` was added to the scope vocabulary instead of
+reusing `malformed_json`, because the lab only sets its condition when the body
+*parses* and carries a string username. Sending broken JSON would have produced a
+`422` and no flaw — a test-shaped success with no security meaning. The new name is
+declared on the exact authentication POST, is one-shot, and nothing else in the
+scope can carry it.
+
+The reset proof lives in its own scenario and its own table. A run may
+authenticate an account only once, and the reset *is* a second successful login, so
+a single run cannot both demonstrate and clear the condition. Rather than weakening
+the one-shot guard, the proof takes two runs and says so.
+
+Ground truth moved fully outside the stored artifact. In checkpoint 36 the
+comparison was stored inside the run, so corrupting the table changed the stored
+bytes even though the verdict held. Now the run is sealed first and the comparison
+is produced at report time, which makes "byte-identical" literally true.

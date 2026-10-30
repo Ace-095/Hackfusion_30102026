@@ -7,8 +7,8 @@ harness into a general-purpose scanner.
 """
 from dataclasses import dataclass
 
-from canarygate.scope.authorized import (TARGETLAB_HOST, TARGETLAB_OPERATIONS,
-                                         AuthorizedScope)
+from canarygate.scope.authorized import (INPUT_PROBE_NAMES, TARGETLAB_HOST,
+                                         TARGETLAB_OPERATIONS, AuthorizedScope)
 
 SCENARIO_ID = "targetlab-evidence"
 TITLE = "TargetLab loopback evidence collection"
@@ -44,10 +44,21 @@ class LabPlan:
     identity_field: str = "identity"
 
 
-def build_lab_scope(port: int, *, budget: int = 12) -> AuthorizedScope:
-    """Build the fixed local_lab scope for one TargetLab port."""
-    operations = [{"method": method, "path": path, "classification": classification}
-                  for (method, path), classification in sorted(TARGETLAB_OPERATIONS.items())]
+def build_lab_scope(port: int, *, budget: int = 12, input_probes: tuple = ()) -> AuthorizedScope:
+    """Build the fixed local_lab scope for one TargetLab port.
+
+    ``input_probes`` is the only widening available, and it applies to the single
+    declared authentication POST. Nothing else about the lab can be configured.
+    """
+    if not isinstance(input_probes, (tuple, list)) or any(
+            probe not in INPUT_PROBE_NAMES for probe in input_probes):
+        raise ValueError("unknown input probe")
+    operations = []
+    for (method, path), classification in sorted(TARGETLAB_OPERATIONS.items()):
+        operation = {"method": method, "path": path, "classification": classification}
+        if (method, path) == ("POST", "/login") and input_probes:
+            operation["input_probes"] = tuple(input_probes)
+        operations.append(operation)
     return AuthorizedScope.model_validate({
         "mode": "local_lab",
         "scheme": "https",

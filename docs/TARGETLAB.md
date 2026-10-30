@@ -95,7 +95,7 @@ are declared, and it runs on the same machine. Reports must say so.
 |---|---|
 | 35 | **Done.** Dedicated `local_lab` transport: literal `127.0.0.1`, pinned test CA with hostname checking, no DNS, no redirects, no retries, same `RunSafetyGuard`. See [checkpoint 35](checkpoints/35-targetlab-transport.md). |
 | 36 | **Done.** Real requests through the `local_lab` transport reach the shared read-BOLA oracle: `/records/{id}` is CONFIRMED in both directions and `/records/{id}/secure` is SAFE, matching the declared ground truth 6/6. See [checkpoint 36](checkpoints/36-targetlab-bola.md). |
-| 37 | Live SCI validation: reproduce deny → reject → leak through CanaryGate, verify the disclosure independently, and report CONFIRMED with an interaction explanation. Not started. |
+| 37 | **Done.** Real requests reproduce deny → rejected login → leak: `SCI-AUTHZ` and `SCI-AUTHN` pass alone, the combined read returns bob's private marker and the SCI engine returns `CONFIRMED`/`interaction_induced`. A separate two-run scenario proves a successful login clears the condition. See [checkpoint 37](checkpoints/37-targetlab-sci.md). |
 
 The production guard stays as it is. A loopback mode is a separate, stricter
 path: it must accept **only** `127.0.0.1`/`localhost`, require TLS, keep every

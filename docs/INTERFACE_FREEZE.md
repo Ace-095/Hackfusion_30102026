@@ -156,3 +156,21 @@ neither participating control already failed on its own.
 - `POST /api/lab-bola-scans` and the `lab_bola_runs` table are new. The matrix gains
   `cells_from_lab_bola` and an optional `lab_bola_runs` argument; every existing
   caller keeps its behaviour.
+
+## 12. Additive interface: lab control-interaction (checkpoint 37)
+
+- `InteractionRun` gains one mode (`targetlab_sci`) and three optional evidence
+  blocks (`transport`, `ownership`, `disclosure`) plus `integration_origin`. An
+  offline run is rejected if it enables networking or carries lab evidence; a lab
+  run is rejected unless it declares the literal `127.0.0.1`.
+- `canarygate.oracles.interaction.decide` now requires one baseline per declared
+  control. No other rule changed.
+- Scope vocabulary gains one declared input probe, `wrong_password`, permitted
+  only on the exact authentication `POST`.
+- `canarygate.scan.lab_sci.run_lab_sci_scan(plan, runner, *, store=None)` and
+  `run_lab_sci_reset(plan, runner_a, runner_b)` — orchestration around the shared
+  engines.
+- New tables `lab_sci_runs` and `lab_sci_resets`; new routes
+  `POST/GET /api/lab-sci-scans*` and `POST/GET /api/lab-sci-resets*`.
+- `cells_from_interactions` takes optional `prefix`/`origin` so real and offline
+  cells stay distinguishable; `build_authorization_matrix` takes `lab_sci_runs`.

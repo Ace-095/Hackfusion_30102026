@@ -81,6 +81,10 @@ def decide(*, kind: str, baselines, combined: Combined) -> Decision:
     baselines = tuple(baselines)
     if not baselines:
         raise ValueError("at least one control baseline is required")
+    if len(baselines) < len(INTERACTION_CONTROLS[kind]):
+        # Every declared control needs its own observed baseline; a missing one can
+        # never be read as "that control passed".
+        raise ValueError("every control in the interaction needs a baseline")
     if combined.impact not in IMPACTS:
         raise ValueError("unknown interaction impact")
     if any(item.verdict not in {"CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED"}

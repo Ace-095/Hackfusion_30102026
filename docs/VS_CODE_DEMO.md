@@ -413,3 +413,29 @@ The strongest single slide: stop the lab, repeat the POST → `502` and nothing 
 stored. Then run `.venv/bin/python -m pytest tests/lab/test_lab_bola_adversarial.py -q`
 (11 passed) to show a mutated response, a swapped token and a bad certificate all
 fail closed.
+
+### Checkpoint 37 TargetLab interaction demo
+
+With the lab running over TLS and `CANARYGATE_TARGETLAB_CA` set:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/lab-sci-scans \
+     -H 'content-type: application/json' -d '{"port": 8765}'
+curl -sS -X POST http://127.0.0.1:8000/api/lab-sci-resets \
+     -H 'content-type: application/json' -d '{"port": 8765}'
+```
+
+Expected: `201` with `verdict: "CONFIRMED"`, `attribution: "interaction_induced"`,
+`requests_sent: 11`, `budget_remaining: 5`; `SCI-AUTHZ` `SAFE` on a `403` and
+`SCI-AUTHN` `SAFE` on a `401`, then the combined read at `200` with
+`impact: "private_data"`. The reset answers `status: "proven"` with four checks
+`403/401/200/403` and `requests.total: 8`.
+
+The demo that lands: open
+`/api/lab-sci-scans/{id}/report?view=p0` (one `SCI-01` finding, `High`,
+`Authorization`, interaction explanation) and
+`/api/lab-sci-scans/{id}/report?view=sections&reset={proof_id}` (evidence plus the
+reset table in one page). Then run
+`.venv/bin/python -m pytest tests/lab/test_lab_sci_adversarial.py -q` to show a
+mutated body, a stale response, a swapped token and a redirected connection all
+fail closed.

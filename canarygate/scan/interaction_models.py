@@ -9,7 +9,7 @@ from canarygate.oracles.interaction import (ATTRIBUTIONS, CHECKLIST_KEYS, IMPACT
                                             REMEDIATION_KEYS)
 from canarygate.scan.models import ScenarioAccount
 
-MODES = ("offline_interaction",)
+MODES = ("offline_interaction", "targetlab_sci")
 
 
 class SciBaseline(BaseModel):
@@ -65,7 +65,7 @@ class InteractionRun(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
     created_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
-    mode: Literal["offline_interaction"]
+    mode: Literal["offline_interaction", "targetlab_sci"]
     status: Literal["completed", "failed"]
     scenario_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")
     title: str = Field(min_length=1, max_length=120)
@@ -89,7 +89,13 @@ class InteractionRun(BaseModel):
     requests_sent: int = Field(ge=0, le=100000)
     blocked_by_guard: int = Field(ge=0, le=100000)
     budget_remaining: int = Field(ge=0, le=100000)
-    network_transport_enabled: Literal[False]
+    network_transport_enabled: StrictBool = False
+    # Lab additions. An offline run must leave them unset; a loopback run must
+    # carry them, so stored evidence always says which transport produced it.
+    integration_origin: Literal["offline_transcript", "loopback_lab"] = "offline_transcript"
+    transport: dict | None = None
+    ownership: dict | None = None
+    disclosure: dict | None = None
     inventory: list[InventoryEndpoint] = Field(max_length=16)
     limitations: list[str] = Field(min_length=1, max_length=16)
 
@@ -126,6 +132,26 @@ class InteractionRun(BaseModel):
             raise ValueError("unknown attribution")
         if self.interaction_kind not in INTERACTION_KINDS:
             raise ValueError("unknown interaction kind")
+        if self.mode == "offline_interaction":
+            # The offline path never opens a socket, and says so in one place.
+            if self.network_transport_enabled:
+                raise ValueError("an offline interaction run cannot enable networking")
+            if self.integration_origin != "offline_transcript":
+                raise ValueError("an offline interaction run uses a recorded transcript")
+            if any(item is not None for item in (self.transport, self.ownership, self.disclosure)):
+                raise ValueError("an offline interaction run carries no lab transport evidence")
+        else:
+            if not self.network_transport_enabled:
+                raise ValueError("a loopback interaction run must declare its transport")
+            if self.integration_origin != "loopback_lab":
+                raise ValueError("a loopback interaction run declares its origin")
+            for name in ("transport", "ownership", "disclosure"):
+                if not isinstance(getattr(self, name), dict):
+                    raise ValueError(f"a loopback interaction run requires {name} evidence")
+            if self.transport.get("destination") != "127.0.0.1":
+                raise ValueError("a loopback interaction run only targets 127.0.0.1")
+            if self.transport.get("live_target_contacted") is not False:
+                raise ValueError("a loopback lab run never contacts a live target")
         if not isinstance(self.scope, dict) or "accounts" not in self.scope:
             raise ValueError("scope projection is required")
         accounts = [item["account"] for item in self.scope["accounts"]]
@@ -153,7 +179,7 @@ class InteractionSectionData(BaseModel):
 
 class InteractionSectionReport(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    mode: Literal["offline_interaction"]
+    mode: Literal["offline_interaction", "targetlab_sci"]
     id: str
     run_id: str
     sections: InteractionSectionData

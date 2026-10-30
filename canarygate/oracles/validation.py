@@ -6,7 +6,8 @@ only counted when the body is bounded and field-specific.
 """
 import re
 
-INPUT_PROBE_NAMES = ("control", "extra_property", "malformed_json", "special_characters")
+INPUT_PROBE_NAMES = ("control", "extra_property", "malformed_json", "special_characters",
+                     "wrong_password")
 _INTERNAL_DETAIL = re.compile(r"traceback|sqlstate|exception|stack trace|\bFile\s+[\"']/", re.IGNORECASE)
 
 

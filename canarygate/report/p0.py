@@ -26,7 +26,8 @@ CATEGORY_ALIASES = {"Information disclosure": "Disclosure"}
 VERDICTS = ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED")
 MODES = {"scenario": "offline_scenario", "authentication": "offline_authentication",
          "validation": "offline_validation", "interaction": "offline_interaction",
-         "lab_bola": "targetlab_bola"}
+         "lab_bola": "targetlab_bola", "lab_sci": "targetlab_sci"}
+LAB_KINDS = frozenset({"lab_bola", "lab_sci"})
 
 REMEDIATION_CATALOG = {
     "bola": "Enforce object-level ownership checks server-side on every handler.",
@@ -300,10 +301,9 @@ def _interaction_category(kind):
     return "Disclosure" if kind == "INPUT_VALIDATION+INFORMATION_DISCLOSURE" else "Authorization"
 
 
-def _interaction_findings(run):
+def _interaction_block(run):
     combined = run["combined"]
-    role = _role_for(run, run["accounts"][0])
-    interaction = {
+    return {
         "kind": run["interaction_kind"],
         "controls": list(run["controls"]),
         "attribution": run["attribution"],
@@ -322,6 +322,12 @@ def _interaction_findings(run):
             if run["attribution"] == "interaction_induced"
             else "no interaction-induced failure could be attributed"),
     }
+
+
+def _interaction_findings(run):
+    combined = run["combined"]
+    role = _role_for(run, run["accounts"][0])
+    interaction = _interaction_block(run)
     method, _, path = combined["endpoint"].partition(" ")
     return [_finding(
         "SCI-01", _interaction_category(run["interaction_kind"]),
@@ -383,6 +389,30 @@ def _lab_bola_findings(run):
     return findings
 
 
+def _lab_sci_findings(run):
+    """A real loopback interaction projected into the frozen finding shape."""
+    combined = run["combined"]
+    account = run["accounts"][0]
+    disclosure = run.get("disclosure") or {}
+    proven_owner = bool(disclosure.get("marker_matches_owner_baseline")
+                        and (run.get("ownership") or {}).get("status") == "SUCCESS")
+    expected = ("the authorization control denies a cross-owner read and the login endpoint "
+                "refuses the rejected credential, so the read stays denied afterwards")
+    observed = combined["observed"]
+    return [_finding(
+        "SCI-01", "Authorization", timestamp=run["created_at"], endpoint=combined["endpoint"],
+        verdict=run["verdict"], reason=run["reason"], account=account,
+        role=_role_for(run, account), expected=expected, observed=observed,
+        source=run["policy_source"], checklist=run["checklist"],
+        curl=curl_for(*split_endpoint(combined["endpoint"]), actor=account),
+        evidence_sha256=run["baselines"][0]["evidence_sha256"],
+        target_resource="the owner's private record (identifier minimised)",
+        verified_owner=(f'{disclosure.get("owner")} (ownership verified; owner baseline recorded)'
+                        if proven_owner else OWNER_NOT_VERIFIED),
+        finding_kind="interaction", interaction=_interaction_block(run),
+        remediation_key=run["remediation_key"], remediation=run["remediation"])]
+
+
 def _findings(kind, run):
     if kind == "scenario":
         return _scenario_findings(run)
@@ -394,6 +424,8 @@ def _findings(kind, run):
         return _interaction_findings(run)
     if kind == "lab_bola":
         return _lab_bola_findings(run)
+    if kind == "lab_sci":
+        return _lab_sci_findings(run)
     raise ValueError("unknown run kind")
 
 
@@ -449,7 +481,7 @@ def _inventory(run):
 
 def _transport_flags(kind, run):
     """Honest transport facts: the lab run really did open loopback sockets."""
-    if kind == "lab_bola":
+    if kind in LAB_KINDS:
         return {"network_transport_enabled": True, "live_target_contacted": False,
                 "loopback_lab_contacted": True}
     return {"network_transport_enabled": False, "live_target_contacted": False,
@@ -465,7 +497,7 @@ def _constraints(kind, run):
     for operation in run["scope"].get("operations", ()):
         if operation.get("classification") == "AUTHENTICATION":
             authentication_operations.append(f'{operation["method"]} {operation["path"]} (recorded only)')
-    lab = kind == "lab_bola"
+    lab = kind in LAB_KINDS
     transport = run.get("transport") or {}
     items = [
         {"item": "Exact host and port allow-listed",
@@ -511,6 +543,8 @@ def _constraints(kind, run):
 def _manual(kind, run):
     if kind == "lab_bola":
         return _lab_manual(run)
+    if kind == "lab_sci":
+        return _lab_sci_manual(run)
     scope = run["scope"]
     interventions = []
     inferences = [
@@ -604,6 +638,62 @@ def _lab_manual(run):
     }
 
 
+def _lab_sci_manual(run):
+    """What was assumed, what ran afterwards, and where the reset proof lives."""
+    interventions = [{
+        "item": "sci_baselines", "status": "EXECUTED",
+        "value": [f'{item["id"]}={item["verdict"]}' for item in run["baselines"]],
+        "source": "individual control baselines on the same runner"},
+        {"item": "sequence",
+         "value": " -> ".join(["authorization denial", "rejected login", "combined read"]),
+         "source": "declared interaction order; every leg verified by its own response"},
+        {"item": "ground_truth_comparison", "status": "AFTER_THE_SCAN",
+         "value": "the declared outcome is scored when the report is built, not before",
+         "source": "declared TargetLab ground truth"},
+        {"item": "reset_verification", "status": "SEPARATE_SCENARIO",
+         "value": ("recorded apart from this verdict through POST /api/lab-sci-resets; it needs "
+                   "its own runs because a run may authenticate an account only once"),
+         "source": "reset proof"}]
+    if run.get("blocked_by_guard"):
+        interventions.append({"item": "guard_blocked_requests",
+                              "value": run["blocked_by_guard"],
+                              "source": "shared run guard"})
+    inferences = [
+        {"item": "expected_access", "kind": "declared_expectation",
+         "source": run["policy_source"],
+         "value": "a cross-owner read on the guarded route is denied, before and after a "
+                  "rejected login"},
+        {"item": "identity_mapping", "kind": "assumption",
+         "source": "validated scope accounts",
+         "value": "each account authenticated with its own credential and was confirmed by the "
+                  "profile operation before any ownership claim"},
+        {"item": "denial_contract", "kind": "assumption",
+         "source": "TargetLab record policy",
+         "value": "a 403 whose JSON body equals the declared denial counts as a checked denial; "
+                  "status alone is never enough"},
+        {"item": "rejection_contract", "kind": "assumption",
+         "source": "TargetLab login contract",
+         "value": "a 401 whose JSON body equals the declared rejection counts as a checked "
+                  "rejection; an accepted wrong credential would be an individual failure"},
+        {"item": "disclosure_baseline", "kind": "inference",
+         "source": "ownership registry",
+         "value": "the leaked marker is compared with the marker the owner returned on their own "
+                  "baseline, so a stale or unrelated value cannot confirm the finding"},
+        {"item": "ground_truth_independence", "kind": "inference",
+         "source": "workflow design",
+         "value": "the scanner never requests /lab/ground-truth and the comparison is computed "
+                  "at report time against a stored run that is sealed first"},
+    ]
+    return {
+        "status": "RECORDED", "manual_intervention_required": False,
+        "interventions": interventions, "inferences": inferences,
+        "statement": ("No manual intervention was required. Requests were executed sequentially "
+                      "against the loopback TargetLab over verified TLS. No organizer, internet or "
+                      "third-party target was contacted, no state was changed apart from the "
+                      "declared authentication operations, and nothing was retried."),
+    }
+
+
 def build_p0_sections(kind, run):
     if kind not in MODES:
         raise ValueError("unknown run kind")
@@ -625,6 +715,8 @@ def build_p0_sections(kind, run):
         cells = cells_from_interactions([run])
     elif kind == "lab_bola":
         cells = cells_from_lab_bola([run])
+    elif kind == "lab_sci":
+        cells = cells_from_interactions([run], prefix="lab_sci")
     else:
         cells = []
     matrix = build_matrix(cells, extra_endpoints=_inventory(run))
@@ -681,7 +773,7 @@ def render_p0_report(kind, run):
     report = build_p0_report(kind, run)
     base = {"scenario": "scenario-scans", "authentication": "authentication-scans",
             "validation": "validation-scans", "interaction": "interaction-scans",
-            "lab_bola": "lab-bola-scans"}[kind]
+            "lab_bola": "lab-bola-scans", "lab_sci": "lab-sci-scans"}[kind]
     return environment.get_template("p0.html").render(
         report=report, sections=report.sections, json_block=lambda value: json.dumps(
             value, indent=2, ensure_ascii=True, sort_keys=True),

@@ -39,8 +39,13 @@ AUTH_PROBE_NAMES = ("missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role
                     "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse")
 AuthProbeName = Literal["missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
                         "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse"]
-INPUT_PROBE_NAMES = ("control", "extra_property", "malformed_json", "special_characters")
-InputProbeName = Literal["control", "extra_property", "malformed_json", "special_characters"]
+# ``wrong_password`` is the one probe TargetLab needs: a well-formed login body
+# carrying a wrong password. A broken-JSON body never reaches the lab's account
+# state machine, so it cannot exercise the declared interaction.
+INPUT_PROBE_NAMES = ("control", "extra_property", "malformed_json", "special_characters",
+                     "wrong_password")
+InputProbeName = Literal["control", "extra_property", "malformed_json", "special_characters",
+                         "wrong_password"]
 
 
 class _ScopeLoader(yaml.SafeLoader):

@@ -85,3 +85,18 @@ def test_lab_requirements_are_present_and_fully_evidenced():
     assert rows["L4"]["area"] == "safety"
     assert "POST /api/lab-bola-scans" in rows["L1"]["api_routes"]
     assert "GET /api/lab-bola-scans/{run_id}/report" in rows["L5"]["api_routes"]
+
+
+def test_lab_sci_requirements_are_present_and_fully_evidenced():
+    """Checkpoint 37 rows: a real interaction, its reset proof and its reporting."""
+    report = audit()
+    rows = {row["id"]: row for row in report["rows"]}
+    for requirement in ("L7", "L8", "L9", "L10", "L11", "L12"):
+        row = rows[requirement]
+        assert row["status"] == "implemented", requirement
+        assert row["implementation"] and row["tests"], requirement
+        assert row["evidence"] == "loopback_tls", requirement
+    assert "POST /api/lab-sci-scans" in rows["L7"]["api_routes"]
+    assert "POST /api/lab-sci-resets" in rows["L9"]["api_routes"]
+    assert rows["L10"]["area"] == "safety"
+    assert rows["L12"]["area"] == "safety"
