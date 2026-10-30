@@ -945,3 +945,35 @@ Limitations carried forward: offline synthetic transcripts only, GET-only legs
 with one bounded probe, three declared interaction kinds, one SCI finding per run,
 and no live or lab validation. Complete frozen P0 remains not accepted (BFLA and
 live validation are still missing).
+
+### Checkpoint 34: a lab we own beats a lab we borrow
+
+Validation needs ground truth. Borrowing VAmPI or crAPI would import their
+semantics, their approval requirements and their ambiguity about ownership — and
+we already decided not to depend on them. Writing the target ourselves is the
+cheapest honest option: two accounts, two private records, one intentionally
+broken route, one intentionally broken *interaction*, one secure route, OpenAPI,
+and a declared flaw map at `/lab/ground-truth`.
+
+The lab is deliberately weak, so it is deliberately contained. It refuses a
+non-loopback bind address, rejects a non-loopback `Host` header, has no outbound
+HTTP client, and is never imported by `canarygate`. Predictable credentials are
+acceptable **only** because the service is loopback-only and the values are
+obviously fake (`lab-token-alice`); they must never be reused.
+
+The interaction flaw is modelled as a cross-request state bug: a rejected
+malformed login leaves a legacy compatibility flag for that account, and one
+guarded read then skips the ownership check. It is a real bug class (validation
+failure leaving partial state that a later authorization decision trusts), it is
+deterministic, and it reproduces over a socket. It is not a claim that this is
+how any particular product fails.
+
+Two boundaries were held. First, TargetLab is **not** wired into the scanner:
+the production guard requires a pinned organizer IP over TLS and will not be
+softened to reach `http://127.0.0.1`. Second, the lab is a validation target, not
+a live target: running against it later will be *controlled* validation, and the
+reports must say so.
+
+The lab's tests are classified `in_process_api` in `tools/p0_audit.py` because
+every test file must declare its environment, but TargetLab is not a P0
+capability and does not change the acceptance gate.

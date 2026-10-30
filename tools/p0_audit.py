@@ -73,6 +73,7 @@ TEST_EVIDENCE = {
     "tests/integration/test_p0_consistency.py": "recorded_offline",
     "tests/integration/test_p0_report_api.py": "recorded_offline",
     "tests/integration/test_sci_scenarios.py": "recorded_offline",
+    "tests/lab/test_targetlab_api.py": "in_process_api",
     "tests/security/test_sci_decisions.py": "unit",
     "tests/integration/test_read_bola_oracle.py": "fixture",
     "tests/integration/test_resource_enumeration.py": "fixture",

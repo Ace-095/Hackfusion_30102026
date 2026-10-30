@@ -266,6 +266,16 @@ cell is backed by a `CONFIRMED` finding in a contributing run.
 now including SCI, is accepted with documented limitations; live validation and
 BFLA remain absent and must not be simulated.
 
+## Checkpoint 34 — TargetLab (not a P0 capability)
+
+`targetlab/` is a deliberately vulnerable loopback-only API with two accounts,
+private resources, a BOLA route, an interaction-vulnerable route, a secure route
+and OpenAPI. It is a **validation target**, not a scanner feature: it changes no
+P0 requirement, no verdict and no gate. Its 19 tests are classified
+`in_process_api` so the audit still accounts for every test file, and the suite
+total is now 779. Scanning the lab from CanaryGate is not implemented; that is
+checkpoint 35, and it must not weaken the production guard.
+
 ## Next blocking work
 
 1. Milestone 30 is complete in code: INPUT-05/06/07 and DISC-01–06 execute

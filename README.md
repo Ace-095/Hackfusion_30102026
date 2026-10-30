@@ -98,10 +98,17 @@ scenario id; see [checkpoint 28](docs/checkpoints/28-generic-scan-integration.md
 Authentication checks are exposed at `POST /api/authentication-scans`; see
 [checkpoint 29](docs/checkpoints/29-authentication-checks.md). Input-validation
 and disclosure checks are exposed at `POST /api/validation-scans`; see
-[checkpoint 30](docs/checkpoints/30-input-disclosure.md). Any stored run renders
+[checkpoint 30](docs/checkpoints/30-input-disclosure.md). SCI interaction scans are exposed at `POST /api/interaction-scans`; see
+[checkpoint 33](docs/checkpoints/33-sci-interaction.md). Any stored run renders
 the frozen nine-section P0 report at `?view=p0`, and
 `GET /api/authorization-matrix` shows partial authorization coverage with
 untested cells; see [checkpoint 31](docs/checkpoints/31-report-and-matrix.md).
+
+A deliberately vulnerable local test API, **TargetLab**, is available for
+validation work: `.venv/bin/python -m targetlab` (loopback only, never deploy).
+See [docs/TARGETLAB.md](docs/TARGETLAB.md) and
+[checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is **not**
+implemented yet; the lab is a target, not a scanner transport.
 
 In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed

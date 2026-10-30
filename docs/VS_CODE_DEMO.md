@@ -305,3 +305,42 @@ Expected verdicts: `INCONCLUSIVE` (`individual_failure`), `SAFE` (`no_failure`) 
 `SUSPECTED` (`no_demonstrated_impact`). None of them is `CONFIRMED`; none of them
 carries a remediation. Finally run `tools/p0_audit.py` to show the SCI
 requirements (C1–C7) with their implementation symbols and tests.
+
+### Checkpoint 34 TargetLab demo
+
+In a second terminal (the first runs the CanaryGate API):
+
+```sh
+.venv/bin/python -m targetlab --port 8765
+```
+
+Expected first line: `targetlab: DELIBERATELY VULNERABLE test API on
+http://127.0.0.1:8765 (loopback only, do not deploy)`.
+
+Open `http://127.0.0.1:8765/docs` to show the generated OpenAPI documentation and
+the `bearerAuth` scheme. Then reproduce the ground truth with curl:
+
+```sh
+TOKEN=lab-token-alice
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/secure
+# {"error":"forbidden"}
+curl -s -X POST http://127.0.0.1:8765/login -H 'Content-Type: application/json' \
+     -d '{"username":"alice","password":"x","admin":true}'
+# {"error":"invalid_request"}
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/guarded
+# {"id":"rb","owner":"bob","private_note":"targetlab-bob-private-marker","compat_state":true}
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/secure
+# {"error":"forbidden"}   (still secure: the flaw is narrow)
+```
+
+Show the containment too:
+
+```sh
+.venv/bin/python -m targetlab --host 0.0.0.0   # exits 2; refuses to bind publicly
+curl -s -H "Host: example.com" http://127.0.0.1:8765/health
+# {"error":"non_loopback_host_rejected"}
+```
+
+Then `.venv/bin/python -m pytest tests/lab/test_targetlab_api.py -q` → 19 passed.
+Say plainly: this is a target we wrote, not live validation, and the scanner
+cannot reach it yet.
