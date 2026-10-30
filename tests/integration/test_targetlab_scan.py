@@ -104,6 +104,7 @@ def test_runs_survive_restart_and_tampering_is_rejected(client, lab):
 
 
 def test_missing_ca_configuration_is_refused_without_contacting_the_lab(tmp_path, lab):
+    # See tests/conftest.py: ambient CANARYGATE_* variables are cleared per test.
     database = tmp_path / "no-ca.sqlite3"
     with TestClient(create_app(database)) as api:
         response = api.post("/api/lab-scans", json={"port": lab.port})

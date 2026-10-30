@@ -275,6 +275,8 @@ def test_budget_exhaustion_never_confirms(client, lab):
 
 
 def test_missing_ca_and_unreachable_lab_store_nothing(tmp_path, monkeypatch, lab):
+    # See tests/conftest.py: ambient CANARYGATE_* variables are cleared per test, so
+    # this asserts the product's behaviour and not the shell's.
     database = tmp_path / "unreachable.sqlite3"
     with TestClient(create_app(database)) as api:
         assert api.post("/api/lab-sci-scans", json={"port": lab.port}).status_code == 400

@@ -89,10 +89,12 @@ and [checkpoint 32 P0 acceptance audit](docs/checkpoints/32-p0-acceptance-audit.
 
 ## Run the fixture API locally
 
-> **Starting from a fresh clone?** [docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md) is the
-> verified end-to-end guide — virtualenv, TargetLab, the interface, the five-minute
-> judge path, the test suite, the audits, and troubleshooting for macOS, Linux and
-> Windows (including VS Code `launch.json`).
+> **Starting from a fresh clone?** `./run.sh` starts the lab and the interface and opens
+> the browser; `./run.sh --doctor` checks the install without starting anything; see
+> [docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md) for the verified end-to-end guide —
+> virtualenv, TargetLab, the interface, the five-minute judge path, the test suite,
+> the audits, and troubleshooting for macOS, Linux and Windows (including VS Code
+> `launch.json`).
 
 ```sh
 python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000

@@ -4,6 +4,45 @@ Every command on this page was executed on a clean checkout with a fresh virtual
 environment before it was written down. If a command fails for you, the
 **Troubleshooting** table at the end lists the causes we actually hit.
 
+## The fastest path: `./run.sh`
+
+From the project folder, one command starts everything, waits for it to be healthy,
+and opens the browser:
+
+```bash
+cd "/home/ace/95/Hackathon/Hackfusion oct302026/Hackfusion_30102026"
+source .venv/bin/activate          # optional — the script prefers .venv by itself
+./run.sh
+```
+
+It prints exactly what it ran, then opens **http://127.0.0.1:8000/ui/**.
+
+| Command | What it does |
+|---|---|
+| `./run.sh` | start TargetLab + the website, open the browser |
+| `./run.sh --no-browser` | same, but just print the URL |
+| `./run.sh --doctor` | check Python, dependencies, fixtures, ports and imports — starts nothing |
+| `./run.sh --tests` | run the full suite with the demo environment set |
+| `./run.sh --stop` | stop a run the script started (Ctrl+C does the same) |
+
+Useful switches (all optional):
+
+```bash
+LAB_PORT=8767 ./run.sh        # lab on another port (the script tells you what to type)
+UI_PORT=8010 ./run.sh         # website on another port if 8000 is taken
+CANARYGATE_PYTHON=/home/ace/95/lrng/cl/python/canarygate/bin/python ./run.sh
+BROWSER=none ./run.sh         # same as --no-browser
+```
+
+If a TargetLab is **already** running on the chosen port and answers `/health` with the
+pinned CA, the script reuses it instead of starting a second one — so it is safe to run
+next to the terminal you already have open.
+
+The rest of this page is the manual path, which is what `./run.sh` does for you, plus
+what to do when something goes wrong.
+
+---
+
 There are two processes and they are deliberately separate:
 
 | Process | What it is | Where |
@@ -206,7 +245,9 @@ python -m pytest tests/lab -q                                   # transport, ora
 ```
 
 The TargetLab tests start their own lab on a free port; **you do not need the lab
-or the UI running** for pytest.
+or the UI running** for pytest, and the variables from step 2 do not change the result:
+`tests/conftest.py` clears every `CANARYGATE_*` variable for each test, so the suite
+reports the same verdict in a shell that has exported them and one that has not.
 
 ## 8. The audits and the one-command demonstration
 
@@ -361,6 +402,8 @@ and Debug panel. Breakpoints work in the application code.
 | Pages render but every number is `0` | fresh database, nothing scanned yet | run an assessment (step 6) |
 | Old results keep coming back | you are reusing a database | delete `CANARYGATE_DB_PATH` and restart |
 | `tools/browser_smoke.py` prints `SKIPPED` | Node or jsdom missing, or a wrong `--jsdom` path | `npm install --prefix /tmp/browser-harness jsdom` |
+| Exactly **3** tests fail: the two `test_missing_ca_and_unreachable_lab_store_nothing` and `test_missing_ca_configuration_is_refused_without_contacting_the_lab` | an older checkout that assumed `CANARYGATE_TARGETLAB_CA` was unset in your shell — but step 2 exports it | fixed on this branch by `tests/conftest.py`, which clears `CANARYGATE_*` for every test. `git pull` and the three pass with the variable exported |
+| `python` runs the wrong interpreter (conda env shadowing `.venv`) | conda env was activated *after* `.venv`, or `.venv/Scripts` is not first on PATH | use `./run.sh` (it calls `.venv/bin/python` by absolute path) or the full path `.venv/bin/python -m ...` |
 | `ValueError: execution halted` | a lab returned two 5xx, a 3xx, 423 or 429 — the guard halts by design | restart the run; this is the safety boundary, not a bug |
 | Windows: `ssl` errors inside tests | stale clone or mixed Python versions | recreate the venv with 3.11; CI runs the same suite on Windows |
 

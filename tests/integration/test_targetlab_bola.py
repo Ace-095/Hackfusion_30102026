@@ -221,6 +221,8 @@ def test_budget_exhaustion_never_fabricates_a_verdict(client, lab):
 
 
 def test_missing_ca_and_unreachable_lab_store_nothing(tmp_path, monkeypatch, lab):
+    # "Missing" means missing from this process, not from the developer's shell:
+    # tests/conftest.py clears every CANARYGATE_* variable before each test.
     database = tmp_path / "unreachable.sqlite3"
     with TestClient(create_app(database)) as api:
         assert api.post("/api/lab-bola-scans", json={"port": lab.port}).status_code == 400

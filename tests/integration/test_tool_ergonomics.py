@@ -70,3 +70,52 @@ def test_the_browser_smoke_skips_instead_of_crashing_on_a_bad_jsdom_path(tmp_pat
     empty = tmp_path / "no-node-modules"
     empty.mkdir()
     assert browser_smoke.node_available(str(empty)) is None
+
+
+# --- the one-command launcher -------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[2]
+LAUNCHER = ROOT / "run.sh"
+
+
+def test_the_launcher_exists_and_starts_with_the_repo_itself():
+    assert LAUNCHER.is_file()
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert text.startswith("#!/usr/bin/env bash")
+    # It must work from wherever the project was copied, not from a hardcoded path.
+    assert 'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' in text
+    for marker in ("--doctor", "--no-browser", "--tests", "--stop"):
+        assert marker in text, marker
+
+
+def test_the_launcher_only_ever_binds_loopback():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "0.0.0.0" not in text, "the launcher must never bind a public interface"
+    assert "--host 127.0.0.1" in text
+    # The lab is started with the pinned fixture certificate, not a bare HTTP server.
+    assert "python -m targetlab" in text or "-m targetlab" in text
+    assert "targetlab-cert.pem" in text
+    assert "CANARYGATE_TARGETLAB_CA" in text and "CANARYGATE_DB_PATH" in text
+
+
+def test_the_launcher_cleans_up_whatever_it_started():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "trap cleanup EXIT" in text, "a failed start must not orphan a lab process"
+    assert "trap 'exit 130' INT TERM" in text
+    assert "CLEANED=1" in text, "cleanup must be idempotent"
+
+
+def test_the_launcher_is_valid_bash():
+    import shutil
+    import subprocess
+
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+    result = subprocess.run([bash, "-n", str(LAUNCHER)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_run_guide_points_at_the_launcher():
+    guide = (ROOT / "docs" / "RUN_LOCALLY.md").read_text(encoding="utf-8")
+    assert "./run.sh" in guide

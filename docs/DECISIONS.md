@@ -1273,3 +1273,28 @@ at the same position in different runs share an `evidence_sha256` for different 
 Rather than silently changing a hashed field and leaving two vintages of evidence in the
 database, the proof page prints the run id and the check id together and states what the
 digest does and does not cover. That limitation is recorded rather than papered over.
+
+### Checkpoint 46: a test that reads your shell is not a test
+
+Three tests asserted the "no CA configured" path while inheriting whatever the
+developer had exported. CI never exported it, so CI was green; a machine following our
+own setup guide exported it, so that machine was red. Both were accurately reporting
+their environment, which is the worst kind of disagreement — it makes a green pipeline
+untrustworthy.
+
+The fix is at the suite level, not per test: `tests/conftest.py` clears every
+`CANARYGATE_*` and `CANARY_*` variable for each test. Per-test `delenv` calls would have
+fixed these three and left the next test to make the same mistake. A rule that holds for
+every test is worth more than three local patches, and it is now itself tested.
+
+**On the launcher.** `run.sh` deliberately resolves `.venv/bin/python` by absolute path
+rather than trusting `python` from PATH. That is not defensive noise: the machine this
+was reported from has a conda environment that is activated *before* the venv, so
+`python` can be either interpreter depending on the order of two `source` commands. A
+launch script whose behaviour depends on shell history is not a launcher; it is a
+coin flip. `--doctor` exists so that question can be answered in one command instead of
+by reading a traceback.
+
+The script also reuses an already-running lab rather than starting a second one. Two
+labs on one port is not a feature: the second either fails to bind or, worse, binds a
+different port than the one the form is told to use.
