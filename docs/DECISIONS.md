@@ -242,7 +242,8 @@ and the unchanged fixture run do not use network or DNS and that uploaded data i
 not written to SQLite. 129 tests passed locally on Linux/Python 3.11 with one
 third-party Starlette/AnyIO deprecation warning. A real Uvicorn upload and the
 existing demo were exercised, and the wheel was checked for parser and template.
-Live scanning remains disabled.
+GitHub Actions passed on Linux and Windows for code commit `90f2e80`
+(run 41037800312). Live scanning remains disabled.
 
 ## Outstanding checkpoints
 
