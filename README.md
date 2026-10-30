@@ -3,7 +3,7 @@
 CanaryGate is planned as an evidence-based API authorization testing system.
 This checkpoint implements **a synthetic offline read-BOLA pipeline**, scoped
 authentication probes and bounded input/disclosure checks, with local SQLite
-persistence and auditable minimized ownership observations, exposed through a provisional FastAPI interface. A separate bounded OpenAPI upload inspects a specification in memory without configuring or starting a scan. The API cannot scan live targets. A separate experimental guarded HTTPX component can make scoped HTTPS reads and an exact login if directly invoked; it is not connected to the scanner or API and requires written authorization and safety review. This is not
+persistence and auditable minimized ownership observations, exposed through a provisional FastAPI interface. A separate bounded OpenAPI upload inspects a specification in memory without configuring or starting a scan. The API cannot scan live targets. A separate experimental guarded HTTPX component is not connected to the scanner or API, and production network execution is disabled pending safety review. This is not
 a complete implementation of the frozen specification or a production safety
 guard. Fixture findings must never be represented as live-target results.
 
@@ -71,7 +71,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 17 demo](docs/checkpoints/17-identity-observation.md), and
 [checkpoint 18 demo](docs/checkpoints/18-identity-pair.md), and
 [checkpoint 19 demo](docs/checkpoints/19-resource-harvest.md), and
-[checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md).
+[checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md), and
+[checkpoint 21 demo](docs/checkpoints/21-live-disabled.md).
 
 ## Run the fixture API locally
 

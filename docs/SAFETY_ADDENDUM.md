@@ -19,10 +19,10 @@ precedence for implementation:
 3. **DNS isolation:** an organizer-supplied IP should be preferred for a future
    live implementation. Otherwise only explicitly organizer-approved resolution
    mechanisms may be used; never query public resolvers. An experimental,
-   unintegrated guarded HTTPX transport (classified GET and exact login only)
-   can connect directly to an
-   organizer-supplied IP if called from Python; it makes no DNS query. It is not
-   exposed through the API and is not a complete live guard or scanner. Resolver-based scanning
+   unintegrated guarded HTTPX prototype supports classified GET and exact login,
+   but production network execution is disabled pending safety review; tests
+   override the gate only with mocked sockets or an in-process socketpair. It is
+   not exposed through the API and is not a complete live guard or scanner. Resolver-based scanning
    and the remaining live safeguards are not implemented. Fixture mode makes
    no DNS queries and cannot make scanner network connections.
 

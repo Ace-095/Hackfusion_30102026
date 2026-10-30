@@ -1,5 +1,7 @@
 # Checkpoint 15: total network deadline
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 The experimental guarded HTTPX transport now uses a 10-second monotonic network
 deadline and an interrupting watchdog in addition to per-socket timeouts. An
 expired or failed request halts its shared run. This is **not** an enabled live

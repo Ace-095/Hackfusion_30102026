@@ -6,6 +6,14 @@ import httpx
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def enable_only_mocked_network_boundary(monkeypatch):
+    # The production boundary is disabled. Every network operation in this file
+    # uses a mocked socket or a deliberately constructed in-process socketpair.
+    from canarygate.network import guarded_httpx
+    monkeypatch.setattr(guarded_httpx, "_network_execution_enabled", lambda: True)
+
+
 @pytest.fixture
 def scope():
     from canarygate.scope.authorized import load_authorized_scope

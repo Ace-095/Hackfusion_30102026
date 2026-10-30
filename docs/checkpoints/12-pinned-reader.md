@@ -1,5 +1,7 @@
 # Checkpoint 12: experimental pinned HTTPS read component (superseded)
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 The standalone reader implementation was removed in [checkpoint 13](13-guarded-httpx.md).
 Its safety regression tests now exercise the guarded HTTPX boundary instead.
 

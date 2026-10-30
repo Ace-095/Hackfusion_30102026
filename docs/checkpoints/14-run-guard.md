@@ -1,5 +1,7 @@
 # Checkpoint 14: shared run safety state
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 This checkpoint adds a `RunSafetyGuard` that can be explicitly shared among
 experimental HTTPX runners for one run. It shares a budget, sequential lock,
 halt state and repeated-server-error streak. A different scope cannot reuse the

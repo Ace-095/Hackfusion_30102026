@@ -1,5 +1,7 @@
 # Checkpoint 19: bounded resource-list harvest
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 This provisional in-memory helper observes two scoped account profiles and then
 one exact read-only list operation as each account. It is **not an ownership
 registry or BOLA test** and is not connected to the scanner/API.

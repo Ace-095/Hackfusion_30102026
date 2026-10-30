@@ -1,5 +1,7 @@
 # Checkpoint 18: two-account identity observations
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 This adds an in-memory control that requires two distinct scoped account names
 and bearer credentials, then checks an explicitly scoped profile GET separately
 as each account. `MATCHED_PAIR` is **not** evidence of resource ownership,

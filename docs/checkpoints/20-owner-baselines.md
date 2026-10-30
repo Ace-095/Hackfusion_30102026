@@ -1,5 +1,7 @@
 # Checkpoint 20: conservative owner-baseline observations
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 The experimental helper observes two account profiles, two disjoint scoped lists
 and two exact scoped owner-detail reads. It requires matching account/ID fields
 and distinct unmasked, non-identifier private-field values. It **does not verify

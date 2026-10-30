@@ -1,5 +1,7 @@
 # Checkpoint 16: experimental guarded login
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 An exact scope-classified JSON login now runs through the same guarded HTTPX
 transport as reads, with a shared run budget and no retry. This is not a live
 scanner: no API route invokes it, identity is not verified, and discovery,

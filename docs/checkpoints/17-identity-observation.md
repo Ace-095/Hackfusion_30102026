@@ -1,5 +1,7 @@
 # Checkpoint 17: explicit identity observation
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 A provisional helper observes one top-level account field from an explicitly
 scoped, classified profile GET through the guarded HTTPX runner. **A matching
 field alone is not verified identity or ownership and cannot confirm BOLA.**

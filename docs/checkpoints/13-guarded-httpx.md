@@ -1,5 +1,7 @@
 # Checkpoint 13: guarded HTTPX boundary (offline verification)
 
+> Update: checkpoint 21 disables production network execution pending safety review. Any earlier statement about direct network execution describes historical behavior.
+
 The old standalone pinned reader implementation has been removed. An inert
 module remains solely to prevent stale package builds from reviving it. The experimental HTTPX
 runner uses exactly one guarded transport for its requests. It is **not wired

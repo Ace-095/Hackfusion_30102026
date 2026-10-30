@@ -395,7 +395,8 @@ perform only GET operations classified READ_ONLY in an organizer scope with a
 literal organizer IP, HTTPS and in-memory per-account bearer tokens. The exact
 actor/path decision occurs immediately before creating a socket; the IP is used
 without DNS, and TLS verifies the scoped hostname. It is not exposed through the
-API or used by the scanner, but **direct invocation can create real traffic**.
+API or used by the scanner. At that historical checkpoint direct invocation
+could create traffic; checkpoint 21 subsequently disabled production execution.
 Do not use it without written organizer authorization and independent review.
 
 At checkpoint 12 the experimental reader used `http.client` directly, a mismatch
@@ -519,8 +520,8 @@ This is not a full recipe/account workflow, identity verification, cookie/API
 key support, discovery or a complete live scanner. It is not integrated into
 the fixture scan or API. The `LoginConfig` and response are provisional internal
 contracts; the v3.2 recipe and readiness gates still need integration and review.
-Direct Python calls can send authorized POST login and GET requests: do not use
-against a target without written approval and independent end-to-end review.
+At checkpoint 16 direct Python calls could send POST login and GET requests;
+checkpoint 21 subsequently disabled production network execution pending review.
 
 ## Checkpoint 17 — explicit profile identity observation
 
@@ -598,6 +599,23 @@ Tests used synthetic responses and mock sockets; no external target was contacte
 Full local suite: 360 passed, one third-party warning. GitHub Actions run
 `41047675475` passed Ubuntu and Windows for `ddd9730`. See
 [judge demo](checkpoints/20-owner-baselines.md).
+
+## Checkpoint 21 — disable production live execution pending review
+
+The user directed that the experimental boundary must not be connected to live
+scanning before safety is reconciled and tested. Test-first cases showed that a
+valid direct GET or login could still create a socket. The transport now has an
+internal, default-deny gate with no environment or API override. Production
+calls fail before DNS, socket creation, budget consumption or credential use.
+The existing transport tests explicitly replace the gate only while using mocked
+sockets or in-process socketpairs; separate tests exercise the unchanged disabled
+production path. The fixture scanner remains in-process and operational.
+
+This is a code-level safety hold, not a completed live scanner or production
+security boundary against code changes or monkeypatching. Enabling live traffic
+requires finishing and reviewing the outstanding guard, identity, ownership,
+evidence and integration work, plus written organizer authorization. Full local
+suite: 363 passed, one third-party warning. See [judge demo](checkpoints/21-live-disabled.md).
 
 ## Outstanding checkpoints
 

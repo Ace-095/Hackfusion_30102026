@@ -1,8 +1,8 @@
 """Experimental guarded HTTPX read boundary; not wired into the scanner or API.
 
 Every wire request passes the scope guard in this transport immediately before
-socket creation. Direct use can connect to a supplied IP: do not use against a
-real target until independently reviewed and explicitly authorized.
+socket creation. Production network execution is disabled pending complete
+safety review; tests explicitly replace the gate using mocked network resources.
 """
 import http.client
 import hmac
@@ -24,6 +24,13 @@ from canarygate.scope.authorized import AuthorizedScope
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 4096
 TOTAL_DEADLINE_SECONDS = 10.0
+
+
+def _network_execution_enabled():
+    # Deliberately no configuration or environment override: until the live
+    # scanner and its safety review are complete, this path is disabled. Tests
+    # replace this function while using mock sockets or an in-process socketpair.
+    return False
 
 
 class _NetworkDeadline:
@@ -119,6 +126,8 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         with self._run_guard.execution():
+            if not _network_execution_enabled():
+                raise ValueError("live network execution disabled pending safety review")
             actor = request.extensions.get("canary_actor")
             target = request.url
             try:
