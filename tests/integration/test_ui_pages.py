@@ -439,7 +439,7 @@ def test_accessibility_basics_on_every_page(tmp_path):
         run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
             .headers["location"].rsplit("/", 1)[-1]
         pages = PATHS + [f"/ui/scans/{run_id}", f"/ui/scans/{run_id}/evidence",
-                         f"/ui/scans/{run_id}/report"]
+                         f"/ui/scans/{run_id}/report", f"/ui/scans/{run_id}/replay"]
         # An unknown run renders the error state, which deliberately highlights no
         # navigation section; it is covered separately for the shared shell.
         pages.append("/ui/scans/00000000-0000-0000-0000-000000000000")
@@ -458,3 +458,119 @@ def test_accessibility_basics_on_every_page(tmp_path):
             assert nav.count('aria-current="page"') == expected, path
             assert "<img" not in body, path              # no unlabelled images
             assert "style=" not in body.replace('style="width:', ""), path
+
+
+# --------------------------------------------------------------------------- #
+# Flight recorder
+# --------------------------------------------------------------------------- #
+def _events(body):
+    """Extract the rendered replay events in DOM order."""
+    return re.findall(r'<li class="replay-event" data-event data-index="(\d+)"\s*'
+                      r'data-offset="([^"]*)"', body)
+
+
+def test_replay_orders_fixture_events_by_capture_time_and_marks_evidence(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        run = client.get(f"/api/scan/{run_id}").json()
+        observations = client.get(f"/api/scan/{run_id}/observations").json()["observations"]
+
+        response = client.get(f"/ui/scans/{run_id}/replay")
+        assert response.status_code == 200
+        body = response.text
+        assert 'data-mode="timeline"' in body
+
+        rendered = _events(body)
+        expected = len(observations) + sum(1 for check in run["checks"] if check.get("evidence"))
+        assert len(rendered) == expected
+
+        # Order is the backend's own capture order: offsets never decrease.
+        offsets = [int(offset) for _, offset in rendered if offset]
+        assert offsets == sorted(offsets)
+        assert [int(index) for index, _ in rendered] == list(range(1, expected + 1))
+
+        # The run's two evidence parts are annotations on the request they describe,
+        # not extra events: each appears once, and no event claims to BE the evidence.
+        assert body.count("part-tag part-ownership") == 1
+        assert body.count("part-tag part-disclosure") == 1
+        assert 'source-evidence' not in body
+
+        # Each marked event carries the actor/method/path/status of its evidence part.
+        for part in ("ownership", "disclosure"):
+            record = run["evidence"][part]
+            marked = re.search(r'part-tag part-' + part + r'">.*?</header>.*?'
+                               r'<b>' + re.escape(record["actor"]) + r'</b>', body, re.S)
+            assert marked is not None, part
+            assert record["path"] in body
+
+        # Every timestamp shown is one the backend actually recorded.
+        api_timestamps = {observation["timestamp"] for observation in observations}
+        api_timestamps |= {check["evidence"]["timestamp"] for check in run["checks"]
+                           if check.get("evidence")}
+        shown = set(re.findall(r'<time class="replay-time" datetime="([^"]+)"', body))
+        assert shown <= api_timestamps
+
+        # The verdict panel is the backend's verdict, not a replay-side judgement.
+        assert 'badge badge-danger">CONFIRMED' in body
+        assert run["reason"] in body
+
+
+def test_replay_refuses_to_invent_a_timeline_for_transcript_runs(tmp_path):
+    with _client(tmp_path) as client:
+        bola = client.post("/ui/actions/scenario-scan", data={"scenario_id": "synthetic-vulnerable"},
+                           follow_redirects=False).headers["location"].rsplit("/", 1)[-1]
+        auth = client.post("/ui/actions/authentication-scan",
+                           data={"scenario_id": "synthetic-jwt-sub-confirmed"},
+                           follow_redirects=False).headers["location"].rsplit("/", 1)[-1]
+
+        for path in (f"/ui/suites/read-bola/{bola}/replay",
+                     f"/ui/suites/authentication/{auth}/replay"):
+            response = client.get(path)
+            assert response.status_code == 200, path
+            body = response.text
+            # The backend stamps every transcript record with one instant, so the
+            # page must call this a sequence and claim no offsets.
+            assert 'data-mode="sequence"' in body, path
+            assert 'data-mode="timeline"' not in body, path
+            assert "not a measured timeline" in body, path
+            assert all(offset == "" for _, offset in _events(body)), path
+
+        # A scenario run still shows both evidence parts, in backend list order.
+        body = client.get(f"/ui/suites/read-bola/{bola}/replay").text
+        assert body.index("Ownership evidence") < body.index("Disclosure evidence")
+
+
+def test_replay_is_progressive_enhancement_with_local_assets(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        body = client.get(f"/ui/scans/{run_id}/replay").text
+
+        # Without JavaScript the whole timeline is present and the controls are inert.
+        assert body.count('data-event ') == len(_events(body))
+        assert re.search(r"<div class=\"replay-controls\" data-replay-controls hidden", body)
+        assert 'aria-live="polite"' in body
+        assert 'tabindex="0"' in body
+
+        # Local assets only, and they are actually served.
+        assert EXTERNAL_REFERENCE.search(body) is None
+        for asset in ("/ui/static/css/replay.css", "/ui/static/js/replay.js"):
+            assert asset in body
+            assert client.get(asset).status_code == 200
+
+        # The page explains where its data came from and what it does not do.
+        assert f"/api/scan/{run_id}/observations" in body
+        assert "Nothing on this page is a live request" in body
+
+
+def test_replay_unavailable_state_is_explicit(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        # An unknown run is a real 404 page, not an empty recorder.
+        assert client.get("/ui/scans/00000000-0000-0000-0000-000000000000/replay")\
+            .status_code == 404
+        # A stored run always renders; the recorder never shows a blank page.
+        body = client.get(f"/ui/scans/{run_id}/replay").text
+        assert "No replay is available for this run" not in body

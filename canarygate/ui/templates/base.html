@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/ui/static/css/app.css">
   <script src="/ui/static/vendor/htmx.min.js" defer></script>
   <script src="/ui/static/js/app.js" defer></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -74,5 +75,7 @@
     <div>CanaryGate v3.2 · local offline checkpoint · backend mode <span class="mono">fixture</span> · live scanning disabled</div>
     <div>Do not expose this server. Do not treat fixture verdicts as live-target results.</div>
   </footer>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>

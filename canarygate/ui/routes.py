@@ -29,6 +29,7 @@ from canarygate.scan.models import ScenarioScanRequest
 from canarygate.scan.scenarios import SCENARIO_IDS as READ_BOLA_SCENARIO_IDS
 from canarygate.offline.scan import fixture_recipe
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
+from canarygate.ui.replay import build_replay
 from canarygate.ui.templating import templates
 
 router = APIRouter(include_in_schema=False)
@@ -455,6 +456,21 @@ def evidence_page(request: Request, run_id: str):
     return _page(request, "evidence.html", "scans", run=run, observations=observations)
 
 
+@router.get("/ui/scans/{run_id}/replay")
+def replay_page(request: Request, run_id: str):
+    """Replay one fixture run from the evidence the backend recorded for it."""
+    def build():
+        api = _api()
+        run = api.scan(run_id=run_id, store=_store(request))
+        observations = api.scan_observations(run_id=run_id, store=_store(request))
+        return build_replay("fixture", run, observations)
+
+    result = _guard(request, build)
+    if not isinstance(result, dict):
+        return result
+    return _page(request, "replay.html", "scans", **result)
+
+
 @router.get("/ui/matrix")
 def matrix_page(request: Request):
     def build():
@@ -552,6 +568,28 @@ def suite_run_page(request: Request, family: str, run_id: str):
     return _page(request, "suite_run.html", "suites", run=result, family=family,
                  proof_family="Read-BOLA scenario" if family == "read-bola"
                  else "Authentication scenario")
+
+
+@router.get("/ui/suites/{family}/{run_id}/replay")
+def suite_replay_page(request: Request, family: str, run_id: str):
+    """Replay an offline transcript run, as a sequence rather than a timeline."""
+    if family not in {"read-bola", "authentication"}:
+        return _error(request, 404, "Unknown test-suite family",
+                      "Use read-bola or authentication.")
+
+    def build():
+        api = _api()
+        if family == "read-bola":
+            run = api.scenario_scan(run_id=run_id, store=_store(request, "scenario"))
+        else:
+            run = api.authentication_scan(run_id=run_id,
+                                          store=_store(request, "authentication"))
+        return build_replay(family, run)
+
+    result = _guard(request, build)
+    if not isinstance(result, dict):
+        return result
+    return _page(request, "replay.html", "suites", family=family, **result)
 
 
 @router.get("/ui/spec")

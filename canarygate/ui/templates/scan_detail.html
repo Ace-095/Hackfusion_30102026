@@ -12,6 +12,7 @@
                         (run.id|short_id, None)]) %}
   <div class="toolbar">
     {{ verdict_badge(run.verdict, "badge-lg") }}
+    <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/replay">{{ icon("play") }} Replay run</a>
     <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/evidence">{{ icon("eye") }} Evidence explorer</a>
     <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
   </div>

@@ -63,6 +63,7 @@
     {% else %}
       {{ status_badge(run.status) }}
     {% endif %}
+    <a class="btn btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}/replay">{{ icon("play") }} Replay run</a>
     {{ suite_report_links(family, run.id) }}
   </div>
 {% endcall %}

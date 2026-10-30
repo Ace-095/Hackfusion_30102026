@@ -40,6 +40,7 @@ canarygate/ui/
 ├── __init__.py            # package docstring only
 ├── app.py                 # FRONTEND ENTRYPOINT: backend app + UI mounted at runtime
 ├── routes.py              # HTML routes, form actions, view helpers
+├── replay.py              # flight recorder adapter: backend evidence -> ordered events
 ├── templating.py          # Jinja2 environment, filters (verdict/status badges, JSON, tri-state,
 │                          #   humanize, pct, short_id)
 ├── templates/
@@ -57,6 +58,7 @@ canarygate/ui/
 │   ├── matrix.html        # run-derived authorization cells
 │   ├── reports.html       # links to backend-generated HTML/JSON reports
 │   ├── report_view.html   # backend `?view=sections` rendered in-page, print-friendly
+│   ├── replay.html        # flight recorder: recorded events, step-through playback
 │   ├── suites.html        # read-BOLA + authentication scenario runners
 │   ├── suite_run.html     # scenario run / authentication run detail
 │   ├── spec.html          # in-memory OpenAPI inspection
@@ -64,7 +66,9 @@ canarygate/ui/
 │   └── partials/          # HTMX fragments: fixtures scan result, suite result, spec result, error
 └── static/
     ├── css/app.css
+    ├── css/replay.css      # recorder only (loaded by replay.html)
     ├── js/app.js
+    ├── js/replay.js        # playback engine (progressive enhancement)
     └── vendor/htmx.min.js, vendor/htmx.LICENSE
 ```
 
@@ -214,13 +218,14 @@ feature; none of them are faked.
 | G9 | Evidence is minimized by design (no raw traffic) | `/ui/scans/{id}` | Shows redacted summaries + hashes, explains what is absent | No change proposed — this is a safety property, not a gap to close |
 | G10 | No CSRF token for UI form posts | all forms | None needed while the API is unauthenticated and local; adding cookies/sessions later would require CSRF protection | Add CSRF tokens together with any authentication work |
 | G11 | Severity/risk ranking absent from the contract | `/ui/findings` | Ranks by verdict only, with an on-page explanation | Add `severity: Literal["critical","high","medium","low","info"] \| None` + `severity_source` to `SecurityCheck`/`FixtureRun`. Must stay `None` when the backend has no basis for it — an invented severity is worse than none |
+| G13 | Transcript runs expose no per-request capture time | `/ui/suites/*/replay` | Renders them as a *sequence* in backend list order and says so | A `captured_at` per transcript entry (or an ordered `steps[]` on the run) would let scenario and authentication runs use the same timeline the fixture run already has |
 | G12 | No configuration submission path | `/ui/configure` | Shows bundled config read-only, form disabled with reasons | Same as G3/G4: a validated config object plus a scan-job contract, only after guard + authorization work |
 
 Contract changes to the frozen models or the existing routes were **not** made.
 
 ## 7. Tests
 
-`tests/integration/test_ui_pages.py` (20 tests, run with the rest of the suite — 629 total):
+`tests/integration/test_ui_pages.py` (24 tests, run with the rest of the suite):
 
 | Test | What it actually proves |
 | --- | --- |
@@ -244,6 +249,11 @@ Contract changes to the frozen models or the existing routes were **not** made.
 | `test_report_view_renders_backend_sections_and_prints` | `/ui/scans/{id}/report` renders the backend's own 9 sections and titles, keeps a single `<h1>`, and offers a print control |
 | `test_journey_links_the_review_path_on_core_pages` | The numbered journey appears on every core page, marks the current step, and links onward to endpoints and the run report |
 | `test_accessibility_basics_on_every_page` | Every page (including 404 states) has exactly one `<h1>`, a skip link to `#main`, `lang`, a labelled nav with exactly one `aria-current`, no `<img>` without text alternatives and no inline styles |
+
+| `test_replay_orders_fixture_events_by_capture_time_and_marks_evidence` | The recorder's event count equals observations + executed probes, offsets never decrease, evidence parts are annotations rather than extra events, every displayed timestamp is one the API returned |
+| `test_replay_refuses_to_invent_a_timeline_for_transcript_runs` | Scenario and authentication runs render as a sequence with no offsets and say "not a measured timeline" |
+| `test_replay_is_progressive_enhancement_with_local_assets` | The whole timeline is in the HTML before JavaScript runs, controls start hidden, assets are local and served |
+| `test_replay_unavailable_state_is_explicit` | An unknown run is a real 404 page; a stored run always renders a recorder |
 
 Not covered yet: real-browser rendering (no headless browser in this environment),
 screen-reader audit, a manual keyboard-only pass, and pixel-level visual
@@ -417,3 +427,72 @@ git diff --stat 27fd836 -- canarygate/api canarygate/guard canarygate/runner \
   pyproject.toml README.md tests/unit tests/security   # expected: no output
 python -m pytest -q                                    # expected: 626 passed
 ```
+
+---
+
+## 12. Flight recorder (replay)
+
+`/ui/scans/{id}/replay` and `/ui/suites/{family}/{id}/replay` step through the
+requests that produced a stored result. The page is built by
+`canarygate/ui/replay.py` (a read-only adapter), rendered by
+`templates/replay.html`, styled by `static/css/replay.css` and driven by
+`static/js/replay.js`.
+
+### 12.1 Feasibility audit, run before writing any replay code
+
+The recorder was only built because the backend already exposes the data. What
+was checked, against real responses:
+
+| Requirement | Fixture run | Read-BOLA scenario | Authentication scenario |
+| --- | --- | --- | --- |
+| Per-event capture timestamp | **Yes** — `observations[].timestamp`, `checks[].evidence.timestamp`, both `datetime.now(UTC)` at capture | **No** — both evidence parts share one instant (build time) | **No** — every check equals `run.created_at` exactly |
+| Stable event ordering | **Yes** — list order equals execution order, and timestamps are strictly increasing (18/18 unique in every run tested) | Partial — backend list order only | Partial — backend list order only |
+| Request detail | **Yes** — method, path, redacted Authorization, status | Method, `path_template`, status | Method, `path_template`, probe kind, status |
+| Response detail | **Yes** — minimized, allowlisted fields (`item_count`, `item.id`, `item.owner`, `private_field_present`, truncation flag) | Redacted body only | Redacted body + denial-body flag |
+| Actor / role | **Yes** per event | **Yes** per evidence part | **Yes** per check |
+| Ownership evidence | **Yes** — `run.evidence.ownership` | **Yes** | n/a (not a BOLA run) |
+| Disclosure evidence | **Yes** — `run.evidence.disclosure` | **Yes** | n/a |
+| Explicit observation → finding link | **No** — no foreign key; the link is (actor, method, path, status) identity plus the phase name | Same (phase name) | Same (check id) |
+
+Consequences, all enforced in code:
+
+1. **A timeline is only claimed where capture timestamps exist.** Fixture runs
+   get `mode="timeline"` with real offsets. Transcript runs get
+   `mode="sequence"` and the page says, in words, that the order is backend list
+   order and no measurement is being claimed.
+2. **Evidence parts annotate events, they do not become events.** The ownership
+   evidence describes the same request as the `owner_baseline` observation one
+   layer of interpretation later; emitting both would make one request look like
+   two. Matching is by request identity, and the page states the rule.
+3. **Skipped checks are absent, not empty.** A SKIPPED check performed no
+   request, so it has no event; it stays listed on the run page.
+4. **Nothing is invented.** Ordering, relative offsets and labels are the only
+   things computed here. Every timestamp, status, assertion, digest and verdict
+   is copied from the API response.
+
+If the backend later adds a per-transcript-entry `captured_at` (gap G13), the
+same adapter and page can switch transcript runs to `mode="timeline"` without
+any template change.
+
+### 12.2 Behaviour
+
+* **No JavaScript:** the page is a complete, scrollable evidence timeline — all
+  events, all details, verdict at the end. The transport controls stay hidden.
+* **With JavaScript:** the same markup becomes a stepper (`Home`/`End`,
+  `←`/`→`, `Space` to play/pause, a speed selector) with an `aria-live`
+  announcement per step, `aria-current="step"` on the active card, and the
+  verdict panel revealed only after the last event.
+* **Playback timing** is derived from the recorded gaps, clamped to
+  700–2400 ms so a 1 ms gap stays readable; nothing autoplays.
+* **Reduced motion** disables the card transition and switches scrolling to
+  instant.
+
+### 12.3 Verification beyond the test suite
+
+The playback engine was executed against the real rendered page in a jsdom DOM
+(node + jsdom, outside the repo and outside CI). 25 assertions covered:
+controls stay hidden before enhancement, step 1 is active on load, next/prev
+clamp at the ends, `←`/`→`/`Home`/`End` move correctly, announcements describe
+the current event, play advances on its own, pause freezes, and the verdict is
+revealed exactly at the final step. jsdom has no layout engine, so this proves
+the behaviour, not the pixels.
