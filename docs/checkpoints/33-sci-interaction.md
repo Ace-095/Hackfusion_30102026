@@ -6,6 +6,10 @@ alone, yet the *combination* leaks another account's data. This checkpoint adds
 that capability to the existing offline build without changing the frozen P0
 verdict rules.
 
+**Delivered in commit `dbbd15e`** on branch
+`arena/aa67fa1b-hackfusion-30102026` (implemented in `dbbd15e`, this note in the
+following documentation commit).
+
 **Scope reality.** Everything here runs on bundled synthetic offline transcripts.
 `network_transport_enabled` is `False` on every run, the sockets are never opened,
 and no VAMPI/crAPI/organizer/public target was contacted. These are not live
