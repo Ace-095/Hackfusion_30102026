@@ -129,3 +129,5 @@ For the fixture resource-enumeration comparison, see [checkpoint 8](checkpoints/
 For the scoped enum-validation demonstration, see [checkpoint 9](checkpoints/09-enum-validation.md).
 
 For the offline organizer-scope validation demonstration, see [checkpoint 10](checkpoints/10-scope-validation.md).
+
+For the offline preflight policy demonstration, see [checkpoint 11](checkpoints/11-preflight.md).

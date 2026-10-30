@@ -61,7 +61,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 7 demo](docs/checkpoints/07-disclosure.md), and
 [checkpoint 8 demo](docs/checkpoints/08-enumeration.md), and
 [checkpoint 9 demo](docs/checkpoints/09-enum-validation.md), and
-[checkpoint 10 demo](docs/checkpoints/10-scope-validation.md).
+[checkpoint 10 demo](docs/checkpoints/10-scope-validation.md), and
+[checkpoint 11 demo](docs/checkpoints/11-preflight.md).
 
 ## Run the fixture API locally
 

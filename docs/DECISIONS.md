@@ -367,6 +367,25 @@ The full local suite passed: 214 tests, with one third-party Starlette/AnyIO
 warning. No credentials, private organizer scope or generated reports were added
 by this checkpoint. Scope contracts remain provisional.
 
+CI verification: GitHub Actions run `41041772272` passed Ubuntu and Windows
+for checkpoint 10 commit `c7bf78e`. The wheel and in-process fixture demo also
+passed locally.
+
+## Checkpoint 11 — offline preflight policy
+
+Test-first exact actor/method/URL/classification and budget checks initially
+failed because the preflight module was absent. Follow-up tests exposed that
+Pydantic `model_copy(update=...)` bypasses validation; construction now validates
+a serialized copy of the scope. The offline decision budget is protected by a
+lock and a concurrent test cannot overspend it. Full local suite: 232 passed,
+one third-party warning. See [judge demo](checkpoints/11-preflight.md).
+
+This policy model is not connected to any runner or transport and is not a live
+guard. Its per-instance decision counter is not a live request budget; it does
+not enforce sequential requests, inspect authentication bodies, validate DNS or
+pin connections. It does not allow resource creation, including when an approval
+reference is present. No live target feature has been enabled.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

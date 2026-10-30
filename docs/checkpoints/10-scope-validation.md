@@ -12,7 +12,7 @@ The existing fixture API still runs only the built-in in-process target.
   classified exact operations and a written authorization reference.
 - A single organizer-supplied IP is preferred, or an explicitly specified
   `organizer_approved_system` resolver is recorded. **Neither is used to connect
-  or resolve** in this checkpoint. Unspecified, multicast, broadcast, zone-scoped
+  or resolve** in this checkpoint. Unspecified, multicast, limited broadcast, zone-scoped
   or malformed IPs are rejected; no public DNS resolver is queried.
 - Unknown fields, embedded account password/token fields, duplicate keys or
   accounts/operations, YAML aliases, unknown classifications and conflicting
