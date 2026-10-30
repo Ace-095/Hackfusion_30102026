@@ -81,9 +81,10 @@ Consequences that the integration relies on:
 - **Same stores.** `create_app` puts nine stores on `app.state`; the UI reads them
   exactly like the JSON routes do (`_store(request, kind)`).
 - **Same handlers.** `canarygate/ui/routes.py` imports `canarygate.api.app` and calls
-  `health()`, `endpoints()`, `findings()`, `scan()`, `matrix()`,
-  `authorization_matrix()`, the six `*_report()` functions and the scan starters.
-  There is one implementation of every rule.
+  `health()`, `endpoints()`, `setup_status()`, `findings()`, `scan()`,
+  `matrix()`, `authorization_matrix()`, the per-family scan and report handlers
+  named in the `SUITE_FAMILIES` / `LAB_FAMILIES` tables, and the nine `start_*`
+  functions the forms post to. There is one implementation of every rule.
 - **Same database.** `CANARYGATE_DB_PATH` (or the default `.canarygate/fixture.sqlite3`)
   configures both surfaces; nothing is duplicated.
 - **Backend entrypoint still works alone.** `python -m uvicorn canarygate.api.app:app`
@@ -164,7 +165,7 @@ uses each one; `—` means no page uses it, and the reason is in §9.
 | `GET /ui/suites/{family}/{id}/report` | page | `*_report(view="sections")` |
 | `GET /ui/lab` | page | three lab stores + CA readiness |
 | `GET /ui/lab/{family}/{id}` | page | `lab_bola_scan` / `lab_sci_scan` / `lab_sci_reset` |
-| `GET /ui/lab/{family}/{id}/report` | page | `lab_bola_report` / `lab_sci_report` (sections) |
+| `GET /ui/lab/{family}/{id}/report` | page | `lab_bola_report` / `lab_sci_report` (sections); the reset family has no section report, so `/ui/lab/reset/{id}/report` is a 404 |
 | `GET /ui/reports` | page | fixture runs + four suite stores + three lab stores |
 | `GET /ui/reports/lookup` | redirect | validates a UUID, then 303s to the family page |
 | `POST /ui/actions/fixture-scan` | action | `start_scan` |
@@ -187,16 +188,16 @@ secret in the repository; `.env.example` documents them for copy/paste.
 | `CANARYGATE_TARGETLAB_CA` | lab routes only | every lab scan returns **400** and stores nothing; the UI shows the refusal |
 
 What is deliberately **not** configured from the browser: the target host, the port
-allow-list, accounts, credentials, the spec, the recipe, the budget beyond the
-model's 16–40 bound, or the verdict. All of it is built by the backend from the
-validated scope.
+allow-list, accounts, credentials, the spec, the recipe, any budget beyond the
+bounds the models already declare (BOLA 16–40, SCI 8–40), or the verdict. All of it
+is built by the backend from the validated scope.
 
 ## 5. Workflows, page by page
 
 | Workflow (brief §6) | Where | What actually happens |
 | --- | --- | --- |
 | A. Dashboard | `/ui/` | health (`mode=fixture`, `live_scanning=false`), endpoint count, stored run count, readiness gates, verdict distribution, five recent runs, and the latest loopback verdicts per lab workflow. No sample numbers; empty states say "not recorded". |
-| B. Scan configuration | `/ui/configure`, `/ui/suites`, `/ui/lab` | The only configurable inputs are the ones the models accept: a bundled scenario id (a dropdown from the registry) and a lab port (1024–65535, optional budget 16–40). `/ui/configure` shows the bundled scope/recipe/spec read-only, with secrets redacted. |
+| B. Scan configuration | `/ui/configure`, `/ui/suites`, `/ui/lab` | The only configurable inputs are the ones the models accept: a bundled scenario id (a dropdown from the registry) and a lab port (1024–65535), plus the optional request budget the models already bound (BOLA 16–40, default 20; SCI 8–40, default 16). `/ui/configure` shows the bundled scope/recipe/spec read-only, with secrets redacted. |
 | C. BOLA scanning | `/ui/lab` → `/ui/lab/bola/{id}` | POSTs the port to `/ui/actions/lab-bola-scan`; the backend builds the plan, runs six checks over real HTTPS, and stores the run. The page shows each check's id, direction, actor→owner, endpoint, HTTP status, verdict, reason and evidence hash; the summary counts; the 10-key checklist; transport; constraints; ground truth scored after the verdicts; limitations. |
 | D. SCI scanning | `/ui/lab` → `/ui/lab/sci/{id}` | Same pattern: both control baselines with their own verdicts and statuses (403, 401), the combined action (200, `private_data`), the attribution (`interaction_induced`), the eight-key checklist, ownership/disclosure evidence, and links to reset proofs on the same port. The 403→401→200 sequence is read from stored evidence; the page never writes it itself. |
 | E. Lab validation restrictions | `/ui/lab`, `/ui/lab/reset/{id}` | The browser posts a port; the app performs the guarded requests with a pinned test CA to `127.0.0.1`. The lab's passwords, tokens and private markers never reach the browser (asserted in three tests). A missing CA is a 400 page; an unreachable lab is a 502 page and stores nothing. |
@@ -302,6 +303,29 @@ same against the real TLS lab, and the CP38 demonstration
 (`.venv/bin/python tools/demo.py`) still exercises four stages end to end with
 `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)`.
 
+### Live two-process check
+
+Both processes were started with exactly the commands in §10 and driven over real
+HTTP, because a `TestClient` run cannot prove the entry point, the static mount or
+uvicorn's startup:
+
+| Step | Observed result |
+| --- | --- |
+| `GET /` | 307 → `/ui/` |
+| 19 page, asset and JSON GETs (every page, both static bundles, `/api/authorization-matrix`, `/openapi.json`) | all 200, and **zero** `src`/`href` references to another origin |
+| `POST /ui/actions/fixture-scan` | 303 → `/ui/scans/{id}`; the page, its report page and `/api/reports/{id}?view=run` all 200; report id equals the run id; verdict CONFIRMED, 22 checks |
+| `POST /ui/actions/lab-bola-scan` on port 8765 | 303 → the stored run: six checks, 2 CONFIRMED / 4 SAFE, ground truth present, `production_networking: false` |
+| `POST /ui/actions/lab-sci-scan` | 303 → CONFIRMED (`interaction_induced`); 403, 401 and 200 all present on the page |
+| `POST /ui/actions/lab-sci-reset` | 303 → `proven`; RESET-01…04 = 403 / 401 / 200 / 403 |
+| `GET /api/authorization-matrix` | `partial_offline`, 16 rows / 64 cells / 5 tested, hatched untested cells |
+| Eight lab secrets (passwords, tokens, private markers, key header) | absent from every page fetched |
+| Bad input | port 70000 → 422; a just-closed high port → 502 "no evidence was stored"; unknown run id and unknown family → 404 |
+| HTMX | an `HX-Request` POST returns a 1.7 KB fragment with no `<!doctype>` |
+
+`canarygate.demo` (the CLI that drives the documented JSON routes) also ran against
+that same server and produced its HTML and JSON report links, so the interface and
+the pre-existing CLI share one backend rather than competing.
+
 ## 9. What is still not connected, and why
 
 | Item | Why it stays out |
@@ -396,12 +420,11 @@ workflow and see its verdict, evidence and report — no `curl`, no API call by 
 | Commit | Contents |
 | --- | --- |
 | `ed237db` | Import the frontend branch's UI (`canarygate/ui/**`, `docs/UI.md`, its two test files) and connect every stored workflow; widen the seven report response models |
+| `d61f3b0` | This document, `.env.example`, the `docs/UI.md` update, the `canarygate.ui` package data that lets a built wheel serve the UI, the README and demo-walkthrough corrections, and the two structural accessibility tests for the pages the integration added |
 
-Later commits add this document, `.env.example`, the two structural tests for the
-new pages, the `canarygate.ui` package data that makes a built wheel serve the UI,
-the README and demo walkthrough corrections, and the `docs/UI.md` update that keeps
-the page map in step. The frontend branch is untouched and remains the recovery
-point; nothing was force-pushed, reset or rewritten.
+Reviewable as **PR #4** against `main`. The frontend branch is untouched and remains
+the recovery point; nothing was merged into it, reset or force-pushed, and this
+branch was pushed as a new branch rather than rewritten.
 
 ## 13. Limitations, stated once
 
