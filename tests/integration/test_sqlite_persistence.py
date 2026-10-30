@@ -90,7 +90,7 @@ def test_corrupt_evidence_is_rejected_even_when_report_hash_is_recomputed(tmp_pa
 def test_storage_failure_returns_generic_error_without_secret_details(tmp_path, monkeypatch):
     application = create_app(tmp_path / "fixture.sqlite3")
     with TestClient(application) as client:
-        def fail_save(_):
+        def fail_save(*_):
             raise sqlite3.OperationalError("internal db message with secret-token")
         monkeypatch.setattr(application.state.store, "save", fail_save)
         response = client.post("/api/scan")

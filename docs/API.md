@@ -22,10 +22,12 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/setup/status` | Most recent fixture setup, or null before the first run |
 | `POST /api/scan` | Synchronously run bundled fixture, return `FixtureRun` |
 | `GET /api/scan/{id}` | `FixtureRun`, or 404 |
+| `GET /api/scan/{id}/observations` | Minimized ownership observation set, or 404 |
 | `GET /api/findings` | `{mode, findings: [FixtureRun, ...]}` |
 | `GET /api/matrix` | `{mode, cells: [...]}` for runs; not a full authorization matrix |
 | `GET /api/reports/{id}?format=json` | `FixtureRun`, or 404; `json` is the default |
-| `GET /api/reports/{id}?format=html` | Preliminary HTML fixture report; unknown formats return 400 |
+| `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
+| `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
 `FixtureRun` includes ID, time, status, actor/role, endpoint, target resource,
 verified owner, expected access and provenance, setup/readiness states, verdict,
@@ -43,12 +45,32 @@ complete captured HTTP traffic; there are no raw bodies or credentials. Use the
 schema endpoint for exact fields and enum values. Missing evidence does not mean
 that a check passed.
 
-Report and evidence checksums are verified when a stored run is retrieved. A
-corrupt record yields a generic 500 instead of a finding; these unkeyed hashes
+The observation-set response is `{mode, run_id, coverage, observations}`. `coverage`
+is `RECORDED` when the set was saved (including an empty set if setup stopped
+before discovery), or `NOT_RECORDED` when no observation row exists (normally runs saved before this checkpoint).
+The absence of a row cannot distinguish a legacy run from a deleted observation set. The
+ordered, individually hashed records cover the attempted discovery lists, owner
+baselines and cross-user read. Nullable assertions indicate checks not performed;
+false match means the expected match was not observed, not that an ambiguous
+response proves security. Only synthetic actor names, methods/paths and IDs,
+status codes, bounded allowlisted list/item metadata and Boolean comparisons are
+stored. Authorization is redacted; response headers, arbitrary strings and private
+values are not stored. Lists are limited to 20 displayed items and carry the total
+count and a truncation flag. The assertion is calculated on the full fixture
+response, so a truncated minimized observation is not independently exhaustive.
+
+The JSON report's opt-in bundle is additive; existing run, findings, matrix and
+default report contracts have not changed. The HTML report renders the stored
+observations and provides a command to start **a new** local scan, plus a command
+to retrieve the stored report. The mock target is in-process, not a curl endpoint.
+
+Report, observation-set and per-observation checksums are verified when the
+corresponding stored data is retrieved. A corrupt record yields a generic 500 instead of a finding; these unkeyed hashes
 are not signatures or protection against a database writer who can recompute
 them. Stored evidence is a minimized fixture summary, not full raw traffic.
 
-There is no real upload, authentication setup, asynchronous progress, live scan,
-general evidence viewer, migration system or complete report yet. Handle 501,
-404, 500 and null states rather than presenting placeholder data as completed
+The observation table is an additive, narrowly scoped migration, not a general
+database migration system. There is no real upload, authentication setup,
+asynchronous progress, live scan, general evidence viewer or complete report yet.
+Handle 501, 404, 500 and null states rather than presenting placeholder data as completed
 scans. The fixture redactor is not approved for live credentials or real data.

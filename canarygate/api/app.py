@@ -1,17 +1,17 @@
 """Local-only API with fixture-only SQLite persistence; no live targets."""
 from contextlib import asynccontextmanager
-from html import escape
-import json
 from pathlib import Path
 import sqlite3
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
-from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse)
+from canarygate.report.fixture import render_fixture_report
+from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
+                      ObservationSet, FixtureReportBundle)
 
 router = APIRouter()
 
@@ -53,8 +53,10 @@ def setup_status(store: FixtureStore = Depends(get_store)):
 
 @router.post("/api/scan", status_code=201, response_model=FixtureRun)
 def start_scan(store: FixtureStore = Depends(get_store)):
-    # The returned value is the redacted, integrity-checked version that was stored.
-    return _database_call(store.save, run_fixture())
+    # Run and its minimized observations are stored in one SQLite transaction.
+    observations = []
+    run = run_fixture(observation_sink=observations)
+    return _database_call(store.save, run, observations)
 
 
 def _find(store: FixtureStore, run_id: str):
@@ -69,6 +71,19 @@ def scan(run_id: str, store: FixtureStore = Depends(get_store)):
     return _find(store, run_id)
 
 
+@router.get("/api/scan/{run_id}/observations", response_model=ObservationSet)
+def scan_observations(run_id: str, store: FixtureStore = Depends(get_store)):
+    _find(store, run_id)
+    return _observation_set(store, run_id)
+
+
+def _observation_set(store: FixtureStore, run_id: str):
+    observations = _database_call(store.get_observations, run_id)
+    return {"mode": "fixture", "run_id": run_id,
+            "coverage": "NOT_RECORDED" if observations is None else "RECORDED",
+            "observations": [] if observations is None else observations}
+
+
 @router.get("/api/findings", response_model=FindingsResponse)
 def findings(store: FixtureStore = Depends(get_store)):
     return {"mode": "fixture", "findings": _database_call(store.list)}
@@ -81,52 +96,20 @@ def matrix(store: FixtureStore = Depends(get_store)):
     return {"mode": "fixture", "cells": cells}
 
 
-@router.get("/api/reports/{run_id}", response_model=FixtureRun, responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
-def report(run_id: str, format: str = "json", store: FixtureStore = Depends(get_store)):
+@router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def report(run_id: str, format: str = "json", include_observations: bool = False,
+           store: FixtureStore = Depends(get_store)):
     run = _find(store, run_id)
-    if format == "json":
-        return run
-    if format != "html":
+    if format == "json" and not include_observations:
+        return run  # Existing JSON contract is unchanged.
+    if format not in {"json", "html"}:
         raise HTTPException(status_code=400, detail="Format must be json or html")
-    # All untrusted values are escaped, including fixture data and JSON summaries.
-    def field(label, value):
-        return f"<p><strong>{escape(str(label))}:</strong> {escape(str(value))}</p>"
-
-    def block(value):
-        return "<pre>" + escape(json.dumps(value, indent=2, ensure_ascii=True)) + "</pre>"
-
-    html = "<!doctype html><html><head><meta charset='utf-8'><title>Fixture report</title>"
-    html += "<style>body{font:16px system-ui;max-width:960px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap}h1,h2{color:#18334f} .warning{background:#fff3c4;padding:1rem}</style></head><body>"
-    html += "<h1>CanaryGate fixture report — not live testing</h1>"
-    html += "<p class='warning'>Offline synthetic results only. This is a partial backend checkpoint, not a production scan.</p>"
-    html += "<h2>Executive summary</h2>"
-    for label, value in (("Scan ID", run["id"]), ("Timestamp", run["created_at"]),
-                         ("Category", "Read-BOLA"), ("Verdict", run["verdict"]),
-                         ("Reason", run["reason"]), ("Actor / role", f"{run['actor']} / {run['account_role']}"),
-                         ("Target resource", run["target_resource"] or "Not established"),
-                         ("Verified owner", run["verified_owner"] or "Not established"),
-                         ("Expected access / source", f"{run['expected_access']} / {run['expected_source']}"),
-                         ("Remediation", run["remediation"] or "No finding-specific remediation")):
-        html += field(label, value)
-    html += "<h2>Endpoint inventory (OpenAPI authentication requirements only)</h2>" + block(run["inventory"])
-    html += "<h2>Three setup gates and BOLA coverage</h2>" + block(run["setup"])
-    html += "<h2>Separate ownership and disclosure evidence</h2>"
-    for kind, evidence in run["evidence"].items():
-        html += "<h3>" + escape(kind.title()) + "</h3>" + block(evidence)
-    html += "<p>Evidence bodies and credentials are minimized/redacted. Hashes cover the displayed redacted summaries, not raw traffic or signatures.</p>"
-    for category in ("Authentication", "Input validation", "Disclosure"):
-        html += "<h2>" + escape(category) + " checks</h2>" + block(
-            [check for check in run["checks"] if check["category"] == category])
-    html += "<h2>Secured endpoints that passed</h2>"
-    secured = []
-    if run["verdict"] == "SAFE":
-        secured.append(run["endpoint"] + " — cross-user denial observed")
-    secured.extend(check["id"] + " — " + check["reason"] for check in run["checks"]
-                   if check["verdict"] == "SAFE" and check["category"] != "Disclosure")
-    html += block(secured if secured else ["None observed in this fixture run"])
-    html += "<h2>Not yet executed</h2><p>JWT tampering, remaining validation and disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Individual skipped checks are listed above.</p>"
-    html += "<h2>Fixture constraint checklist</h2>" + block(run["constraints"]) + field("Scope file SHA-256", run["scope_hash"]) + field("Specification SHA-256", run["spec_hash"])
-    return HTMLResponse(html + "</body></html>")
+    observation_set = _observation_set(store, run_id)
+    if format == "json":
+        bundle = FixtureReportBundle(run=run, observation_set=ObservationSet(**observation_set))
+        return JSONResponse(content=bundle.model_dump(mode="json"))
+    return HTMLResponse(render_fixture_report(run, observation_set))
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:

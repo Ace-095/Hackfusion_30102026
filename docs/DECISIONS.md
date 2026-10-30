@@ -188,6 +188,34 @@ results do not establish full v3.2 acceptance or live-target safety. GitHub
 Actions passed on Linux and Windows for checkpoint commit `f5a004e`
 (run 41027248092).
 
+## Checkpoint 5 — fixture ownership observations and report auditability
+
+Record the actual in-process fixture discovery, owner baseline and cross-user
+responses as a separately stored, ordered minimized observation set, with truthful
+nullable assertions. The allowlist retains only synthetic actor/role, fixed request
+method/path, status, bounded safe IDs/owners, presence flags and Boolean checks;
+private values, Authorization and arbitrary response fields are excluded. Truncated
+lists are explicitly marked; assertions evaluate the full fixture response.
+
+Use an additive `fixture_observation_sets` table keyed by run ID to preserve the
+strict checkpoint-4 `FixtureRun` contract. New run and observation rows are written
+in one transaction. Legacy runs with no row are `NOT_RECORDED`; a recorded empty
+set means no qualifying steps occurred. Check the set and each observation hash on
+read. These hashes are unkeyed integrity checks, not proof against a database writer
+who can recompute them. The default JSON report remains unchanged; observation
+access and the bundle are opt-in. Render the HTML with a local autoescaped Jinja2
+template. Its reproduction command invokes a new local scan, never the in-process
+mock target as a network endpoint.
+
+Tests cover successful, failed, partial, secure and ambiguous fixture behavior;
+legacy migration; redaction and SQLite bytes; corruption including a recomputed set
+hash; injected write failure and transaction rollback; HTML escaping; persistence
+and network/DNS isolation. This is not full v3.2 report or live-target capability;
+the fixture redactor remains unsuitable for arbitrary credentials or live data.
+106 tests passed locally on Linux/Python 3.11 (one third-party deprecation warning).
+The CLI, stored JSON bundle and Jinja2 report were exercised against Uvicorn, then
+retrieved after a real restart; the packaged wheel contains the report template.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

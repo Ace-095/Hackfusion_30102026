@@ -67,7 +67,7 @@ def verify_evidence(report):
     for evidence in _evidence_items(report):
         actual_hash = evidence.get("sha256")
         summary = {key: value for key, value in evidence.items() if key not in {"sha256", "redacted"}}
-        if evidence.get("redacted") is not True or not isinstance(actual_hash, str) or not hmac.compare_digest(actual_hash, digest(summary)):
+        if evidence.get("redacted") is not True or not isinstance(actual_hash, str) or re.fullmatch(r"[0-9a-f]{64}", actual_hash) is None or not hmac.compare_digest(actual_hash, digest(summary)):
             raise EvidenceIntegrityError("fixture evidence failed integrity verification")
 
 

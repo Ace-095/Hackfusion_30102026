@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture report</title>
+<style>body{font:16px system-ui;max-width:960px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}</style>
+</head><body>
+<h1>CanaryGate fixture report — not live testing</h1>
+<p class="warning">Offline synthetic results only. This is a partial backend checkpoint, not a production scan.</p>
+<h2>Executive summary</h2>
+<p><strong>Scan ID:</strong> {{ run.id }}</p>
+<p><strong>Timestamp:</strong> {{ run.created_at }}</p>
+<p><strong>Category:</strong> Read-BOLA</p>
+<p><strong>Verdict:</strong> {{ run.verdict }}</p>
+<p><strong>Severity:</strong> {{ 'High (fixture BOLA)' if run.verdict == 'CONFIRMED' else 'Not assigned' }}</p>
+<p><strong>Reason:</strong> {{ run.reason }}</p>
+<p><strong>Actor / role:</strong> {{ run.actor }} / {{ run.account_role }}</p>
+<p><strong>Target resource:</strong> {{ run.target_resource or 'Not established' }}</p>
+<p><strong>Verified owner:</strong> {{ run.verified_owner or 'Not established' }}</p>
+<p><strong>Expected access / source:</strong> {{ run.expected_access }} / {{ run.expected_source }}</p>
+<p><strong>Remediation:</strong> {{ run.remediation or 'No finding-specific remediation' }}</p>
+<h2>Endpoint inventory (OpenAPI authentication requirements only)</h2><pre>{{ json_block(run.inventory) }}</pre>
+<h2>Three setup gates and BOLA coverage</h2><pre>{{ json_block(run.setup) }}</pre>
+<h2>Separate ownership and disclosure evidence</h2>
+{% for kind, evidence in run.evidence.items() %}<h3>{{ kind|title }}</h3><pre>{{ json_block(evidence) }}</pre>{% endfor %}
+<p>Evidence bodies and credentials are minimized/redacted. Hashes cover the displayed redacted summaries, not raw traffic or signatures.</p>
+<h2>Ownership and cross-user observations</h2>
+{% if observations.coverage == 'NOT_RECORDED' %}
+<p>Not recorded for this earlier fixture run; no observation claims are made.</p>
+{% else %}
+<pre>{{ json_block(observations.observations) }}</pre>
+<p>These are minimized fixture observations, not a complete HTTP transcript.</p>
+{% endif %}
+<h2>Local fixture reproduction</h2>
+<p>The target is an in-process mock and cannot be reached with curl. This command starts a new local fixture scan; it does not replay the stored run.</p>
+<pre>{{ new_scan }}</pre>
+<p>To retrieve this stored fixture report and its observation set from the local backend:</p><pre>{{ retrieve }}</pre>
+{% for category, results in checks.items() %}<h2>{{ category }} checks</h2><pre>{{ json_block(results) }}</pre>{% endfor %}
+<h2>Secured endpoints that passed</h2><pre>{{ json_block(secured) }}</pre>
+<h2>Not yet executed</h2>
+<p>JWT tampering, remaining validation and disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Individual skipped checks are listed above.</p>
+<h2>Fixture constraint checklist</h2><pre>{{ json_block(run.constraints) }}</pre>
+<p><strong>Scope file SHA-256:</strong> {{ run.scope_hash }}</p>
+<p><strong>Specification SHA-256:</strong> {{ run.spec_hash }}</p>
+</body></html>

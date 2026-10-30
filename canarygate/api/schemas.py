@@ -1,7 +1,7 @@
 """Provisional frontend-facing API shapes, pending spec and team review."""
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from canarygate.models.result import Verdict
 
@@ -128,3 +128,64 @@ class MatrixCell(BaseModel):
 class MatrixResponse(BaseModel):
     mode: Literal["fixture"]
     cells: list[MatrixCell]
+
+# Additive fixture-only observation contract. Existing FixtureRun responses and
+# pre-checkpoint SQLite records remain unchanged.
+
+
+class ObservationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: Literal["alice-item", "bob-item", "[REDACTED]"] | None
+    owner: Literal["alice", "bob", "[REDACTED]"] | None
+    private_field_present: bool
+
+
+class ObservationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    method: Literal["GET"]
+    path: Literal["/items", "/items/alice-item", "/items/bob-item"]
+    authorization: Literal["[REDACTED]", "not supplied"]
+
+
+class ObservationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status_code: int = Field(ge=100, le=599)
+    items: list[ObservationItem] | None = Field(default=None, max_length=20)
+    item_count: int | None = Field(default=None, ge=0)
+    items_truncated: bool | None = None
+    item: ObservationItem | None = None
+
+
+class ObservationAssertions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    own_resource_identified: bool | None = None
+    peer_resource_excluded: bool | None = None
+    owner_detail_matches: bool | None = None
+    canary_matches_recipe: bool | None = None
+    private_data_matches_owner_baseline: bool | None = None
+
+
+class FixtureObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    phase: Literal["discovery", "owner_baseline", "cross_user_read"]
+    timestamp: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
+    actor: Literal["alice", "bob"]
+    role: Literal["user"]
+    request: ObservationRequest
+    response: ObservationResponse
+    assertions: ObservationAssertions
+    redacted: Literal[True]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ObservationSet(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    mode: Literal["fixture"]
+    run_id: str
+    coverage: Literal["RECORDED", "NOT_RECORDED"]
+    observations: list[FixtureObservation] = Field(max_length=20)
+
+
+class FixtureReportBundle(BaseModel):
+    run: FixtureRun
+    observation_set: ObservationSet

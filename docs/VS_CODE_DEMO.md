@@ -65,7 +65,8 @@ fixture tests, not proof of full v3.2 acceptance.
    requests are handled in-process; they do not reach any external service.
 3. Copy the printed **HTML fixture report** URL into your local browser. Show
    the fixture label, endpoint inventory, both owner/list checks, two evidence
-   summaries, verdict, remediation, authentication results and fixture constraint
+   summaries, stored discovery/owner/cross-user observations, local reproduction
+   instructions, verdict, remediation, authentication results and fixture constraint
    checklist. AUTHN-01/02/03 and INPUT-01/02/04 use real fixture responses;
    DISC-01/02/05 inspect only those bounded responses. JWT-specific checks say
    SKIPPED for opaque tokens. The report identifies unfinished checks.
@@ -105,7 +106,12 @@ process first; the demo command deliberately connects only to port 8000.
 - “Three bounded invalid inputs are compared to a valid control; disclosure
   signatures are inspected in those fixture responses. An ambiguous 200 or 400
   is not automatically SAFE, and unimplemented checks are SKIPPED.”
+- “The observation set records what happened during discovery, owner baselines
+  and the cross-user read; absent steps are not invented. The reproduction command
+  starts a new local mock scan, not a request to a network fixture target.”
 - “The redacted fixture report survives a restart. Its hashes detect accidental
   corruption but are not signatures; full live-data redaction is not implemented.”
 - “Live DNS pinning, real accounts, remaining security checks and production
   persistence are pending; the report does not claim they passed.”
+
+For the detailed observation and report demonstration, see [checkpoint 5](checkpoints/05-observations.md).

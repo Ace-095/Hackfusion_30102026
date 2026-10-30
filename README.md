@@ -3,7 +3,7 @@
 CanaryGate is planned as an evidence-based API authorization testing system.
 This checkpoint implements **a synthetic offline read-BOLA pipeline**, scoped
 authentication probes and bounded input/disclosure checks, with local SQLite
-persistence, exposed through a provisional FastAPI interface. It cannot scan live targets. It is not
+persistence and auditable minimized ownership observations, exposed through a provisional FastAPI interface. It cannot scan live targets. It is not
 a complete implementation of the frozen specification or a production safety
 guard. Fixture findings must never be represented as live-target results.
 
@@ -55,7 +55,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [contract review notes](docs/CONTRACTS.md), [API draft](docs/API.md), and
 [decision and checkpoint log](docs/DECISIONS.md), and
 [checkpoint 3 demo](docs/checkpoints/03-input-disclosure.md), and
-[checkpoint 4 demo](docs/checkpoints/04-persistence.md).
+[checkpoint 4 demo](docs/checkpoints/04-persistence.md), and
+[checkpoint 5 demo](docs/checkpoints/05-observations.md).
 
 ## Run the fixture API locally
 
