@@ -3249,6 +3249,45 @@ across 63 files; 142 demo invariants over 17 surfaces), the §17 checkpoint tabl
 (CP38 and CP39 rows), a new §14.9 on the demo asset matrix, and §16.7's surface
 list. Every other claim in the guide was read out of the code at `8202d77`.
 
+### G.11 Refresh at CP40
+
+Re-measured after checkpoint 40 (the judge experience), which added the
+demonstration route, the shared grid partial, instance-based staleness and the
+microsecond timestamps:
+
+```
+$ git log --oneline -1
+d221d8b CP40: the five-minute judge experience
+$ .venv/bin/python -m pytest -q
+1079 passed, 1 warning in 104.62s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1079 collected tests, 64 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+loopback-only test files: 11
+api routes checked: 17
+no dangling references, unclassified tests or unreachable API claims
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <db with 3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+asset matrix rebuilt offline: 9 tested, 0 untested, 6 CONFIRMED, 3 SAFE
+ALL STORED RUNS INTACT AND CONSISTENT
+```
+
+The demo and smoke counts are unchanged from CP39 on purpose: CP40 added a route
+and a page, not a new surface that either tool compares. The test count moved
+1055 → 1079: +4 unit tests for the grown matrix contract (evidence ids, instance
+ids, remediation, the accounts × assets validator), +13 interface tests for the
+demonstration and the cell panel, and +7 lab tests for the instance handshake. Continuous integration at `d221d8b`: `tests (ubuntu-latest,
+3.11)` and `tests (windows-latest, 3.11)` both green on the push run
+`41121117183`, and the pull-request run `41121128583` green as well.
+
+That refresh changed: §14.9's staleness and traceability bullets, a new §14.10 on
+the demonstration flow, the §17 heading and CP40 row, and the counts above. Every
+other claim was re-read out of the code at `d221d8b`.
+
 ---
 
 *End of the guide. If a claim in this document is ever found to disagree with the code at head, the code is right, this document is wrong, and the discrepancy belongs in Appendix C.*

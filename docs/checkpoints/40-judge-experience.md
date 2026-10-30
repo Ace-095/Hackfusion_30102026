@@ -24,13 +24,14 @@ No oracle, scope rule, verdict rule, transport rule or stored verdict changed.
 | `_coverage_outcomes()` | Records `{actor, owner, ok, run_id, verdict, confirmed, requests_sent, budget}` per pair, or the backend's own refusal detail; a refused pair never stops the loop but never yields a cell either |
 | `partials/matrix_grid.html` | The one implementation of the 3×3 grid, shared by the matrix page and the result page |
 | `lab_demo_result.html` | Coverage verdict, four counts, per-pair outcome table, the grid, and what the page is and is not |
-| `tests/integration/test_ui_lab_pages.py` | 13 cases: the form, the run, the stored runs, the refusal, four rejected ports, secrets |
+| `tests/integration/test_ui_lab_pages.py` | 13 cases: the form, the run, the stored runs, the refusal, four rejected ports, the cell panel, secrets |
 
 Guarantees the tests enforce:
 
 - a non-numeric or out-of-range port answers `422` **before** any run and stores
   nothing;
-- the three pairs come from the catalog (the form posts only `port`);
+- the three pairs come from the catalog (the form posts only `port`); the request
+  path, the scope builder and the guard are the same ones a single run uses;
 - three runs are stored as ordinary `LabBolaRun` documents — six checks, a scope
   with a budget, the same port — reachable through `GET /api/lab-bola-scans/{id}`;
 - "all nine cells have stored evidence" appears only when `untested == 0`;
