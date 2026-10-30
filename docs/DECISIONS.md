@@ -618,6 +618,22 @@ evidence and integration work, plus written organizer authorization. Full local
 suite: 363 passed, one third-party warning. GitHub Actions run `41048031705`
 passed Ubuntu and Windows for `c1586d7`. See [judge demo](checkpoints/21-live-disabled.md).
 
+## Checkpoint 22 — fixture verified ownership
+
+Test-first work added a fixture-only registry using the existing `OwnedResource`
+contract. Two distinct synthetic accounts must discover bounded, unambiguous
+lists, each peer list must exclude the other's selected resource, and both
+owners must read a matching ID and explicit owner. Duplicate/unsafe IDs,
+malformed JSON, pagination indicators, failed detail reads, missing credentials
+and guard rejection cannot yield verified entries. Shared/public entries remain
+unverified. Private disclosure markers are separate from ownership. All requests
+use the existing guarded mock runner; only the existing synthetic BOLA pipeline
+was wired to require the registry, with no new BOLA oracle. Baseline bodies are
+transient and omitted from repr. Fixture list completeness is an assumption of
+its synthetic array contract, not a guarantee for arbitrary live APIs. Production
+network execution remains disabled. Local suite: 389 passed, one third-party
+warning. See [judge demo](checkpoints/22-verified-ownership.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

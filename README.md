@@ -72,7 +72,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 18 demo](docs/checkpoints/18-identity-pair.md), and
 [checkpoint 19 demo](docs/checkpoints/19-resource-harvest.md), and
 [checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md), and
-[checkpoint 21 demo](docs/checkpoints/21-live-disabled.md).
+[checkpoint 21 demo](docs/checkpoints/21-live-disabled.md), and
+[checkpoint 22 demo](docs/checkpoints/22-verified-ownership.md).
 
 ## Run the fixture API locally
 

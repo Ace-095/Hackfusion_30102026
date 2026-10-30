@@ -151,3 +151,5 @@ For bounded read-only resource harvesting, see [checkpoint 19](checkpoints/19-re
 For owner-baseline observation tests, see [checkpoint 20](checkpoints/20-owner-baselines.md).
 
 For the default-deny live execution tests, see [checkpoint 21](checkpoints/21-live-disabled.md).
+
+For fixture verified ownership, see [checkpoint 22](checkpoints/22-verified-ownership.md).

@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from importlib.resources import files
 import hashlib
 import json
-import re
 from uuid import uuid4
 
 from .runner import FixtureRunner, GuardRejected
@@ -13,6 +12,7 @@ from .enumeration import run_enumeration_check
 from .input_checks import pending_input_checks, run_input_checks
 from canarygate.evidence.observations import capture as capture_observation, seal as seal_observation
 from canarygate.seed.recipe import validate_fixture_recipe
+from canarygate.seed import registry
 from canarygate.spec.parser import parse_inventory
 
 
@@ -59,20 +59,6 @@ def _object(response):
         return None
 
 
-def _item_list(response):
-    if response.status_code != 200:
-        return None
-    try:
-        value = response.json()
-        return value if isinstance(value, list) and all(isinstance(item, dict) for item in value) else None
-    except (ValueError, UnicodeError, RecursionError):
-        return None
-
-
-def _safe_id(value):
-    return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value))
-
-
 def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = None,
                 observation_sink: list | None = None) -> dict:
     target = target or FixtureTarget()
@@ -83,7 +69,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
     scope_bytes = files("canarygate.offline").joinpath("scope.yaml").read_bytes()
     spec_bytes = files("canarygate.offline").joinpath("fixture.yaml").read_bytes()
     fixture_inventory = parse_inventory(spec_bytes.decode("utf-8"))
-    resource = next(iter(setup.resources.values()), None)
+    resource_type, resource = next(iter(setup.resources.items()), (None, None))
     account_a, account_b = setup.accounts.get("user_a"), setup.accounts.get("user_b")
     setup_status = {"strategy": "recipe_read_only_discovery", "authentication": "SKIPPED",
                     "accounts": {}, "resources": "SKIPPED", "ownership_verification": "SKIPPED",
@@ -140,54 +126,32 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             setup_status["accounts"][account.username] = "SUCCESS"
         setup_status["authentication"] = "SUCCESS"
         result["checks"] = pending_checks(token=tokens[account_a.username]) + pending_input_checks()
-        if resource.ownership_model != "private":
-            return skip("Resource is not private; read-BOLA check not applicable")
+        account_map = {account_a.username: account_a, account_b.username: account_b}
+        discovery_observations, baseline_observations = {}, {}
+
+        def discovery(actor, response, identified):
+            discovery_observations[actor] = observe(
+                "discovery", account_map[actor], response, own_resource_identified=identified)
+
+        def exclusion(actor, excluded):
+            update_observation(discovery_observations.get(actor), peer_resource_excluded=excluded)
+
+        def baseline(actor, response, matched):
+            baseline_observations[actor] = observe(
+                "owner_baseline", account_map[actor], response, owner_detail_matches=matched)
+
+        ownership = registry.collect_fixture_ownership(
+            runner, resource_type=resource_type, resource=resource,
+            accounts=(account_a.username, account_b.username), tokens=tokens,
+            on_discovery=discovery, on_exclusion=exclusion, on_baseline=baseline)
+        setup_status["resources"] = ownership.resource_status
+        setup_status["ownership_verification"] = ownership.ownership_status
+        if ownership.ownership_status != "SUCCESS":
+            return skip(ownership.reason)
+        # Ownership is independent of whether a private disclosure marker exists.
+        ids, baselines = ownership.ids, ownership.baselines
         if resource.private_field in {resource.id_field, resource.ownership_field, "id", "status", "owner"}:
-            return skip("Configured disclosure field is not private", gate="resources", status="FAILED")
-        lists = {}
-        ids = {}
-        discovery_observations = {}
-        for account in (account_a, account_b):
-            response = request(account, resource.discovery, token=tokens[account.username])
-            items = _item_list(response)
-            candidates = [] if items is None else [item.get(resource.id_field) for item in items
-                          if item.get(resource.ownership_field) == account.username and _safe_id(item.get(resource.id_field))]
-            discovery_observations[account.username] = observe(
-                "discovery", account, response, own_resource_identified=bool(candidates) if items is not None else None)
-            if items is None:
-                return skip(f"Resource discovery failed for {account.username}", gate="resources", status="FAILED")
-            if not candidates:
-                return skip(f"No own resource discovered for {account.username}", gate="resources", status="PARTIAL")
-            lists[account.username] = items
-            ids[account.username] = candidates[0]
-        if ids[account_a.username] == ids[account_b.username]:
-            return skip("Discovered resource IDs are not distinct", gate="resources", status="FAILED")
-        setup_status["resources"] = "SUCCESS"
-        # Both other-account lists must exclude the resource before ownership is verified.
-        exclusions = {}
-        for owner, other in ((account_a, account_b), (account_b, account_a)):
-            exclusions[other.username] = not any(item.get(resource.id_field) == ids[owner.username]
-                                                 for item in lists[other.username])
-            update_observation(discovery_observations[other.username],
-                               peer_resource_excluded=exclusions[other.username])
-        isolated = all(exclusions.values())
-        if not isolated:
-            return skip("Cross-account list isolation was not verified", gate="ownership_verification", status="FAILED")
-        baselines = {}
-        baseline_observations = {}
-        for account in (account_a, account_b):
-            if resource.detail.path.count("{id}") != 1:
-                return skip("Invalid detail path template", gate="ownership_verification", status="FAILED")
-            path = resource.detail.path.replace("{id}", ids[account.username])
-            response = request(account, resource.detail, token=tokens[account.username], path=path)
-            obj = _object(response)
-            matched_owner = bool(obj and obj.get(resource.id_field) == ids[account.username]
-                                 and obj.get(resource.ownership_field) == account.username)
-            baseline_observations[account.username] = observe("owner_baseline", account, response,
-                                                               owner_detail_matches=matched_owner)
-            if not matched_owner:
-                return skip(f"Owner baseline failed for {account.username}", gate="ownership_verification", status="FAILED")
-            baselines[account.username] = (response, obj)
+            return skip("Configured disclosure field is not private", gate="bola_coverage", status="FAILED")
         owner_response, owner_body = baselines[account_b.username]
         private_value = owner_body.get(resource.private_field)
         other_value = baselines[account_a.username][1].get(resource.private_field)
@@ -198,7 +162,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
                 or any(value in private_value for value in (ids[account_a.username], ids[account_b.username]))
                 or private_value in {account_a.username, account_b.username}
                 or (resource.known_owner_canary and private_value != resource.known_owner_canary)):
-            return skip("Private owner baseline could not be verified", gate="ownership_verification", status="FAILED")
+            return skip("Private owner baseline could not be verified", gate="bola_coverage", status="FAILED")
         result["target_resource"] = ids[account_b.username]
         result["verified_owner"] = account_b.username
         result["evidence"]["ownership"] = _summary(account_b.username, account_b.role, owner_response, True,
