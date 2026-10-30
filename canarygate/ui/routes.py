@@ -342,9 +342,26 @@ def _check_gaps(runs: list[dict]) -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 # Pages
 # --------------------------------------------------------------------------- #
+def _cover(request: Request):
+    """Render the ten-second cover sequence.
+
+    It is a real page, not a splash gate: the interface is one click away, the
+    sequence is CSS so it plays without JavaScript, and the hand-off is done by
+    ``intro.js`` (with a ``<noscript>`` refresh as the fallback).
+    """
+    return templates.TemplateResponse(request, "intro.html", {}, status_code=200)
+
+
 @router.get("/")
-def root():
-    return RedirectResponse("/ui/", status_code=307)
+def root(request: Request):
+    """The front door: the cover, which then hands the visitor to /ui/."""
+    return _cover(request)
+
+
+@router.get("/ui/intro")
+def intro_page(request: Request):
+    """Replay the cover at any time (linked from the sidebar)."""
+    return _cover(request)
 
 
 @router.get("/ui/")

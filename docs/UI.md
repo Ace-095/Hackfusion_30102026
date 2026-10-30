@@ -25,7 +25,8 @@ If the backend cannot establish something, the page says so.
 Pages: dashboard, endpoint inventory, setup & readiness, findings, read-BOLA scan
 list, scan detail, evidence/observations, report view, authorization matrix,
 reports, test suites, suite run detail, spec inspection, configuration, error
-page. The UI is mounted at `/ui/`; `/` redirects there.
+page. The UI is mounted at `/ui/`; `/` serves the ten-second **cover sequence**
+and hands the visitor to `/ui/` when it finishes (replayable at `/ui/intro`).
 
 Every page renders the same shell: a grouped sidebar (`NAV_GROUPS` in
 `routes.py`), a breadcrumb trail, and — on the core review pages — a numbered
@@ -59,6 +60,8 @@ canarygate/ui/
 │   ├── reports.html       # links to backend-generated HTML/JSON reports
 │   ├── report_view.html   # backend `?view=sections` rendered in-page, print-friendly
 │   ├── replay.html        # flight recorder: recorded events, step-through playback
+│   ├── intro.html         # cover sequence: five beats, ends on the product name
+│   ├── intro_base.html    # shell for the cover (no nav, no banner)
 │   ├── suites.html        # read-BOLA + authentication scenario runners
 │   ├── suite_run.html     # scenario run / authentication run detail
 │   ├── spec.html          # in-memory OpenAPI inspection
@@ -66,8 +69,10 @@ canarygate/ui/
 │   └── partials/          # HTMX fragments: fixtures scan result, suite result, spec result, error
 └── static/
     ├── css/app.css
+    ├── css/intro.css       # cover only
     ├── css/replay.css      # recorder only (loaded by replay.html)
     ├── js/app.js
+    ├── js/intro.js         # cover: countdown, hand-off, ambient canvas
     ├── js/replay.js        # playback engine (progressive enhancement)
     └── vendor/htmx.min.js, vendor/htmx.LICENSE
 ```
@@ -603,3 +608,57 @@ absent, there is no root, and `apt` has no writable lists directory. Playwright'
 browser CDN is outside the allowed network. So the pixel-level pass — layout,
 sticky headers, focus rings, print output — remains for a machine with a real
 browser. Everything above is the strongest verification this environment allows.
+
+
+---
+
+## 14. The cover (front door)
+
+`GET /` serves `templates/intro.html` (shell: `intro_base.html`); `GET /ui/intro`
+replays it. It is a ten-second sequence of five beats:
+
+| Beat | Copy (verbatim from the project) |
+| --- | --- |
+| 1 · the problem | "A 200 response alone is never enough." |
+| 2 · the proof | "Two-part evidence. One verdict." + Ownership proof / Disclosure proof |
+| 3 · the vocabulary | CONFIRMED · SUSPECTED · SAFE · INCONCLUSIVE · SKIPPED, captioned "the only five conclusions this tool can draw" |
+| 4 · the record | "Every request recorded. Every verdict traceable." (flight recorder) |
+| 5 · the product | **CanaryGate** + "evidence-based API authorization testing" + CTA |
+
+Then it hands off to `/ui/`.
+
+### 14.1 Design constraints it obeys
+
+* **No new dependencies.** No Three.js, no GLSL, no font loading. The beats are
+  DOM text animated by CSS keyframes; `intro.js` only draws an ambient canvas
+  (drifting requests crossing a gate line) and runs the countdown. Deleting
+  `intro.js` leaves a working cover.
+* **No fabricated content.** Every line is copy that already appears elsewhere in
+  the product. The verdict words are labelled as vocabulary, not results.
+* **Truthful about the build.** The header says `fixture build · live scanning
+  off`; the footer repeats that fixture and transcript results are synthetic
+  recordings.
+* **Honest hand-off.** The countdown is visible (`entering the interface in Ns`),
+  `Skip` is always on screen, `Esc` leaves immediately, and both CTA links are
+  ordinary anchors.
+* **Reduced motion is a first-class path.** With `prefers-reduced-motion: reduce`
+  the canvas and sweep are removed, the beats lay out statically as a storyboard,
+  **and the page never navigates on its own** — the visitor leaves via the button.
+* **No JavaScript.** The sequence still plays (CSS), and
+  `<noscript><meta http-equiv="refresh" content="10; url=/ui/">` performs the
+  hand-off. Anchors work regardless.
+* **One runtime constant, asserted twice.** `intro.css` declares `--run: 10s` and
+  `intro.js` declares `RUN_MS = 10000`; a test fails if they drift.
+
+### 14.2 Tests
+
+| Test | What it proves |
+| --- | --- |
+| `test_cover_is_the_front_door_and_hands_off_to_the_interface` | One `<h1>`, five beats, project copy present, verdicts presented as vocabulary not results, real anchors + `<noscript>` fallback, canvas hidden from AT, no external references, no navigation shell |
+| `test_cover_assets_are_local_and_agree_on_the_ten_second_runtime` | Both assets are local and served; the 10 s runtime and reduced-motion/Esc handling exist in both CSS and JS |
+| `test_cover_can_be_replayed_from_the_interface` | `/ui/intro` renders and the sidebar links to it; the dashboard is unchanged |
+
+Behaviour (not markup) was verified in jsdom: countdown decrements, progress bar
+advances, `Esc` hands off to `/ui/`, and under reduced motion nothing navigates.
+The hand-off is also announced as an `intro:enter` DOM event so it is observable
+without a global variable.

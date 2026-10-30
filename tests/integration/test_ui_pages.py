@@ -666,3 +666,75 @@ def test_inconclusive_runs_are_rendered_as_inconclusive_everywhere(tmp_path):
         assert 'badge badge-danger">CONFIRMED' not in findings
         assert "stored fixture runs" in findings
         assert "Test suites" in findings
+
+
+# --------------------------------------------------------------------------- #
+# Cover sequence (the front door)
+# --------------------------------------------------------------------------- #
+def test_cover_is_the_front_door_and_hands_off_to_the_interface(tmp_path):
+    with _client(tmp_path) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        body = response.text
+
+        # Exactly one page title, and it is the product name.
+        assert body.count("<h1") == 1
+        assert re.search(r'<h1 class="intro-word">\s*<span class="intro-word-a">Canary</span>'
+                         r'<span class="intro-word-b">Gate</span>', body)
+
+        # Five beats, and the copy is the project's own phrasing.
+        assert body.count("data-beat=") == 5
+        assert "is never enough" in body
+        assert "Ownership proof" in body and "Disclosure proof" in body
+        assert "Every request recorded" in body
+
+        # The verdict words appear as vocabulary, never as results.
+        assert "The only five conclusions this tool can draw" in body
+        for verdict in ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED"):
+            assert verdict in body
+        assert 'badge badge-danger">CONFIRMED' not in body
+
+        # Hand-off: real anchors plus a no-JavaScript fallback.
+        assert 'href="/ui/" data-intro-enter' in body
+        assert 'href="/ui/scans" data-intro-enter' in body
+        assert '<noscript><meta http-equiv="refresh"' in body
+
+        # Decoration is hidden from assistive technology; assets are local.
+        assert 'data-intro-canvas aria-hidden="true"' in body
+        assert EXTERNAL_REFERENCE.search(body) is None
+        assert "Fixture and transcript results are synthetic" in body
+
+        # The cover is not the interface: no navigation shell, no fixture banner.
+        assert 'id="site-nav"' not in body
+        assert "Skip to content" not in body
+
+
+def test_cover_assets_are_local_and_agree_on_the_ten_second_runtime(tmp_path):
+    with _client(tmp_path) as client:
+        assert client.get("/").status_code == 200
+        for asset in ("/ui/static/css/intro.css", "/ui/static/js/intro.js"):
+            response = client.get(asset)
+            assert response.status_code == 200, asset
+            assert EXTERNAL_REFERENCE.search(response.text) is None, asset
+
+        css = client.get("/ui/static/css/intro.css").text
+        script = client.get("/ui/static/js/intro.js").text
+        # One runtime, declared in both files; the countdown cannot drift from
+        # the animation if these stay equal.
+        assert "--run: 10s" in css
+        assert "RUN_MS = 10000" in script
+        # Accessibility behaviour that must not be removed by a redesign.
+        assert "prefers-reduced-motion: reduce" in css
+        assert "prefers-reduced-motion: reduce" in script
+        assert 'event.key === "Escape"' in script
+
+
+def test_cover_can_be_replayed_from_the_interface(tmp_path):
+    with _client(tmp_path) as client:
+        assert client.get("/ui/intro").status_code == 200
+        dashboard = client.get("/ui/").text
+        assert 'href="/ui/intro"' in dashboard
+        # The dashboard is still the dashboard: the cover did not replace it.
+        assert dashboard.count("<h1") == 1
+        assert "Security posture" in dashboard

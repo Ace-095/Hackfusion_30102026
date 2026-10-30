@@ -1,0 +1,74 @@
+{% extends "intro_base.html" %}
+
+{#-
+  The cover sequence. Ten seconds, five beats, one word at the end.
+
+  Rules this page follows:
+  * every line is real project copy — no invented claim, no sample verdict;
+  * all text is in the DOM from the first byte, so it is readable with a screen
+    reader, with JavaScript off, and with animations blocked;
+  * the canvas is decoration only and is hidden from assistive technology;
+  * nothing here is a result. The verdict words are the backend's vocabulary,
+    labelled as such.
+-#}
+
+{% block beats %}
+<section class="beat beat-1" data-beat="1">
+  <p class="beat-kicker">01 · the problem</p>
+  <p class="beat-line">A 200 response alone<br><em>is never enough.</em></p>
+  <p class="beat-sub">An API answering a request is not the same as an API
+    authorising it.</p>
+</section>
+
+<section class="beat beat-2" data-beat="2">
+  <p class="beat-kicker">02 · the proof</p>
+  <p class="beat-line">Two-part evidence.<br><em>One verdict.</em></p>
+  <div class="beat-pair">
+    <span class="beat-proof">
+      <span class="beat-proof-n">1</span>
+      <b>Ownership proof</b>
+      <span>the resource really belongs to the other account</span>
+    </span>
+    <span class="beat-proof">
+      <span class="beat-proof-n">2</span>
+      <b>Disclosure proof</b>
+      <span>private data actually crossed that boundary</span>
+    </span>
+  </div>
+</section>
+
+<section class="beat beat-3" data-beat="3">
+  <p class="beat-kicker">03 · the vocabulary</p>
+  <ul class="beat-verdicts" aria-label="The five verdicts this tool can record">
+    <li class="v v-confirmed">CONFIRMED</li>
+    <li class="v v-suspected">SUSPECTED</li>
+    <li class="v v-safe">SAFE</li>
+    <li class="v v-inconclusive">INCONCLUSIVE</li>
+    <li class="v v-skipped">SKIPPED</li>
+  </ul>
+  <p class="beat-sub">The only five conclusions this tool can draw.
+    No invented severity, no score.</p>
+</section>
+
+<section class="beat beat-4" data-beat="4">
+  <p class="beat-kicker">04 · the record</p>
+  <p class="beat-line">Every request recorded.<br><em>Every verdict traceable.</em></p>
+  <p class="beat-sub">Flight recorder: replay the evidence in the order the
+    backend captured it, then reveal the verdict.</p>
+</section>
+
+<section class="beat beat-title" data-beat="5">
+  <p class="beat-kicker">05 · the product</p>
+  <h1 class="intro-word">
+    <span class="intro-word-a">Canary</span><span class="intro-word-b">Gate</span>
+  </h1>
+  <p class="intro-tagline">evidence-based API authorization testing</p>
+  <p class="intro-facts">
+    <span>local</span><span>fixture-only</span><span>no live scanning</span>
+  </p>
+  <p class="intro-cta-row">
+    <a class="intro-cta" href="/ui/" data-intro-enter>Enter the interface</a>
+    <a class="intro-link" href="/ui/scans" data-intro-enter>Skip to the evidence</a>
+  </p>
+</section>
+{% endblock %}
