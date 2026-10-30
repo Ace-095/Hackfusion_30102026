@@ -228,3 +228,22 @@ def test_reports_and_errors_never_echo_the_credentials(lab):
     for account in LAB_ACCOUNTS.values():
         assert account["password"] not in payload
     assert json.dumps({"ok": True})  # keep the json import meaningful
+
+
+def test_the_collection_route_is_owner_isolated_in_both_directions(lab):
+    """Discovery must be correct: each account sees only its own records."""
+    alice, bob = login(lab, "alice"), login(lab, "bob")
+    alice_list = lab.get("/records", headers=auth(alice)).json()
+    bob_list = lab.get("/records", headers=auth(bob)).json()
+    assert [item["id"] for item in alice_list] == ["ra"]
+    assert [item["id"] for item in bob_list] == ["rb"]
+    assert {item["owner"] for item in alice_list} == {"alice"}
+    assert {item["owner"] for item in bob_list} == {"bob"}
+    # Cross-account isolation: neither list mentions the other account's record.
+    assert "rb" not in {item["id"] for item in alice_list}
+    assert "ra" not in {item["id"] for item in bob_list}
+    assert PRIVATE_MARKERS["bob"] not in str(alice_list)
+
+
+def test_the_collection_route_requires_a_credential(lab):
+    assert lab.get("/records").status_code == 401

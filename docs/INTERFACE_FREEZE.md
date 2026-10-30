@@ -143,3 +143,16 @@ neither participating control already failed on its own.
   socket) with a pinned test CA and a literal `127.0.0.1` destination.
 - `POST /api/lab-scans` and the `lab_runs` table are new; no existing route, table
   or model changed.
+
+## 11. Additive interface: lab read-BOLA (checkpoint 36)
+
+- `canarygate.oracles.read_bola.trusted_policy_source(runner)` and the constant
+  `TARGETLAB_POLICY_SOURCE` (`"targetlab declared record policy"`). The oracle's
+  rules are unchanged; only the source it accepts is resolved per transport.
+- `canarygate.scan.lab_bola_scenarios` declares the two resources, the policy and
+  the *evaluation-only* `EXPECTED_VERDICTS` table.
+- `canarygate.scan.lab_bola.run_lab_bola_scan(plan, runner, *, store=None)` — the
+  only new orchestration; it imports the shared oracle and registry.
+- `POST /api/lab-bola-scans` and the `lab_bola_runs` table are new. The matrix gains
+  `cells_from_lab_bola` and an optional `lab_bola_runs` argument; every existing
+  caller keeps its behaviour.

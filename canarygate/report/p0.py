@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from canarygate.evidence.redaction import canonical_json
 from canarygate.oracles.interaction import SCI_REMEDIATIONS
 from canarygate.report.matrix import (as_run_dict, build_matrix, cells_from_interactions,
-                                      cells_from_runs, split_endpoint)
+                                      cells_from_lab_bola, cells_from_runs, split_endpoint)
 from canarygate.report.scenario import environment
 
 P0_SECTION_KEYS = ("executive_summary", "scope_and_rules", "endpoint_inventory", "findings",
@@ -25,7 +25,8 @@ CATEGORIES = ("Authentication", "Authorization", "Input validation", "Disclosure
 CATEGORY_ALIASES = {"Information disclosure": "Disclosure"}
 VERDICTS = ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED")
 MODES = {"scenario": "offline_scenario", "authentication": "offline_authentication",
-         "validation": "offline_validation", "interaction": "offline_interaction"}
+         "validation": "offline_validation", "interaction": "offline_interaction",
+         "lab_bola": "targetlab_bola"}
 
 REMEDIATION_CATALOG = {
     "bola": "Enforce object-level ownership checks server-side on every handler.",
@@ -46,6 +47,11 @@ REMEDIATION_CATALOG = {
 _RULES = ("Recorded synthetic responses only. The run is offline: no live target, socket, DNS "
           "lookup, redirect or credential transmission occurs, and this is not organizer "
           "authorization or a production assessment.")
+_LAB_RULES = ("Real HTTPS requests to the loopback TargetLab only: the destination is the literal "
+              "address 127.0.0.1, TLS is verified against a test-only CA with hostname checking, "
+              "redirects are refused, nothing is retried, no external DNS is used and production "
+              "networking stays disabled. This is controlled validation of our own lab, not "
+              "organizer authorization and not a production assessment.")
 _AUTH_EXPECTATION = {
     "AUTHN-01": "a request without a credential is rejected",
     "AUTHN-02": "a malformed credential is rejected",
@@ -332,6 +338,51 @@ def _interaction_findings(run):
         remediation_key=run["remediation_key"], remediation=run["remediation"])]
 
 
+LAB_CHECK_EXPECTATION = {
+    "LAB-BOLA-01": "the owner reading their own record is served",
+    "LAB-BOLA-02": "the owner reading their own record is served",
+    "LAB-BOLA-03": "a cross-owner private read is denied",
+    "LAB-BOLA-04": "a cross-owner private read is denied",
+    "LAB-BOLA-05": "a cross-owner read on the secure route is denied",
+    "LAB-BOLA-06": "a cross-owner read on the secure route is denied",
+}
+
+
+def _lab_bola_findings(run):
+    """Real loopback observations projected into the frozen finding shape."""
+    role = _role_for(run, run["scope"]["accounts"][0]["account"]) if run["scope"].get("accounts") else "unknown"
+    findings = []
+    for check in run["checks"]:
+        observed = {
+            "CONFIRMED": "the response carried the other owner's private marker",
+            "SAFE": ("the owner baseline matched the caller's own record"
+                     if check["direction"] == "owner_baseline"
+                     else "the endpoint denied the cross-account read with the checked denial body"),
+            "SUSPECTED": "a private marker was observed without complete response identity",
+            "INCONCLUSIVE": "the observed evidence was insufficient for a verdict",
+            "SKIPPED": "the request was not executed",
+        }[check["verdict"]]
+        findings.append(_finding(
+            check["id"], "Authorization", timestamp=run["created_at"],
+            endpoint=check["endpoint"], verdict=check["verdict"], reason=check["reason"],
+            account=check["actor"], role=role,
+            expected=LAB_CHECK_EXPECTATION[check["id"]],
+            observed=observed, source=run["policy"]["expected_source"],
+            checklist=check["checklist"],
+            curl=curl_for(*split_endpoint(check["endpoint"]), actor=check["actor"]),
+            evidence_sha256=check["evidence_sha256"],
+            target_resource=("the caller's own record (identifier minimised)"
+                             if check["direction"] == "owner_baseline"
+                             else "the owner's private record (identifier minimised)"),
+            verified_owner=(f'{check["owner"]} (ownership verified; owner baseline recorded)'
+                            if check["direction"] == "owner_baseline"
+                            or check["checklist"].get("ownership_verified")
+                            else OWNER_NOT_VERIFIED),
+            remediation=check["remediation"],
+            remediation_key="bola" if check["verdict"] == "CONFIRMED" else None))
+    return findings
+
+
 def _findings(kind, run):
     if kind == "scenario":
         return _scenario_findings(run)
@@ -341,6 +392,8 @@ def _findings(kind, run):
         return _validation_findings(run)
     if kind == "interaction":
         return _interaction_findings(run)
+    if kind == "lab_bola":
+        return _lab_bola_findings(run)
     raise ValueError("unknown run kind")
 
 
@@ -394,6 +447,15 @@ def _inventory(run):
     return items
 
 
+def _transport_flags(kind, run):
+    """Honest transport facts: the lab run really did open loopback sockets."""
+    if kind == "lab_bola":
+        return {"network_transport_enabled": True, "live_target_contacted": False,
+                "loopback_lab_contacted": True}
+    return {"network_transport_enabled": False, "live_target_contacted": False,
+            "loopback_lab_contacted": False}
+
+
 def _constraints(kind, run):
     constraints = run.get("constraints") or {}
     sent = constraints.get("requests_sent", run.get("requests_sent"))
@@ -403,8 +465,16 @@ def _constraints(kind, run):
     for operation in run["scope"].get("operations", ()):
         if operation.get("classification") == "AUTHENTICATION":
             authentication_operations.append(f'{operation["method"]} {operation["path"]} (recorded only)')
+    lab = kind == "lab_bola"
+    transport = run.get("transport") or {}
     items = [
-        {"item": "Exact host and port allow-listed", "value": "yes", "source": "validated scope origin"},
+        {"item": "Exact host and port allow-listed",
+         "value": ("127.0.0.1 only; literal address, no hostname" if lab else "yes"),
+         "source": "validated scope origin"},
+        {"item": "TLS certificate verification",
+         "value": ("test CA pinned; hostname checked; verification never disabled" if lab
+                   else "not applicable (no socket is opened)"),
+         "source": "no verify=False path exists"},
         {"item": "Out-of-scope requests blocked before connection",
          "value": blocked, "source": "shared run guard counter"},
         {"item": "Out-of-scope requests executed", "value": 0, "source": "shared run guard"},
@@ -412,7 +482,8 @@ def _constraints(kind, run):
         {"item": "Destructive requests executed, including cleanup",
          "value": 0, "source": "preflight rejects every non-read-only operation"},
         {"item": "External requests / third-party calls", "value": 0,
-         "source": "offline transport only"},
+         "source": ("loopback only; no DNS lookup and no hostname" if lab
+                    else "offline transport only")},
         {"item": "State-changing requests executed",
          "value": authentication_operations or [],
          "source": "declared authentication operations, recorded only"},
@@ -424,11 +495,12 @@ def _constraints(kind, run):
          "source": "no external assets or reference fetching"},
         {"item": "Scope file hash", "value": _scope_sha(run), "source": "validated scope"},
         {"item": "Validation mode and target",
-         "value": f"offline recorded responses ({kind})", "source": "this run"},
+         "value": (f"loopback TargetLab over verified TLS (127.0.0.1:{transport.get('port')})"
+                   if lab else f"offline recorded responses ({kind})"),
+         "source": "this run"},
     ]
     return {
-        "network_transport_enabled": False,
-        "live_target_contacted": False,
+        **_transport_flags(kind, run),
         "requests_sent": sent,
         "blocked_by_guard": blocked,
         "budget_remaining": remaining,
@@ -437,6 +509,8 @@ def _constraints(kind, run):
 
 
 def _manual(kind, run):
+    if kind == "lab_bola":
+        return _lab_manual(run)
     scope = run["scope"]
     interventions = []
     inferences = [
@@ -488,6 +562,48 @@ def _manual(kind, run):
     }
 
 
+def _lab_manual(run):
+    """No invented narrative: what was assumed, and what was evaluated afterwards."""
+    ground_truth = run.get("ground_truth") or {}
+    interventions = [{
+        "item": "ground_truth_comparison", "status": "AFTER_THE_SCAN",
+        "value": f'{ground_truth.get("matched")}/6 declared outcomes matched the finished verdicts',
+        "source": "declared TargetLab ground truth, scored after the decision"}]
+    if run.get("constraints", {}).get("blocked_by_guard"):
+        interventions.append({"item": "guard_blocked_requests",
+                              "value": run["constraints"]["blocked_by_guard"],
+                              "source": "shared run guard"})
+    inferences = [
+        {"item": "expected_access", "kind": "declared_expectation",
+         "source": run["policy"]["expected_source"],
+         "value": run["policy"]["expected_access"]},
+        {"item": "identity_mapping", "kind": "assumption",
+         "source": "validated scope accounts",
+         "value": "each account authenticated with its own lab credential; identities were "
+                  "confirmed by the profile operation before any ownership claim"},
+        {"item": "denial_contract", "kind": "assumption",
+         "source": "TargetLab record policy",
+         "value": "a 403 whose JSON body equals the declared denial counts as a checked denial; "
+                  "status alone is never enough"},
+        {"item": "ground_truth_independence", "kind": "inference",
+         "source": "workflow design",
+         "value": "the scanner never requests /lab/ground-truth and does not consult the declared "
+                  "table before deciding; the comparison is computed last and stored separately"},
+        {"item": "target_resource_identity", "kind": "limitation",
+         "source": "evidence minimisation policy",
+         "value": "resource identifiers are withheld; the report names the resource type and "
+                  "verified owner only"},
+    ]
+    return {
+        "status": "RECORDED", "manual_intervention_required": False,
+        "interventions": interventions, "inferences": inferences,
+        "statement": ("No manual intervention was required. Requests were executed against the "
+                      "loopback TargetLab over verified TLS. No organizer, internet or "
+                      "third-party target was contacted and no state was changed apart from the "
+                      "declared authentication operations."),
+    }
+
+
 def build_p0_sections(kind, run):
     if kind not in MODES:
         raise ValueError("unknown run kind")
@@ -507,6 +623,8 @@ def build_p0_sections(kind, run):
         cells, _ = cells_from_runs([], [run], [])
     elif kind == "interaction":
         cells = cells_from_interactions([run])
+    elif kind == "lab_bola":
+        cells = cells_from_lab_bola([run])
     else:
         cells = []
     matrix = build_matrix(cells, extra_endpoints=_inventory(run))
@@ -515,18 +633,20 @@ def build_p0_sections(kind, run):
             "run_kind": kind, "mode": MODES[kind], "scenario_id": run["scenario_id"],
             "status": run["status"], "verdict_counts": counts,
             "category_counts": by_category, "severity_counts": severity_counts,
-            "finding_count": len(findings), "live_target_contacted": False,
-            "network_transport_enabled": False,
+            "finding_count": len(findings), **_transport_flags(kind, run),
             "statement": ("Counts include SKIPPED and INCONCLUSIVE results; neither is a clean "
-                          "result. No live target was contacted."),
+                          "result. No live target was contacted."
+                          + (" Requests were sent to the loopback TargetLab only." 
+                             if kind == "lab_bola" else "")),
         },
         "scope_and_rules": {
             "origin": scope_origin(run), "hostname": run["scope"]["hostname"],
             "port": run["scope"]["port"], "scope_sha256": _scope_sha(run),
             "written_authorization_reference": run["scope"]["written_authorization_reference"],
             "accounts": run["scope"]["accounts"], "request_budget": run["scope"]["request_budget"],
-            "seeding_rung": "NOT_APPLICABLE_OFFLINE_RECORDED_RESPONSES",
-            "rules_of_engagement": _RULES,
+            "seeding_rung": ("NOT_APPLICABLE_LOOPBACK_LAB" if kind == "lab_bola"
+                             else "NOT_APPLICABLE_OFFLINE_RECORDED_RESPONSES"),
+            "rules_of_engagement": (_LAB_RULES if kind == "lab_bola" else _RULES),
             "authorization_note": ("The scope file is synthetic; this is not organizer "
                                    "authorization."),
         },
@@ -560,7 +680,8 @@ def build_p0_report(kind, run):
 def render_p0_report(kind, run):
     report = build_p0_report(kind, run)
     base = {"scenario": "scenario-scans", "authentication": "authentication-scans",
-            "validation": "validation-scans", "interaction": "interaction-scans"}[kind]
+            "validation": "validation-scans", "interaction": "interaction-scans",
+            "lab_bola": "lab-bola-scans"}[kind]
     return environment.get_template("p0.html").render(
         report=report, sections=report.sections, json_block=lambda value: json.dumps(
             value, indent=2, ensure_ascii=True, sort_keys=True),

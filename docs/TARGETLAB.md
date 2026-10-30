@@ -37,6 +37,7 @@ before calling `POST /api/lab-scans`.
 | `POST /login` | `{"username","password"}` → `{"token","identity","role"}`; 401 for bad credentials; 422 for a malformed body. |
 | `GET /profile` | Bearer token required; returns the caller's identity and role. |
 | `GET /admin/users` | Bearer token required; denies both lab accounts (403) — no admin exists. |
+| `GET /records` | Correct: each account sees only its own records (discovery for ownership verification). |
 | `GET /records/{id}` | **Deliberately vulnerable (BOLA)**: any authenticated account reads any record. |
 | `GET /records/{id}/secure` | Correct: owner-only, 403 for anyone else. |
 | `GET /records/{id}/guarded` | **Deliberately vulnerable (interaction)**: owner-only *unless* that account's last login attempt was rejected as malformed. |
@@ -93,8 +94,8 @@ are declared, and it runs on the same machine. Reports must say so.
 | Checkpoint | Goal |
 |---|---|
 | 35 | **Done.** Dedicated `local_lab` transport: literal `127.0.0.1`, pinned test CA with hostname checking, no DNS, no redirects, no retries, same `RunSafetyGuard`. See [checkpoint 35](checkpoints/35-targetlab-transport.md). |
-| 36 | Live BOLA validation: detect `/records/{id}` (CONFIRMED with verified ownership and disclosure) and reject `/records/{id}/secure` (SAFE). |
-| 37 | Live SCI validation: reproduce deny → reject → leak, verify the disclosure independently, and report CONFIRMED with an interaction explanation. |
+| 36 | **Done.** Real requests through the `local_lab` transport reach the shared read-BOLA oracle: `/records/{id}` is CONFIRMED in both directions and `/records/{id}/secure` is SAFE, matching the declared ground truth 6/6. See [checkpoint 36](checkpoints/36-targetlab-bola.md). |
+| 37 | Live SCI validation: reproduce deny → reject → leak through CanaryGate, verify the disclosure independently, and report CONFIRMED with an interaction explanation. Not started. |
 
 The production guard stays as it is. A loopback mode is a separate, stricter
 path: it must accept **only** `127.0.0.1`/`localhost`, require TLS, keep every

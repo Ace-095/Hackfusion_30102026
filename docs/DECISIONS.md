@@ -1005,3 +1005,37 @@ One honesty cost: the suite now contains two files that really open a socket.
 They are classified `loopback_tls` in the audit, distinct from the forbidden
 `real_networking` label, and they only ever connect to `127.0.0.1` on an ephemeral
 port.
+
+### Checkpoint 36: reuse the oracle, score the answer key afterwards
+
+The temptation in this checkpoint was to write a lab-specific BOLA check, because
+the lab's answers are known. That would have replaced the thing under test with a
+second implementation nobody had validated. Instead the workflow calls the same
+`collect_guarded_ownership` and `evaluate_read_bola` that the offline scenarios
+use, and adds only orchestration: two endpoints, both directions, and a
+post-hoc comparison.
+
+The single change to the shared oracle is policy-source resolution. Originally
+every guarded runner was judged against the literal string "offline scenario
+policy", which would have been a false statement in a report about a real lab
+request. `trusted_policy_source()` now maps the transport to its declared source,
+so the lab is judged against "targetlab declared record policy" and cannot borrow
+the trust of another path. All previous behaviour is unchanged and still tested.
+
+Ground truth is a table in the scenario module, but it is read at the very end, by
+a separate function, into a separate stored object that declares
+`used_as_decision_input: false`. A test corrupts the table and asserts the verdicts
+do not move. The scanner also cannot fetch the lab's own `/lab/ground-truth`
+route: it is absent from the allow-list and the transport refuses undeclared paths
+before a socket exists.
+
+One behaviour changed on purpose: a run in which no response was ever observed
+(unreachable lab, untrusted certificate) is now a `502` with nothing stored,
+rather than a stored run of six `SKIPPED` checks. A skipped check is honest
+evidence only when the run did reach the target; otherwise it is just noise in the
+database.
+
+The lab gains one route: `GET /records`, a correct, owner-isolated collection.
+Without a discovery endpoint the ownership registry could not verify cross-list
+isolation, and a BOLA claim without that check would not meet the frozen evidence
+requirement.

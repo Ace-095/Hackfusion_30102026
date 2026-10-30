@@ -405,3 +405,47 @@ verdict is produced at this checkpoint.
 
 Evidence is bounded to status codes and booleans. Credentials, tokens, headers
 and response bodies are never stored, returned or reported.
+
+## TargetLab read-BOLA validation (checkpoint 36)
+
+These routes perform real HTTPS requests to a running TargetLab and reach a
+verdict through the existing read-BOLA oracle. They are **controlled validation**
+against our own loopback lab, not live-organizer scanning.
+
+`POST /api/lab-bola-scans`
+
+```json
+{"port": 8765, "request_budget": 20}
+```
+
+`port` is 1024–65535 and `request_budget` is 16–40 (the workflow needs 18
+requests). No host, path, account or credential may be supplied; the resource
+declarations and policy are constants in `canarygate/scan/lab_bola_scenarios.py`.
+Requires `CANARYGATE_TARGETLAB_CA`; without it the API answers `400`. If the lab is
+unreachable, refuses TLS, or never returns a single response, the API answers
+`502` and stores nothing.
+
+The run (`LabBolaRun`) contains:
+
+| Field | Meaning |
+|---|---|
+| `verdict`, `reason` | Run-level verdict: `CONFIRMED` if any check confirmed, else `INCONCLUSIVE`/`SUSPECTED`/`SKIPPED`, else `SAFE`. |
+| `checks[6]` | `LAB-BOLA-01…06` with `direction` (`owner_baseline`, `cross_account`, `cross_account_secure`), `endpoint`, `actor`, `owner`, `status`, `verdict`, `reason`, `checklist`, bounded `evidence`, `evidence_sha256`, and `remediation` only when confirmed. |
+| `ownership` | Per endpoint: `status`, `reason`, verified identities, baselines and cross-list isolation. Resource identifiers are withheld. |
+| `summary` | `confirmed`/`safe`/`suspected`/`inconclusive`/`skipped` counts over the six checks. |
+| `ground_truth` | `rows` comparing each check with the declared lab table, plus `evaluated_after_verdicts: true` and `used_as_decision_input: false`. |
+| `transport` | `destination: "127.0.0.1"`, `tls_verification: "pinned_test_ca_with_hostname_check"`, `redirects: "refused"`, `retries: "none"`, `dns: "not_used"`, `network_transport_enabled: true`, `live_target_contacted: false`. |
+| `constraints` | `requests_sent`, `blocked_by_guard`, `budget_remaining`, `halted`, `redirects_observed: 0`, `destructive_requests_executed: 0`. |
+
+- `GET /api/lab-bola-scans/{run_id}` — the stored run.
+- `GET /api/lab-bola-scans/{run_id}/report?view=sections` — executive summary,
+  scope and transport, ownership, checks, ground truth, constraints, limitations.
+- `GET /api/lab-bola-scans/{run_id}/report?view=p0` — the frozen nine sections with
+  one finding per check (`Authorization`, severity `High` when confirmed,
+  remediation key `bola`).
+- `GET /api/lab-bola-scans/{run_id}/report?format=html` — either projection as HTML.
+
+`GET /api/authorization-matrix` also aggregates these runs: the vulnerable route
+appears as a red `other_account_resource` cell and the secure route as a green one,
+both labelled `lab_bola:<scenario>[:route]` so they stay distinguishable from
+offline scenario and SCI cells.

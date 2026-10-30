@@ -119,6 +119,18 @@ def create_lab_app(state: LabState | None = None) -> FastAPI:
             return _unauthorized()
         return _forbidden()
 
+    @app.get("/records", tags=["records"], dependencies=[Depends(BEARER)])
+    def list_records(request: Request):
+        """Correct collection: every account sees only its own records.
+
+        This is the discovery endpoint the ownership registry needs. It is
+        deliberately correct so cross-account list isolation can be verified.
+        """
+        account = _account(request)
+        if account is None:
+            return _unauthorized()
+        return [dict(record) for record in RECORDS.values() if record["owner"] == account]
+
     @app.get("/records/{record_id}", tags=["records"], dependencies=[Depends(BEARER)])
     def read_record(record_id: str, request: Request):
         """Deliberate BOLA: ownership is never checked on this route."""

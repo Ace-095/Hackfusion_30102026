@@ -106,8 +106,9 @@ untested cells; see [checkpoint 31](docs/checkpoints/31-report-and-matrix.md).
 
 A deliberately vulnerable local test API, **TargetLab**, is available for
 validation work. CanaryGate can collect evidence from it over loopback HTTPS via
-`POST /api/lab-scans` (checkpoint 35; requires `CANARYGATE_TARGETLAB_CA`); this is
-controlled validation, not live scanning: `.venv/bin/python -m targetlab` (loopback only, never deploy).
+`POST /api/lab-scans` (checkpoint 35) and real read-BOLA validation through
+`POST /api/lab-bola-scans` (checkpoint 36); both require
+`CANARYGATE_TARGETLAB_CA` and are controlled validation, not live scanning: `.venv/bin/python -m targetlab` (loopback only, never deploy).
 See [docs/TARGETLAB.md](docs/TARGETLAB.md) and
 [checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is **not**
 implemented yet; the lab is a target, not a scanner transport.

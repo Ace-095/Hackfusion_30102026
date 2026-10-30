@@ -259,11 +259,67 @@ def cells_from_interactions(interaction_runs=()):
     return cells
 
 
+def cells_from_lab_bola(lab_runs=()):
+    """Real loopback TargetLab BOLA runs become authorization cells.
+
+    The vulnerable detail route contributes the cross-account result; the secure
+    detail route contributes its own (verified-denial) result. Owner baselines are
+    recorded as observed so a reader can see the positive control.
+    """
+    cells = []
+    for run in lab_runs:
+        run = as_run_dict(run)
+        recipe = run["recipe"]
+        for key, template in (("vulnerable", recipe["detail"]), ("secure", recipe["secure_detail"])):
+            method, path = split_endpoint(template)
+            summary = (run.get("ownership") or {}).get(key) or {}
+            verdict = _lab_endpoint_verdict(run, key)
+            reason = _lab_endpoint_reason(run, key)
+            cells.append(_cell(method, path, "other_account_resource", verdict, reason,
+                               run["policy"]["expected_access"], run["policy"]["expected_source"],
+                               f"lab_bola:{run['scenario_id']}:{key}"))
+            if summary.get("status") == "SUCCESS":
+                cells.append({"endpoint": f"{method} {path}", "method": method, "path": path,
+                              "column": "own_resource", "verdict": None, "observed": True,
+                              "reason": ("owner baseline observed during ownership verification "
+                                         "on the same route"),
+                              "expected_access": None, "expected_source": None,
+                              "source_ref": f"lab_bola:{run['scenario_id']}:{key}#ownership"})
+    return cells
+
+
+_LAB_GROUPS = {"vulnerable": ("LAB-BOLA-03", "LAB-BOLA-04"),
+               "secure": ("LAB-BOLA-05", "LAB-BOLA-06")}
+
+
+def _lab_group(run, key):
+    wanted = _LAB_GROUPS[key]
+    return [check for check in run["checks"] if check["id"] in wanted]
+
+
+def _lab_endpoint_verdict(run, key):
+    verdicts = [check["verdict"] for check in _lab_group(run, key)]
+    for verdict in ("CONFIRMED", "SUSPECTED", "INCONCLUSIVE", "SKIPPED", "SAFE"):
+        if verdict in verdicts:
+            return verdict
+    return "SKIPPED"
+
+
+def _lab_endpoint_reason(run, key):
+    checks = _lab_group(run, key)
+    reasons = []
+    for check in checks:
+        reason = f"{check['id']} {check['actor']}→{check['owner']}: {check['reason']}"
+        if reason not in reasons:
+            reasons.append(reason)
+    return " | ".join(reasons) or "no check recorded for this route"
+
+
 def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(),
-                        interaction_runs=()):
+                        interaction_runs=(), lab_bola_runs=()):
     """Every endpoint the stored runs declared, so untested rows stay visible."""
     endpoints = {}
-    for run in interaction_runs:
+    for run in tuple(interaction_runs) + tuple(lab_bola_runs):
         run = as_run_dict(run)
         for item in run.get("inventory") or ():
             endpoints.setdefault((item["method"], item["path"]), {
@@ -288,10 +344,12 @@ def endpoints_from_runs(scenario_runs, authentication_runs=(), validation_runs=(
 
 
 def build_authorization_matrix(scenario_runs, authentication_runs=(), validation_runs=(),
-                               interaction_runs=()):
+                               interaction_runs=(), lab_bola_runs=()):
     cells, _ = cells_from_runs(scenario_runs, authentication_runs, validation_runs)
     cells += cells_from_interactions(interaction_runs)
+    cells += cells_from_lab_bola(lab_bola_runs)
     endpoints = endpoints_from_runs(scenario_runs, authentication_runs, validation_runs,
-                                    interaction_runs)
-    return build_matrix(cells, not_contributing={"validation_runs": len(validation_runs)},
+                                    interaction_runs, lab_bola_runs)
+    return build_matrix(cells, not_contributing={"validation_runs": len(validation_runs),
+                                                "lab_bola_runs": len(lab_bola_runs)},
                         extra_endpoints=endpoints)

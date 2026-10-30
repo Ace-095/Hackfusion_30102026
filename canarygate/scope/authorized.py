@@ -24,6 +24,7 @@ TARGETLAB_OPERATIONS = {
     ("GET", "/health"): "READ_ONLY",
     ("GET", "/profile"): "READ_ONLY",
     ("GET", "/admin/users"): "READ_ONLY",
+    ("GET", "/records"): "READ_ONLY",
     ("GET", "/records/ra"): "READ_ONLY",
     ("GET", "/records/rb"): "READ_ONLY",
     ("GET", "/records/ra/secure"): "READ_ONLY",

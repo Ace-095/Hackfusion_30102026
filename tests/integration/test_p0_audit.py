@@ -40,7 +40,7 @@ def test_every_requirement_row_is_well_formed():
     for row in report["rows"]:
         # Every row traces to the frozen document, or to the SCI extension (C-rows),
         # which is additive and does not change frozen P0 rules.
-        assert row["frozen"].startswith(("§", "SCI")), row["id"]
+        assert row["frozen"].startswith(("§", "SCI", "LAB")), row["id"]
         assert row["statement"], row["id"]
         assert row["evidence"] in p0_audit.EVIDENCE_LABELS, row["id"]
         if row["status"] in {"implemented", "partial"}:
@@ -71,3 +71,17 @@ def test_sci_requirements_are_present_and_fully_evidenced():
     assert "GET /api/interaction-scans/{run_id}/report" in rows["C7"]["api_routes"]
     assert rows["C6"]["evidence"] == "recorded_offline"
     assert rows["C1"]["evidence"] == "unit"
+
+
+def test_lab_requirements_are_present_and_fully_evidenced():
+    """Checkpoint 36 rows: real loopback validation, not transcripts."""
+    report = audit()
+    rows = {row["id"]: row for row in report["rows"]}
+    for requirement in ("L1", "L2", "L3", "L4", "L5", "L6"):
+        row = rows[requirement]
+        assert row["status"] == "implemented", requirement
+        assert row["implementation"] and row["tests"], requirement
+    assert rows["L1"]["evidence"] == "loopback_tls"
+    assert rows["L4"]["area"] == "safety"
+    assert "POST /api/lab-bola-scans" in rows["L1"]["api_routes"]
+    assert "GET /api/lab-bola-scans/{run_id}/report" in rows["L5"]["api_routes"]

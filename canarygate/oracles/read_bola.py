@@ -13,6 +13,16 @@ from canarygate.seed.registry import (FixtureOwnershipResult, _json, _safe_id, _
                                       is_issued_guarded_ownership)
 from canarygate.seed.extraction import MISSING, extract, valid_selector
 
+# The only policy sources the oracle treats as a declared expectation. Each one is
+# bound to the transport that produced the ownership evidence, so a lab run cannot
+# borrow the synthetic-policy trust of the fixture path or vice versa.
+TARGETLAB_POLICY_SOURCE = "targetlab declared record policy"
+_TRUSTED_SOURCES = {
+    "synthetic fixture policy": None,
+    "offline scenario policy": "offline",
+    TARGETLAB_POLICY_SOURCE: "targetlab_https",
+}
+
 CHECKLIST_KEYS = (
     'private_resource', 'distinct_accounts', 'ownership_verified', 'owner_baseline',
     'private_baseline', 'attacker_request', 'response_checked', 'private_disclosure',
@@ -44,6 +54,19 @@ def _private_marker(value, ids, actors):
             and value not in actors and not any(item_id in value for item_id in ids))
 
 
+def trusted_policy_source(source_runner):
+    """The one policy source this evidence may be judged against.
+
+    A runner that is not the fixture and not the loopback TargetLab transport is
+    judged against the generic offline scenario policy, exactly as before.
+    """
+    if source_runner is None:
+        return 'synthetic fixture policy'
+    if getattr(source_runner, 'transport_label', None) == 'targetlab_https':
+        return TARGETLAB_POLICY_SOURCE
+    return 'offline scenario policy'
+
+
 def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, response,
                        expected_access, expected_source):
     """Evaluate observed fixture evidence; never issue a request or accept JWT claims.
@@ -71,8 +94,7 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
         except ValueError:
             guarded_identities = False
     checks['distinct_accounts'] = bool(fixture_identities or guarded_identities)
-    trusted_source = ('synthetic fixture policy' if source_runner is None
-                      else 'offline scenario policy')
+    trusted_source = trusted_policy_source(source_runner)
     checks['policy_denies_access'] = (expected_access == 'owner-only'
                                      and expected_source == trusted_source)
     if not checks['private_resource'] or not checks['distinct_accounts']:

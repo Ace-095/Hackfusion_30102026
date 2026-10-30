@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from canarygate.database.auth_store import AuthenticationStore
 from canarygate.database.scenario_store import ScenarioStore
 from canarygate.database.interaction_store import InteractionStore
+from canarygate.database.lab_bola_store import LabBolaStore
 from canarygate.database.lab_store import LabStore
 from canarygate.database.validation_store import ValidationStore
 from canarygate.database.store import FixtureStore, default_database_path
@@ -25,6 +26,7 @@ from canarygate.report.p0 import build_p0_report, render_p0_report
 from canarygate.report.scenario import build_scenario_sections, render_scenario_report
 from canarygate.report.interaction import build_interaction_sections, render_interaction_report
 from canarygate.report.lab import build_lab_sections, render_lab_report
+from canarygate.report.lab_bola import build_lab_bola_sections, render_lab_bola_report
 from canarygate.report.validation import build_validation_sections, render_validation_report
 from canarygate.scan.auth_generic import run_authentication_scan
 from canarygate.scan.auth_models import (AuthenticationRun, AuthenticationScanRequest,
@@ -38,6 +40,9 @@ from canarygate.scan.interaction_models import (InteractionRun, InteractionScanR
 from canarygate.scan.interaction_scenarios import (build_interaction_scenario,
                                                    runner_for as interaction_runner_for)
 from canarygate.network.targetlab import TargetLabRefused, TargetLabRunner
+from canarygate.scan.lab_bola import run_lab_bola_scan
+from canarygate.scan.lab_bola_models import LabBolaRun, LabBolaScanRequest, LabBolaSectionReport
+from canarygate.scan.lab_bola_scenarios import build_bola_plan
 from canarygate.scan.lab_generic import run_lab_evidence
 from canarygate.scan.lab_models import LabRun, LabScanRequest, LabSectionReport
 from canarygate.scan.lab_scenarios import build_lab_plan
@@ -74,6 +79,10 @@ def get_interaction_store(request: Request) -> InteractionStore:
 
 def get_lab_store(request: Request) -> LabStore:
     return request.app.state.lab_store
+
+
+def get_lab_bola_store(request: Request) -> LabBolaStore:
+    return request.app.state.lab_bola_store
 
 
 def _database_call(method, *args):
@@ -469,21 +478,93 @@ def lab_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
+def _lab_bola_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500,
+                            detail="Stored TargetLab BOLA data failed integrity verification") from None
+
+
+@router.post("/api/lab-bola-scans", status_code=201, response_model=LabBolaRun)
+def start_lab_bola_scan(payload: LabBolaScanRequest,
+                        store: LabBolaStore = Depends(get_lab_bola_store)):
+    """Run the fixed read-BOLA validation against a loopback TargetLab over HTTPS."""
+    ca_file = os.environ.get("CANARYGATE_TARGETLAB_CA")
+    if not ca_file:
+        raise HTTPException(status_code=400,
+                            detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
+    try:
+        plan = build_bola_plan(payload.port, budget=payload.request_budget)
+        runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid TargetLab BOLA configuration") from None
+    try:
+        run = run_lab_bola_scan(plan, runner)
+    except (TargetLabRefused, OSError):
+        raise HTTPException(status_code=502,
+                            detail="TargetLab request refused or failed; no evidence was stored") from None
+    finally:
+        runner.close()
+    if all(check.status is None for check in run.checks):
+        # Nothing was ever observed: the lab was unreachable or refused TLS. That
+        # is a transport failure, not evidence, so no run is stored.
+        raise HTTPException(status_code=502,
+                            detail="TargetLab could not be reached; no evidence was stored")
+    return _lab_bola_call(store.save, run)
+
+
+def _find_lab_bola_run(store, run_id):
+    run = _lab_bola_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="TargetLab BOLA scan not found")
+    return run
+
+
+@router.get("/api/lab-bola-scans/{run_id}", response_model=LabBolaRun)
+def lab_bola_scan(run_id: str, store: LabBolaStore = Depends(get_lab_bola_store)):
+    return _find_lab_bola_run(store, run_id)
+
+
+@router.get("/api/lab-bola-scans/{run_id}/report", response_model=LabBolaSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
+                    store: LabBolaStore = Depends(get_lab_bola_store)):
+    run = _find_lab_bola_run(store, run_id)
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("lab_bola", run))
+        return JSONResponse(content=build_p0_report("lab_bola", run).model_dump(mode="json"))
+    if format == "html":
+        return HTMLResponse(render_lab_bola_report(run))
+    if view == "sections":
+        return LabBolaSectionReport(mode="targetlab_bola", id=run_id, run_id=run_id,
+                                    sections=build_lab_bola_sections(run))
+    return run
+
+
 @router.get("/api/authorization-matrix", response_model=AuthorizationMatrix)
 def authorization_matrix(scenario_store: ScenarioStore = Depends(get_scenario_store),
                          auth_store: AuthenticationStore = Depends(get_auth_store),
                          validation_store: ValidationStore = Depends(get_validation_store),
-                         interaction_store: InteractionStore = Depends(get_interaction_store)):
+                         interaction_store: InteractionStore = Depends(get_interaction_store),
+                         lab_bola_store: LabBolaStore = Depends(get_lab_bola_store)):
     """Partial authorization coverage over stored offline runs; gaps stay visible."""
     try:
         scenarios = _scenario_call(scenario_store.list)
         authentications = _auth_call(auth_store.list)
         validations = _validation_call(validation_store.list)
         interactions = _interaction_call(interaction_store.list)
+        lab_runs = _lab_bola_call(lab_bola_store.list)
     except HTTPException:
         raise
     try:
-        return build_authorization_matrix(scenarios, authentications, validations, interactions)
+        return build_authorization_matrix(scenarios, authentications, validations, interactions,
+                                          lab_runs)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=500, detail="Authorization matrix could not be built") from None
 
@@ -519,6 +600,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     validation_store = ValidationStore(path)
     interaction_store = InteractionStore(path)
     lab_store = LabStore(path)
+    lab_bola_store = LabBolaStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -528,6 +610,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         validation_store.initialize()
         interaction_store.initialize()
         lab_store.initialize()
+        lab_bola_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
@@ -539,6 +622,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     application.state.validation_store = validation_store
     application.state.interaction_store = interaction_store
     application.state.lab_store = lab_store
+    application.state.lab_bola_store = lab_bola_store
     application.include_router(router)
     return application
 

@@ -382,3 +382,34 @@ validation."
 Prove containment quickly: stop the lab and repeat the POST → `502`, and no run is
 stored. Then run
 `.venv/bin/python -m pytest tests/lab/test_targetlab_transport.py -q` (24 passed).
+
+### Checkpoint 36 TargetLab BOLA demo
+
+With the lab running over TLS (see checkpoint 35) and `CANARYGATE_TARGETLAB_CA`
+set:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/lab-bola-scans \
+     -H 'content-type: application/json' -d '{"port": 8765}'
+```
+
+Expected: `201`, `verdict: "CONFIRMED"`, `summary {confirmed: 2, safe: 4, ...}`,
+`constraints.requests_sent = 18`, and six checks where `LAB-BOLA-03`/`04` are
+`CONFIRMED` with `checklist.private_disclosure = true`, `LAB-BOLA-05`/`06` are
+`SAFE` with `checklist.verified_denial = true`, and `LAB-BOLA-01`/`02` are the
+owner baselines.
+
+Then open:
+
+- `GET /api/lab-bola-scans/{id}/report?view=sections` — ownership evidence and the
+  ground-truth table showing 6/6 matched, still labelled "evaluated after the
+  verdicts".
+- `GET /api/lab-bola-scans/{id}/report?view=p0` — nine sections, two `High`
+  `Authorization` findings with `bola` remediation.
+- `GET /api/authorization-matrix` — `GET /records/{id}` red for
+  `other_account_resource`, `GET /records/{id}/secure` green.
+
+The strongest single slide: stop the lab, repeat the POST → `502` and nothing is
+stored. Then run `.venv/bin/python -m pytest tests/lab/test_lab_bola_adversarial.py -q`
+(11 passed) to show a mutated response, a swapped token and a bad certificate all
+fail closed.

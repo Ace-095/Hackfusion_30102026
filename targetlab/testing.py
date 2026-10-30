@@ -32,9 +32,10 @@ def free_port() -> int:
 class LabTlsServer:
     """The real TargetLab application served over HTTPS on loopback."""
 
-    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY):
+    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY, app=None):
         self.port = free_port()
-        self._config = uvicorn.Config(create_lab_app(), host="127.0.0.1", port=self.port,
+        self._config = uvicorn.Config(app if app is not None else create_lab_app(),
+                                      host="127.0.0.1", port=self.port,
                                       ssl_certfile=str(cert), ssl_keyfile=str(key),
                                       log_level="error", lifespan="off", access_log=False)
         self._server = uvicorn.Server(self._config)
