@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP43](#17-checkpoint-history-cp26cp43)
+- [§17 Checkpoint history CP26–CP44](#17-checkpoint-history-cp26cp44)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -2108,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP43
+## 17. Checkpoint history CP26–CP44
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2132,6 +2132,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 41 | Demonstration readiness | `GatedLabTlsServer`, three more interface tests, clean-wheel check | Proved the demonstration survives a lab that disappears mid-run: stored runs stay, the missing pair's cells stay untested, and a connection failure is never a verdict |
 | 42 | Product experience | `landing.html` + `landing.css`/`landing.js`, `/ui/assessment`, execution timeline, disclosure proof, new navigation | The journey is self-service end to end; the run page shows recorded stages and says plainly that the backend streams no live events |
 | 43 | Live experience | transport `observer`, `ui/execution.py`, `/ui/execution/{id}` + `/events`, canvas showreel, interactive dashboard | The loading screen is fed by the transport itself: one event per completed request, with the lab's status and the measured duration; no percentage and no invented progress |
+| 44 | Honest outcomes | `terminal_for(job)`, `partial` job state, server-rendered terminal block, retry form, status-specific error titles | The screen can now say *this stopped*: the reason, the next step and the retry are in the HTML, so a refresh or a reader without scripts sees the same truth; a demonstration that stored two of three runs is `partial`, never `complete` |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -2268,7 +2269,7 @@ TargetLab refuses a non-loopback `--host` (exit code 2) and rejects non-loopback
 
 | Command | Success looks like | Failure looks like |
 |---|---|---|
-| `pytest tests -q` | `1055 passed in ~110s` | any `FAILED`; CI annotates the first ten |
+| `pytest tests -q` | `1109 passed in ~123s` | any `FAILED`; CI annotates the first ten |
 | `p0_audit.py` | `58 requirements, 0 failures`, then counts | `ReferenceError`, dangling symbol, unclassified test file |
 | `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
 | `consistency_audit.py` | same invariant line, rebuilt from stored evidence | `EvidenceIntegrityError`, projection mismatch |
@@ -3379,6 +3380,44 @@ The observer is deliberately powerless: it runs after the response is final,
 its return value is ignored, its exceptions are swallowed, and it never sees a
 credential. `tests/lab/test_targetlab_observer.py` proves those properties, and
 `tests/integration/test_ui_lab_pages.py` proves the stream matches the stored run.
+
+---
+
+### G.15 Refresh at CP44
+
+Checkpoint 44 fixed the other half of the loading screen: what it says when the
+engine stops. The terminal state is no longer a JavaScript reveal — the route
+passes `terminal_for(job)` into the template, so state, sentence, hint, failed
+pairs, next links and the retry form are all in the served HTML. `<title>`, the H1
+and the sub-heading follow the state; `complete`, `partial` and `failed` are three
+distinct outcomes, and a demonstration that stored two of three runs is `partial`.
+
+```
+$ .venv/bin/python -m pytest -q
+1109 passed, 1 warning in 122.80s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1109 collected tests, 66 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+31/31 browser checks passed
+```
+
+Two statements a judge can now rely on:
+
+* a stopped run names the port it tried, prints the backend's own sentence and
+  offers `python -m targetlab --port … --tls-cert <pem> --tls-key <key>`, and the
+  retry form re-posts the same `kind`/`port`/`actor`/`asset` to the action that
+  already exists — no new endpoint, no automatic retry;
+* a partial demonstration reports `2 of 3 runs stored` and leaves exactly the two
+  cells the missing pair would have added untested; the matrix reads 7 tested /
+  2 untested, and nothing in the UI calls that complete.
+
+The reasons are closed (`unreachable`, `ca`, `config`, `partial`, `internal`) and
+each maps to one hint. Reachability is still not probed with a separate health
+request: that would be a second outbound path outside the single guarded
+transport, so the first real request remains the reachability test.
 
 ---
 

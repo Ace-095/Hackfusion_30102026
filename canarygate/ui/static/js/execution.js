@@ -29,8 +29,7 @@
   var elapsed = root.querySelector("[data-elapsed]");
   var title = root.querySelector("[data-engine-title]");
   var sub = root.querySelector("[data-engine-sub]");
-  var resultBox = root.querySelector("[data-result]");
-  var failedBox = root.querySelector("[data-failed]");
+  var terminalBox = root.querySelector("[data-terminal]");
   var statRequests = root.querySelector(".engine-stats .stat-value");
 
   // The server already rendered the events it had; skip them on the first poll.
@@ -127,45 +126,106 @@
     });
   }
 
+  var TERMINAL = {
+    complete: {
+      title: "Assessment complete.",
+      sub: "stored evidence"
+    },
+    partial: {
+      title: "Assessment partially complete.",
+      sub: "some runs stored"
+    },
+    failed: {
+      title: "Assessment did not complete.",
+      sub: "no run stored"
+    }
+  };
+
+  function setText(node, value) {
+    if (node) { node.textContent = value; }
+  }
+
+  function fillTerminal(snapshot) {
+    if (!terminalBox) { return; }
+    var state = snapshot.status;
+    var copy = TERMINAL[state] || TERMINAL.failed;
+    terminalBox.setAttribute("data-terminal", state);
+    terminalBox.setAttribute("data-tone", state === "complete" ? "ok" : "warn");
+    var alert = terminalBox.querySelector(".alert");
+    if (alert) {
+      alert.className = "alert " + (state === "complete" ? "alert-ok" : "alert-warn");
+    }
+    setText(terminalBox.querySelector("[data-terminal-title]"), copy.title);
+    var stored = (snapshot.results || []).length;
+    var total = (snapshot.steps || []).length;
+    setText(terminalBox.querySelector("[data-terminal-detail]"),
+      state === "complete"
+        ? stored + " of " + total + " runs stored · " + snapshot.requests_sent +
+          " requests sent"
+        : (snapshot.error || "The engine stopped before storing a run."));
+
+    var failure = snapshot.failure || {};
+    var hint = terminalBox.querySelector("[data-terminal-hint]");
+    if (hint) {
+      if (failure.hint) { hint.textContent = failure.hint; hint.hidden = false; }
+      else { hint.hidden = true; }
+    }
+
+    var pairs = terminalBox.querySelector("[data-terminal-pairs]");
+    if (pairs) {
+      while (pairs.firstChild) { pairs.removeChild(pairs.firstChild); }
+      (failure.failed_pairs || []).forEach(function (pair) {
+        var li = document.createElement("li");
+        var name = document.createElement("b");
+        name.textContent = pair.label;
+        li.appendChild(name);
+        li.appendChild(document.createTextNode(" — " + pair.detail));
+        pairs.appendChild(li);
+      });
+      pairs.hidden = !(failure.failed_pairs || []).length;
+    }
+
+    var links = terminalBox.querySelectorAll("[data-terminal-link]");
+    var run = (snapshot.results || [])[0];
+    var primary = (state === "complete" && run && snapshot.kind !== "demo")
+      ? "/ui/lab/" + (snapshot.kind === "sci" ? "sci" : "bola") + "/" + run.run_id
+      : (state === "failed" ? "/ui/assessment" : "/ui/lab/matrix");
+    if (links.length) { links[0].href = primary; }
+
+    var retry = terminalBox.querySelector("[data-retry]");
+    if (retry) { retry.hidden = state === "complete"; }
+    terminalBox.hidden = false;
+  }
+
   function finish(snapshot) {
     finished = true;
     root.setAttribute("data-status", snapshot.status);
-    if (snapshot.requests_sent && statRequests) {
+    if (snapshot.requests_sent !== undefined && statRequests) {
       statRequests.textContent = snapshot.requests_sent;
     }
-    if (snapshot.status === "complete") {
-      if (title) { title.textContent = "Assessment complete"; }
-      if (opState) { opState.textContent = "complete"; }
-      var first = (snapshot.results || [])[0];
-      var link = root.querySelector("[data-result-link]");
-      var detail = root.querySelector("[data-result-detail]");
-      var copy = root.querySelector("[data-result-copy]");
-      if (first && snapshot.kind !== "demo") {
-        if (link) { link.href = "/ui/lab/" + (snapshot.kind === "sci" ? "sci" : "bola") + "/" + first.run_id; }
-        if (detail) { detail.href = "/ui/lab/" + (snapshot.kind === "sci" ? "sci" : "bola") + "/" + first.run_id; }
-      } else {
-        if (link) { link.href = "/ui/lab/matrix"; }
-        if (detail) { detail.href = "/ui/lab/matrix"; }
-      }
-      if (copy) {
-        copy.textContent = (snapshot.results || []).length + " run(s) stored · " +
-          snapshot.requests_sent + " requests · opening the evidence…";
-      }
-      if (resultBox) { resultBox.hidden = false; }
+    var state = snapshot.status === "complete" ? "complete"
+      : (snapshot.status === "partial" ? "partial" : "failed");
+    var heading = TERMINAL[state].title.replace(/\.$/, "");
+    if (title) { title.textContent = heading; }
+    // The tab must not keep saying "in progress" after the engine stopped.
+    document.title = heading + " · CanaryGate";
+    if (opState) { opState.textContent = state; }
+    if (state === "complete") {
       markStage("stored");
       if (flows.length) { flows[0].classList.add("is-done"); }
+    }
+    fillTerminal(snapshot);
+    if (sub) { sub.textContent = TERMINAL[state].sub; }
+
+    // Only a completed run navigates: a partial or stopped run stays put so the
+    // reason and the next step are read, not skipped.
+    if (state === "complete") {
+      var first = (snapshot.results || [])[0];
       var target = (first && snapshot.kind !== "demo")
         ? "/ui/lab/" + (snapshot.kind === "sci" ? "sci" : "bola") + "/" + first.run_id
         : "/ui/lab/matrix";
       window.setTimeout(function () { window.location.assign(target); }, 1200);
-    } else {
-      if (title) { title.textContent = "Assessment stopped"; }
-      if (opState) { opState.textContent = "failed"; }
-      var box = root.querySelector("[data-failed-detail]");
-      if (box) { box.textContent = snapshot.error || "The engine stopped before storing a run."; }
-      if (failedBox) { failedBox.hidden = false; }
     }
-    if (sub) { sub.textContent = snapshot.status === "complete" ? "stored evidence" : "no run stored"; }
   }
 
   function poll() {

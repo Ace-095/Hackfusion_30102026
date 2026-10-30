@@ -1189,3 +1189,41 @@ The landing page's animation is abstract on purpose. It draws networks, paths, a
 boundary and a report shape, but no status code, no verdict word and no number —
 so a judge cannot mistake the showreel for a result, and a screenshot of it can
 never become evidence.
+
+### Checkpoint 44: the screen must be able to say "this stopped"
+
+CP43's loading screen was honest while it ran and silent when it stopped. The
+reason was structural rather than careless: the terminal banner was a JavaScript
+reveal, so every path that did not run the poller — a refresh, a bookmark, a
+reader with scripts off — kept the page in its initial "in progress" state with
+no explanation. The fix is not more client code; it is moving the decision to the
+server. `terminal_for(job)` renders state, sentence, hint and next links into the
+HTML, and the script fills the same block when it is the one that saw the end.
+
+**A third terminal state was needed.** `complete`/`failed` could not describe a
+demonstration that stored two of three runs, and the old code called that
+"complete". Introducing `partial` was the smallest honest change: it is computed
+from the same counts the page already shows, it never reaches the store, and its
+hint repeats the rule the matrix enforces — a cell with no stored check is
+untested, and untested is not SAFE. Calling the pair count "complete" to keep the
+state machine small would have been a lie about coverage, which is the one thing
+this project cannot afford.
+
+**The hints are closed and dumb on purpose.** Five reasons, five sentences, no
+retry, no fallback to a default that sounds reassuring. A hint may tell an
+operator how to start the lab; it may not decide that the run "probably" worked.
+Reachability is still not probed separately: a health request would be a second
+outbound path outside the single guarded transport, which the frozen architecture
+forbids. The first real request is the reachability test.
+
+**Retry re-uses the action that already exists.** The retry form posts the same
+fields to `POST /ui/actions/run-assessment`; nothing new is exposed, nothing is
+queued, and a judge can only repeat a configuration they already chose. Steps now
+carry the catalog's `asset_id` so the form can replay a single-pair run exactly.
+
+**A rejection should read like a rejection.** The error page used to announce
+"Backend returned HTTP 422 — The UI rendered this page instead of a JSON error
+body", which describes our plumbing to someone trying to use the product. The
+status now maps to a sentence ("That configuration was rejected") while the HTTP
+code stays in a badge and the backend's own detail string is printed unchanged:
+friendlier words, identical facts.

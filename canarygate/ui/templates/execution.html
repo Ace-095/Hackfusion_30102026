@@ -1,9 +1,14 @@
 {% extends "base.html" %}
 {% from "_macros.html" import page_head, icon, verdict_badge, stat %}
-{% block title %}Assessment in progress{% endblock %}
+{% block title %}{{ terminal.page_title if terminal else "Assessment in progress" }}{% endblock %}
 {% block head %}<meta name="robots" content="noindex">{% endblock %}
 {% block content %}
-{{ page_head("CanaryGate security engine", "Assessment in progress",
+{#- Templates reload from disk while a Python module does not; a stale process must
+    still render this page, so the optional context is defaulted here. -#}
+{% set terminal = terminal if terminal is defined else none %}
+{{ page_head("CanaryGate security engine",
+             terminal.page_title if terminal else "Assessment in progress",
+             terminal.page_subtitle if terminal else
              "Each line below is a request that has already completed against the loopback "
              "lab. The feed is produced by the transport itself, not by a timer.") }}
 
@@ -13,8 +18,7 @@
     <div>
       <p class="engine-kicker">CanaryGate security engine</p>
       <h2 id="engine-title" data-engine-title>
-        {% if job.status == "running" %}Assessment in progress{% elif job.status == "complete" %}
-        Assessment complete{% else %}Assessment stopped{% endif %}
+        {{ terminal.page_title if terminal else "Assessment in progress" }}
       </h2>
       <p class="note" data-engine-sub>
         {{ job.kind|upper }} · {{ job.steps|length }} run(s) · TargetLab port {{ job.port }}
@@ -38,7 +42,7 @@
   <div class="engine-grid">
     <section class="card card-inset" aria-labelledby="op-title">
       <div class="card-head"><h3 id="op-title">Current operation</h3>
-        <span class="badge badge-muted" data-op-state>queued</span></div>
+        <span class="badge badge-muted" data-op-state>{{ terminal.state if terminal else "queued" }}</span></div>
       <dl class="kv">
         <div class="kv-row"><dt>Authentication</dt>
           <dd class="mono" data-op-actor>{{ job.steps[0].actor if job.steps else "—" }}</dd></div>
@@ -50,7 +54,10 @@
         <div class="kv-row"><dt>Last request</dt>
           <dd class="mono" data-op-last>—</dd></div>
       </dl>
-      <p class="note mt-1" data-op-note>The engine has not sent its first request yet.</p>
+      <p class="note mt-1" data-op-note>{% if terminal and not job.requests_sent %}The engine
+        stopped before it sent a request.{% elif terminal %}The run is finished; the last
+        exchange above is the last one that really happened.{% else %}The engine has not
+        sent its first request yet.{% endif %}</p>
     </section>
 
     <section class="card card-inset" aria-labelledby="net-title">
@@ -103,35 +110,55 @@
         {% endfor %}
       </ol>
       <noscript>
-        <p class="note">JavaScript is off, so this page cannot poll. It refreshes itself
-          every three seconds until the assessment finishes.</p>
         {% if job.status == "running" %}
+        <p class="note">JavaScript is off, so this page cannot poll the engine. It
+          refreshes itself every three seconds until the assessment finishes.</p>
         <meta http-equiv="refresh" content="3">
+        {% else %}
+        <p class="note">JavaScript is off. This page is the server's own record of the
+          run, so the summary below is complete without any script.</p>
         {% endif %}
       </noscript>
     </section>
   </div>
 
-  <div class="engine-foot" data-result hidden>
-    <div class="alert alert-ok">
-      {{ icon("check") }}
-      <div><b data-result-title>Assessment complete.</b>
-        <span data-result-copy>Opening the evidence…</span></div>
+  {#- The terminal state is rendered here, by the server. A judge who refreshes the
+      page, opens a bookmark or runs without JavaScript still sees what happened,
+      why it stopped and where to go next. -#}
+  <section class="engine-foot" data-terminal="{{ terminal.state if terminal else 'running' }}"
+           data-tone="{{ terminal.tone if terminal else 'ok' }}" role="status"
+           aria-live="polite"{% if not terminal %} hidden{% endif %}>
+    <div class="alert {{ 'alert-ok' if terminal and terminal.tone == 'ok' else 'alert-warn' }}">
+      {{ icon("check") if terminal and terminal.tone == 'ok' else icon("warning") }}
+      <div><b data-terminal-title>{{ terminal.title if terminal else "" }}</b>
+        <span data-terminal-detail>{{ terminal.detail if terminal else "" }}</span></div>
     </div>
-    <p class="row">
-      <a class="btn btn-primary" data-result-link href="/ui/lab/matrix">Open the authorization matrix</a>
-      <a class="btn" data-result-detail href="/ui/lab/matrix">Inspect the stored evidence</a>
+    <p class="note" data-terminal-hint
+       {% if not terminal or not terminal.hint %}hidden{% endif %}>{{ terminal.hint if terminal else "" }}</p>
+    <ul class="ticks" data-terminal-pairs
+        {% if not terminal or not terminal.failed_pairs %}hidden{% endif %}>
+      {% for pair in (terminal.failed_pairs if terminal else []) %}
+      <li><b>{{ pair.label }}</b> — {{ pair.detail }}</li>
+      {% endfor %}
+    </ul>
+    <p class="row" data-terminal-links>
+      {% for link in (terminal.links if terminal else []) %}
+      <a class="btn {{ 'btn-primary' if loop.first else 'btn-ghost' }}"
+         href="{{ link.href }}" data-terminal-link>{{ link.label }}</a>
+      {% endfor %}
     </p>
-  </div>
+    {#- Re-posting this form is the only retry path: it is the same action the
+        workspace uses, with the same port and pair the job already ran. -#}
+    <form method="post" action="/ui/actions/run-assessment" class="row" data-retry
+          {% if not terminal or not terminal.retry %}hidden{% endif %}>
+      <input type="hidden" name="kind" value="{{ job.kind }}">
+      <input type="hidden" name="port" value="{{ job.port }}">
+      <input type="hidden" name="actor" value="{{ job.steps[0].actor if job.steps else '' }}">
+      <input type="hidden" name="asset" value="{{ job.steps[0].asset if job.steps else '' }}">
+      <button class="btn" type="submit">Try again with the same settings</button>
+    </form>
+  </section>
 
-  <div class="engine-foot" data-failed hidden>
-    <div class="alert alert-warn">
-      {{ icon("warning") }}
-      <div><b>Assessment did not complete.</b> <span data-failed-detail></span></div>
-    </div>
-    <p class="row"><a class="btn" href="/ui/assessment">Change the configuration</a>
-      <a class="btn btn-ghost" href="/ui/lab/matrix">See what is stored</a></p>
-  </div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="/ui/static/js/execution.js" defer></script>{% endblock %}

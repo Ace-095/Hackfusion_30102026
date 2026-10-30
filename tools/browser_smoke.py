@@ -114,6 +114,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const base = process.argv[2];
 const labPort = process.argv[3];
+const closedPort = process.argv[4];
 const marker = '__SMOKE__';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -122,13 +123,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // real page errors so a genuine regression cannot hide behind it.
 const KNOWN_JSDOM_NOISE = /You must provide an XPath result type/;
 
-async function open(url) {
+async function open(url, options = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   vc.on('error', (...args) => errors.push(args.join(' ')));
   const dom = await JSDOM.fromURL(url, {
     runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true, virtualConsole: vc,
+    beforeParse(window) {
+      // jsdom implements no fetch. Only the engine screen polls, so only that page
+      // gets the platform's own fetch, resolved against the app under test.
+      if (options.fetch) {
+        window.fetch = (input, init) => fetch(new URL(String(input), base).toString(), init);
+      }
+    },
   });
   const w = dom.window;
   await new Promise((r) => (w.document.readyState === 'complete' ? r() : w.addEventListener('load', r, { once: true })));
@@ -220,6 +228,53 @@ async function submitAndWait(w, form, panelSelector, pattern, seconds = 120) {
     external: !!workspace.w.document.body.innerHTML.match(/(?:src|href)\s*=\s*["'](?:https?:)?\/\//i),
     errors: workspace.errors.filter((message) => !KNOWN_JSDOM_NOISE.test(message)),
   });
+
+  // 3d. The judge's path through the engine: a real run watched to completion by
+  // the page's own script, then a refused run that must explain itself.
+  async function driveAssessment(fields) {
+    const response = await fetch(base + '/ui/actions/run-assessment', {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(fields).toString(),
+    });
+    const location = response.headers.get('location');
+    if (!location) { return { error: 'no redirect', status: response.status }; }
+    const exec = await open(new URL(location, base).toString(), { fetch: true });
+    const doc = exec.w.document;
+    const deadline = Date.now() + 90000;
+    while (Date.now() < deadline) {
+      const box = doc.querySelector('[data-job]');
+      if (box && box.getAttribute('data-status') !== 'running') { break; }
+      await sleep(200);
+    }
+    const terminal = doc.querySelector('[data-terminal]');
+    const hintNode = doc.querySelector('[data-terminal-hint]');
+    const retry = doc.querySelector('[data-retry]');
+    const result = {
+      status: (doc.querySelector('[data-job]') || {}).getAttribute
+        ? doc.querySelector('[data-job]').getAttribute('data-status') : null,
+      title: doc.title,
+      terminal_state: terminal ? terminal.getAttribute('data-terminal') : null,
+      terminal_hidden: terminal ? terminal.hasAttribute('hidden') : null,
+      terminal_title: (doc.querySelector('[data-terminal-title]') || {}).textContent?.trim(),
+      terminal_detail: (doc.querySelector('[data-terminal-detail]') || {}).textContent?.trim(),
+      hint: hintNode ? hintNode.textContent.trim() : '',
+      hint_hidden: hintNode ? hintNode.hasAttribute('hidden') : null,
+      retry_hidden: retry ? retry.hasAttribute('hidden') : null,
+      errors: exec.errors.filter((message) => !KNOWN_JSDOM_NOISE.test(message)
+                                              && !/Not implemented: navigation/.test(message)),
+    };
+    await sleep(1400);   // give a completed run its 1.2 s hand-off, if it has one
+    result.navigated = exec.errors.some((message) => /Not implemented: navigation/.test(message));
+    exec.w.close();
+    return result;
+  }
+  facts.engine = {
+    complete: await driveAssessment({ kind: 'bola', port: String(labPort), actor: 'mallapa',
+                                      asset: 'BRD-2026-018' }),
+    refused: await driveAssessment({ kind: 'bola', port: String(closedPort), actor: 'mallapa',
+                                     asset: 'BRD-2026-018' }),
+  };
 
   // 4. Endpoints page: the table filter hides non-matching rows.
   const endpoints = await open(base + '/ui/endpoints');
@@ -367,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
         env["NODE_PATH"] = str(Path(args.jsdom) / "node_modules")
 
     lab_port, app_port = free_port(), free_port()
+    closed_port = free_port()   # closed before the run: a genuine connection refusal
     holder = tempfile.TemporaryDirectory(prefix="canarygate-browser-")
     database = Path(holder.name) / "browser.sqlite3"
 
@@ -389,7 +445,8 @@ def main(argv: list[str] | None = None) -> int:
 
         driver = Path(holder.name) / "driver.js"
         driver.write_text(DRIVER, encoding="utf-8")
-        run = subprocess.run([node, str(driver), f"http://127.0.0.1:{app_port}", str(lab_port)],
+        run = subprocess.run([node, str(driver), f"http://127.0.0.1:{app_port}", str(lab_port),
+                              str(closed_port)],
                              capture_output=True, text=True, env=env, cwd=ROOT, timeout=600)
         marker = "__SMOKE__"
         payload = next((line[len(marker):] for line in run.stdout.splitlines()
@@ -453,6 +510,29 @@ def main(argv: list[str] | None = None) -> int:
         check("workspace makes no external request", work.get("external") is False)
         check("workspace runs without a page error", work.get("errors") == [],
               str(work.get("errors")))
+        engine = facts.get("engine", {})
+        completion = engine.get("complete") or {}
+        check("the engine screen finishes by itself in a browser",
+              completion.get("status") == "complete"
+              and completion.get("terminal_state") == "complete"
+              and completion.get("terminal_hidden") is False
+              and "runs stored" in (completion.get("terminal_detail") or "")
+              and completion.get("retry_hidden") is True
+              and completion.get("navigated") is True
+              and completion.get("errors") == [],
+              json.dumps(completion)[:400])
+        refusal = engine.get("refused") or {}
+        check("a stopped engine explains itself in a browser",
+              refusal.get("status") == "failed"
+              and refusal.get("terminal_state") == "failed"
+              and refusal.get("terminal_hidden") is False
+              and "did not complete" in (refusal.get("terminal_title") or "")
+              and "python -m targetlab" in (refusal.get("hint") or "")
+              and refusal.get("hint_hidden") is False
+              and refusal.get("retry_hidden") is False
+              and refusal.get("navigated") is False
+              and refusal.get("errors") == [],
+              json.dumps(refusal)[:400])
         check("banner is present in the browser", dash_facts.get("banner") is True)
         check("nav toggle changes aria-expanded",
               facts["client"].get("nav_toggle_expanded") == "true"

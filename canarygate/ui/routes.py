@@ -282,14 +282,29 @@ def _error(request: Request, status_code: int, title: str, detail: str):
                  status_code=status_code, title=title, detail=detail)
 
 
+#: A judge reads these, so the title says what happened rather than naming the layer
+#: that produced it. The HTTP status stays on the page as a badge.
+_ERROR_TITLES = {
+    400: "That request was rejected",
+    404: "That record does not exist",
+    409: "That request conflicts with stored evidence",
+    413: "That document is too large",
+    415: "That content type is not supported",
+    422: "That configuration was rejected",
+    502: "The lab could not be reached",
+    503: "The backend is not ready",
+}
+
+
 def _backend_error(request: Request, exc: HTTPException, *, fragment: bool):
     """Render a backend HTTPException as HTML instead of leaking JSON into a page."""
     if fragment:
         return templates.TemplateResponse(
             request, "partials/error.html",
             {"status_code": exc.status_code, "detail": exc.detail}, status_code=exc.status_code)
-    return _error(request, exc.status_code, f"Backend returned HTTP {exc.status_code}",
-                  str(exc.detail))
+    title = _ERROR_TITLES.get(exc.status_code,
+                              f"The backend refused the request (HTTP {exc.status_code})")
+    return _error(request, exc.status_code, title, str(exc.detail))
 
 
 def _guard(request: Request, callback, *, fragment: bool = False):
@@ -1118,7 +1133,8 @@ async def run_assessment_action(request: Request):
             return _backend_error(request, HTTPException(
                 status_code=422, detail="That combination is not in the catalog."),
                 fragment=False)
-        steps = [{"actor": actor, "owner": owner}]
+        steps = [{"actor": actor, "owner": owner,
+                  "asset": (fields.get("asset") or "").strip()}]
 
     job = ASSESSMENT_JOBS.add(execution_jobs.AssessmentJob(kind=kind, port=port, steps=steps))
     execution_jobs.start_assessment(
@@ -1138,6 +1154,7 @@ def execution_page(request: Request, job_id: str):
     snapshot = job.snapshot()
     return _page(request, "execution.html", "assessment",
                  job=snapshot,
+                 terminal=execution_jobs.terminal_for(snapshot),
                  catalog=build_lab_catalog(),
                  first=snapshot["steps"][0] if snapshot["steps"] else None,
                  stages=[name for name in execution_jobs._STAGE_ORDER

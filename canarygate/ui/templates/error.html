@@ -3,9 +3,21 @@
 {% block title %}Error {{ status_code }}{% endblock %}
 
 {% block content %}
+{#- One sentence per status, in the operator's language. The HTTP code stays visible
+    in the badge, so nothing about what the backend did is hidden here. -#}
+{% set explanation = {
+  "404": "There is no stored record at this address. Nothing was changed.",
+  "422": "The backend rejected these values before it did anything, so nothing was stored.",
+  "413": "The document is larger than the limit the backend accepts, so it was not read.",
+  "415": "The backend only reads the content types it declares, so this one was refused.",
+  "500": "The backend could not complete the request. Nothing partial is shown as complete.",
+  "502": "CanaryGate could not reach the lab. A connection failure is never a result.",
+  "503": "The backend is not ready to run this yet; its readiness gates still hold."
+} %}
 {% call page_head("Error",
                  title,
-                 "The UI rendered this page instead of a JSON error body.",
+                 explanation.get(status_code|string,
+                   "The backend refused this request. Nothing was stored."),
                  trail=[("Dashboard", "/ui/"), ("Error " ~ status_code, None)]) %}
   <span class="badge badge-danger badge-lg">HTTP {{ status_code }}</span>
 {% endcall %}
@@ -41,7 +53,10 @@
     <div class="card-head"><h2>{{ icon("arrow") }} Continue</h2></div>
     <div class="card-body">
       <div class="link-row">
-        <a class="btn btn-primary" href="/ui/">Dashboard</a>
+        {% if status_code == 422 %}
+        <a class="btn btn-primary" href="/ui/assessment">Open the workspace</a>
+        {% endif %}
+        <a class="btn {{ '' if status_code == 422 else 'btn-primary' }}" href="/ui/">Dashboard</a>
         <a class="btn" href="/ui/scans">Scan list</a>
         <a class="btn btn-ghost" href="/ui/setup">Readiness</a>
         <a class="btn btn-ghost" href="/api/health" target="_blank" rel="noopener">API health (JSON)</a>

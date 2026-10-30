@@ -141,6 +141,15 @@ readable after the job has left memory.
 - The workspace never starts a scan on page load; only explicit form posts do.
 - Specification inspection is labelled "inventory only — no security scan
   performed" wherever it appears.
+- A finished job is described by `terminal_for(job)` in the route, not by the
+  browser: state, sentence, hint, failed pairs, next links and the retry form are
+  in the served HTML, and `execution.js` only repeats them when it is the one that
+  saw the end. `complete`, `partial` and `failed` are distinct; a demonstration
+  that stored fewer runs than it planned is `partial`, and its hint repeats that a
+  missing check is untested, not SAFE.
+- The retry form re-posts `kind`/`port`/`actor`/`asset` to the existing
+  `POST /ui/actions/run-assessment`. Nothing retries automatically and no new
+  endpoint exists for it.
 
 ## 5. Migration and verification
 
@@ -154,8 +163,15 @@ CI on ubuntu-latest and windows-latest, and the live preview on port 8000.
 
 ## 6. Known limits of this milestone
 
-- No live progress; see §3 for the two credible mechanisms and why neither is
-  shipped yet.
+- No live streaming of *new* telemetry: the run page still renders the recorded
+  timeline for a stored run; the live feed belongs to the execution screen (§3,
+  shipped at CP43).
+- A job transcript is in-memory only (24 jobs). After a restart the job URL
+  answers 404 and says the stored runs are unaffected; the transcript is not
+  persisted.
+- Reachability is never probed ahead of a run. A health request would be a second
+  outbound path outside the single guarded transport, so the first real request
+  stays the reachability test and a failure is reported with its reason.
 - No per-endpoint finding aggregation or historical chart: the backend has no
   endpoint that answers those questions, and inventing one in the template would
   violate the "no frontend verdict" rule.
