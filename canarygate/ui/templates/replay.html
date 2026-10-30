@@ -129,8 +129,8 @@
             {% else %}evidence part{% endif %}
           </span>
           {% if event.evidence_part %}
-            <span class="part-tag part-{{ event.evidence_part }}">
-              {{ icon("check") }} {{ event.evidence_part }} evidence
+            <span class="part-tag part-{{ event.evidence_part }}{% if event.evidence_ambiguous %} part-ambiguous{% endif %}">
+              {{ icon("check") }} {{ event.evidence_part }} evidence{% if event.evidence_ambiguous %} · unconfirmed{% endif %}
             </span>
           {% endif %}
           <span class="replay-title">{{ event.title }}</span>
@@ -159,6 +159,13 @@
 
         {% if event.why %}<p class="replay-why">{{ event.why }}</p>{% endif %}
         {% if event.evidence_part %}
+          {% if event.evidence_ambiguous %}
+            <p class="replay-warn" role="note">
+              {{ icon("warning") }}
+              <span><b>Ambiguous association.</b> {{ event.evidence_basis }}. The evidence
+              may describe either request, so this annotation is not proof on its own.</span>
+            </p>
+          {% endif %}
           <p class="replay-basis">
             {{ icon("lock") }} Evidence attached here by: <span class="mono">{{ event.evidence_basis }}</span>
           </p>

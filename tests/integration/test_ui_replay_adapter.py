@@ -218,3 +218,133 @@ def test_sequence_mode_never_claims_ordering_by_time():
     assert [event["evidence_part"] for event in replay["events"]] == ["ownership", "disclosure"]
     assert all(event["offset_ms"] is None and event["offset_label"] is None
                for event in replay["events"])
+
+
+# --------------------------------------------------------------------------- #
+# Ambiguity, ties and unusable timestamps
+# --------------------------------------------------------------------------- #
+def test_equally_plausible_candidates_are_marked_ambiguous_not_silently_chosen():
+    """Both requests are 500 ms from the evidence summary: neither is provable."""
+    records = [
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 3),
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 4),
+    ]
+    # The evidence summary sits exactly between the two captures.
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = "2026-10-30T10:00:03.500000+00:00"
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked_events = [event for event in replay["events"] if event["evidence_part"] == "disclosure"]
+    assert len(marked_events) == 1
+    assert marked_events[0]["evidence_ambiguous"] is True
+    assert "ambiguous:" in marked_events[0]["evidence_basis"]
+    assert "2 captured requests" in marked_events[0]["evidence_basis"]
+    assert any("ambiguous" in note for note in replay["derived_notes"])
+
+
+def test_identical_requests_inside_the_window_still_resolve_when_one_is_clearly_nearer():
+    records = [
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 3),
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 4),
+    ]
+    # 200 ms from the first, 800 ms from the second: a clear nearest match.
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = "2026-10-30T10:00:03.200000+00:00"
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked = [event for event in replay["events"] if event["evidence_part"] == "disclosure"][0]
+    assert marked["n"] == 1
+    assert marked["evidence_ambiguous"] is False
+    assert "nearest capture timestamp (200 ms" in marked["evidence_basis"]
+
+
+def test_missing_timestamps_make_a_multi_candidate_match_ambiguous():
+    records = [
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 3),
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 4),
+    ]
+    for record in records:
+        record["timestamp"] = None
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = None
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked = [event for event in replay["events"] if event["evidence_part"] == "disclosure"][0]
+    assert marked["evidence_ambiguous"] is True
+    assert "no usable timestamp" in marked["evidence_basis"]
+    # The page still orders the events; it just cannot place the evidence by time.
+    assert [event["offset_ms"] for event in replay["events"]] == [None, None]
+
+
+def test_malformed_timestamps_are_treated_as_missing_and_never_crash():
+    records = [
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 3),
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 4),
+    ]
+    records[0]["timestamp"] = "not-a-timestamp"
+    records[1]["timestamp"] = ""
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = "2026-13-45T99:99:99"
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked = [event for event in replay["events"] if event["evidence_part"] == "disclosure"][0]
+    assert marked["evidence_ambiguous"] is True
+    assert all(event["offset_ms"] is None for event in replay["events"])
+
+
+def test_missing_timestamp_with_a_single_candidate_is_not_called_ambiguous():
+    records = [observation("cross_user_read", "alice", "/items/bob-item", 200, 3)]
+    records[0]["timestamp"] = None
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = None
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked = replay["events"][0]
+    assert marked["evidence_part"] == "disclosure"
+    assert marked["evidence_ambiguous"] is False
+
+
+def test_candidates_outside_the_matching_window_are_not_used():
+    records = [observation("cross_user_read", "alice", "/items/bob-item", 200, 3)]
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = "2026-10-30T10:05:03.000000+00:00"   # five minutes later
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    marked = replay["events"][0]
+    assert marked["evidence_part"] == "disclosure"
+    assert marked["evidence_ambiguous"] is False
+    assert "outside the 5000 ms window" in marked["evidence_basis"]
+
+
+def test_ambiguous_association_renders_a_warning_not_a_claim():
+    """The rendered page must not read as proof when the match is ambiguous."""
+    from canarygate.ui.routes import BUILD_FACTS, NAV_GROUPS
+    from canarygate.ui.templating import templates
+
+    records = [
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 3),
+        observation("cross_user_read", "alice", "/items/bob-item", 200, 4),
+    ]
+    record = evidence_part("alice", "/items/bob-item", 200, 3)
+    record["timestamp"] = "2026-10-30T10:00:03.500000+00:00"
+    replay = build_replay("fixture", run_with(records, disclosure=record),
+                          observation_set(records))
+
+    context = dict(replay)
+    context.update(active="scans", nav_groups=NAV_GROUPS, build_facts=BUILD_FACTS,
+                   provisional=True)
+    html = templates.env.get_template("replay.html").render(**context)
+
+    assert 'class="replay-warn"' in html
+    assert "Ambiguous association" in html
+    assert "may describe either request" in html
+    assert "unconfirmed" in html
+    assert "not proof on its own" in html
+    # The definitive wording used for settled matches must be gone.
+    assert "This exact request is the backend's disclosure evidence" not in html

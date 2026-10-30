@@ -35,7 +35,8 @@
 <section class="grid grid-4" aria-label="Backend state">
   {{ stat("API health", health.status, health.mode ~ " · live_scanning=" ~ health.live_scanning|lower) }}
   {{ stat("Open findings", counts.CONFIRMED + counts.SUSPECTED,
-          "confirmed " ~ counts.CONFIRMED ~ " · suspected " ~ counts.SUSPECTED, href="/ui/findings") }}
+          "confirmed " ~ counts.CONFIRMED ~ " · suspected " ~ counts.SUSPECTED ~ " (fixture runs)",
+          href="/ui/findings") }}
   {{ stat("Fixture endpoints", endpoints|length,
           (run_count ~ " stored run(s) · " ~ suite_count ~ " bundled suites"), href="/ui/endpoints") }}
   {{ stat("Coverage assessed", ((counts.CONFIRMED + counts.SUSPECTED + counts.SAFE + counts.INCONCLUSIVE + counts.SKIPPED) if run_count else 0),

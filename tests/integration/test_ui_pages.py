@@ -605,3 +605,64 @@ def test_replay_shows_why_each_evidence_part_landed_on_its_event(tmp_path):
         assert body.count('class="replay-basis"') == 2
         assert "phase owner_baseline" in body
         assert "phase cross_user_read" in body
+
+
+# --------------------------------------------------------------------------- #
+# Verdict coverage: no findings, SAFE and INCONCLUSIVE runs
+# --------------------------------------------------------------------------- #
+def test_a_scan_with_no_findings_is_explained_not_hidden(tmp_path):
+    with _client(tmp_path) as client:
+        # Nothing stored at all: every page must say so rather than show a blank.
+        empty_findings = client.get("/ui/findings").text
+        assert "No findings yet" in empty_findings
+        assert "No SAFE run recorded" in empty_findings
+        assert '<span class="stat-value">0</span>' in empty_findings
+
+        # A real SAFE scenario run: findings stay at zero, the run is still visible.
+        run_id = client.post("/ui/actions/scenario-scan",
+                             data={"scenario_id": "synthetic-secure"},
+                             follow_redirects=False).headers["location"].rsplit("/", 1)[-1]
+        run = client.get(f"/api/scenario-scans/{run_id}").json()
+        assert run["verdict"] == "SAFE"
+
+        # The transcript run is SAFE on its own page...
+        suite_page = client.get(f"/ui/suites/read-bola/{run_id}")
+        assert 'badge badge-ok badge-lg">SAFE' in suite_page.text
+        assert run["reason"] in suite_page.text
+
+        # ...and the findings page keeps its word about what it covers: fixture
+        # runs only, because transcript runs have no list endpoint yet.
+        body = client.get("/ui/findings").text
+        assert 'badge badge-danger">CONFIRMED' not in body
+        assert "stored fixture runs" in body
+        assert "no list\n                  endpoint" in body or "no list" in body
+
+        # The dashboard must not upgrade a SAFE run into an open finding.
+        dashboard = client.get("/ui/").text
+        assert '<span class="stat-value">0</span>' in dashboard
+
+
+def test_inconclusive_runs_are_rendered_as_inconclusive_everywhere(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/scenario-scan",
+                             data={"scenario_id": "synthetic-metadata"},
+                             follow_redirects=False).headers["location"].rsplit("/", 1)[-1]
+        run = client.get(f"/api/scenario-scans/{run_id}").json()
+        assert run["verdict"] == "INCONCLUSIVE"
+
+        page = client.get(f"/ui/suites/read-bola/{run_id}")
+        assert page.status_code == 200
+        assert 'badge badge-info badge-lg">INCONCLUSIVE' in page.text
+        assert run["reason"] in page.text
+
+        # The recorder keeps its honesty rule: a transcript run is a sequence.
+        replay = client.get(f"/ui/suites/read-bola/{run_id}/replay")
+        assert replay.status_code == 200
+        assert 'data-mode="sequence"' in replay.text
+        assert 'badge badge-info">INCONCLUSIVE' in replay.text
+
+        # An INCONCLUSIVE verdict must never be promoted to a finding.
+        findings = client.get("/ui/findings").text
+        assert 'badge badge-danger">CONFIRMED' not in findings
+        assert "stored fixture runs" in findings
+        assert "Test suites" in findings

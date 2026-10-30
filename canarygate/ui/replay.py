@@ -125,6 +125,7 @@ def _observation_event(record, index):
         "checklist": [],
         "evidence_part": None,
         "evidence_basis": None,
+        "evidence_ambiguous": False,
         "why": PHASE_WHY.get(phase),
         "sha256": record.get("sha256"),
         "redacted": record.get("redacted", True),
@@ -177,6 +178,7 @@ def _probe_event(check, evidence, index):
         "checklist": _tri(evidence.get("checklist")),
         "evidence_part": None,
         "evidence_basis": None,
+        "evidence_ambiguous": False,
         "why": None,
         "sha256": evidence.get("sha256"),
         "redacted": evidence.get("redacted", True),
@@ -209,6 +211,7 @@ def _evidence_only_event(part, evidence, index):
         "checklist": _tri(evidence.get("checklist")),
         "evidence_part": part,
         "evidence_basis": "phase order in the offline transcript",
+        "evidence_ambiguous": False,
         "why": None,
         "sha256": evidence.get("sha256"),
         "redacted": evidence.get("redacted", True),
@@ -245,18 +248,43 @@ def _choose_candidate(candidates, record):
     Order of evidence, strongest first:
       1. the phase the part is built from (owner baseline / cross-user read);
       2. the capture timestamp closest to the evidence summary's own timestamp;
-      3. the later event, because the summary is written after its request.
+      3. when two candidates are *equally* close, or no timestamp can separate
+         them, the association is reported as **ambiguous** instead of being
+         presented as settled.
 
-    Returns ``(event, basis)`` where ``basis`` is rendered on the page so the
-    reader can see exactly why an annotation landed where it did.
+    Returns ``(event, basis, ambiguous)``. ``basis`` is rendered on the page so
+    the reader can see exactly why an annotation landed where it did, and
+    ``ambiguous`` drives a visible warning rather than a silent choice.
     """
     timed = [(event, _distance_ms(event, record)) for event in candidates]
     usable = [(event, distance) for event, distance in timed
               if distance is not None and distance <= MATCH_WINDOW_MS]
-    if usable:
-        best = min(usable, key=lambda pair: (pair[1], -candidates.index(pair[0])))
-        return best[0], f"nearest capture timestamp ({best[1]} ms from the evidence summary)"
-    return candidates[-1], "last captured match; no usable timestamps to disambiguate"
+
+    if not usable:
+        # Nothing to separate the candidates by: say so, and say which step is
+        # marked only so the page has something to point at.
+        chosen = candidates[-1]
+        if len(candidates) > 1:
+            return (chosen,
+                    f"ambiguous: {len(candidates)} captured requests match and no usable "
+                    "timestamp separates them",
+                    True)
+        known = timed[0][1]
+        detail = (f"; its timestamp is {known} ms away, outside the {MATCH_WINDOW_MS} ms "
+                  "window" if known is not None else "; no usable timestamp")
+        return chosen, f"the only captured match{detail}", False
+
+    usable.sort(key=lambda pair: (pair[1], -candidates.index(pair[0])))
+    best_event, best_distance = usable[0]
+
+    tied = [event for event, distance in usable if distance == best_distance]
+    if len(tied) > 1:
+        steps = ", ".join(str(event["n"]) for event in sorted(tied, key=lambda e: e["n"]))
+        return (best_event,
+                f"ambiguous: {len(tied)} captured requests are {best_distance} ms from the "
+                f"evidence summary (steps {steps})",
+                True)
+    return best_event, f"nearest capture timestamp ({best_distance} ms from the evidence summary)", False
 
 
 def _attach_evidence_parts(events, run):
@@ -308,26 +336,41 @@ def _attach_evidence_parts(events, run):
             candidates, phase_basis = identity, "request identity only (no phase match)"
 
         if len(candidates) > 1:
-            target, time_basis = _choose_candidate(candidates, record)
-            notes.append(
-                f"{len(candidates)} captured requests share the identity of the {part} "
-                f"evidence part; the one chosen by {time_basis.split(';')[0]} is marked."
-            )
+            target, time_basis, ambiguous = _choose_candidate(candidates, record)
+            if ambiguous:
+                notes.append(
+                    f"The {part} evidence part is **ambiguous**: {len(candidates)} captured "
+                    "requests are equally plausible, so the annotation is shown as "
+                    "unconfirmed rather than as proof."
+                )
+            else:
+                notes.append(
+                    f"{len(candidates)} captured requests share the identity of the {part} "
+                    "evidence part; the nearest capture timestamp selected the marked one."
+                )
         else:
-            target, time_basis = candidates[0], "the only captured match"
+            target, time_basis, ambiguous = _choose_candidate(candidates, record)
 
         target["evidence_part"] = part
+        target["evidence_ambiguous"] = ambiguous
         target["evidence_basis"] = f"{phase_basis} · {time_basis}"
-        target["why"] = {
-            "ownership": (
-                "This exact request is the backend's ownership evidence: the resource "
-                "was confirmed to belong to the other account."
-            ),
-            "disclosure": (
-                "This exact request is the backend's disclosure evidence: private data "
-                "crossed the account boundary."
-            ),
-        }[part]
+        if ambiguous:
+            target["why"] = (
+                f"The backend's {part} evidence has the same request identity as this "
+                "event, but more than one captured request fits equally well. The "
+                "association is shown as unconfirmed."
+            )
+        else:
+            target["why"] = {
+                "ownership": (
+                    "This exact request is the backend's ownership evidence: the resource "
+                    "was confirmed to belong to the other account."
+                ),
+                "disclosure": (
+                    "This exact request is the backend's disclosure evidence: private data "
+                    "crossed the account boundary."
+                ),
+            }[part]
     return notes
 
 

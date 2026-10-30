@@ -189,6 +189,12 @@
 .part-tag svg { width: 11px; height: 11px; }
 .part-tag.part-ownership { border-color: var(--info); color: var(--info); background: var(--info-tint); }
 .part-tag.part-disclosure { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+.part-tag.part-ambiguous {
+  border-style: dashed;
+  border-color: var(--warn);
+  color: var(--warn);
+  background: var(--warn-tint);
+}
 
 .replay-request {
   display: flex;
@@ -384,3 +390,19 @@
 }
 .replay-basis svg { width: 12px; height: 12px; }
 .replay-basis .mono { color: var(--ink-2); font-size: 0.68rem; }
+
+/* An ambiguous evidence association must look different from a settled one. */
+.replay-warn {
+  margin: 0;
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+.replay-warn svg { width: 14px; height: 14px; color: var(--warn); flex: 0 0 auto; margin-top: 0.1rem; }
+.replay-warn b { color: var(--warn); }

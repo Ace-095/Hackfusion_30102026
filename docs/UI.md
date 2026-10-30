@@ -558,3 +558,48 @@ Two things to say out loud while presenting:
   that the verdict is derived from the whole run, not from that event;
 * the evidence attached to each event is labelled with the matching rule
   (phase, identity, timestamp), so "why is this here?" has an answer on screen.
+
+### 12.5 Ambiguity is shown, never resolved silently
+
+The nearest-timestamp rule is a heuristic, so the page never presents it as
+proof. When two candidates are **equally** close (same millisecond distance), or
+when no usable timestamp can separate them and more than one request matches,
+the association is marked ambiguous:
+
+* the evidence tag reads `ownership evidence · unconfirmed` with a dashed amber
+  border instead of the solid colour used for settled associations;
+* a `role="note"` warning says *"Ambiguous association … may describe either
+  request, so this annotation is not proof on its own"*;
+* the basis line prints the competing step numbers
+  (`ambiguous: 2 captured requests are 500 ms from the evidence summary (steps 1, 2)`);
+* "How this replay is built" repeats that the part is ambiguous;
+* the explanatory sentence in the card switches from "This exact request is…"
+  to "…more than one captured request fits equally well".
+
+Thresholds: a candidate is usable inside 5000 ms of the evidence summary; ties are
+exact millisecond equality. Missing, empty and malformed timestamps are treated
+identically (no ordering, no disambiguation) and never raise.
+
+### 12.6 Validation log
+
+| Check requested | Result |
+| --- | --- |
+| Ambiguous timestamp ties | Marked ambiguous, warning rendered, step numbers listed — `test_equally_plausible_candidates_are_marked_ambiguous_not_silently_chosen` |
+| Two identical requests inside the 5 s window | Resolved only when one is clearly nearer (200 ms vs 800 ms); otherwise ambiguous — `test_identical_requests_inside_the_window_still_resolve_when_one_is_clearly_nearer` |
+| Missing timestamps | Multi-candidate → ambiguous; single candidate → not ambiguous; events keep list order with `offset = None` — `test_missing_timestamps_make_a_multi_candidate_match_ambiguous`, `test_missing_timestamp_with_a_single_candidate_is_not_called_ambiguous` |
+| Malformed timestamps | Treated as missing, no crash — `test_malformed_timestamps_are_treated_as_missing_and_never_crash` |
+| Candidates outside the window | Not used for disambiguation; basis says so — `test_candidates_outside_the_matching_window_are_not_used` |
+| Scan with no findings | Empty database and a real SAFE transcript run: findings stay at zero, the run is still reachable — `test_a_scan_with_no_findings_is_explained_not_hidden` |
+| INCONCLUSIVE verdict | Real backend case (`synthetic-metadata`): suite page, recorder and findings all render it as INCONCLUSIVE, never as a finding — `test_inconclusive_runs_are_rendered_as_inconclusive_everywhere` |
+| Structural accessibility (18 pages) | No duplicate ids, no heading jumps, every input inside a label or aria-labelled, every button and link has an accessible name |
+| jsdom playback | 25 interaction assertions (controls, keyboard, play/pause, verdict reveal) |
+| Real browser (Chromium/Firefox) | **Blocked in this sandbox** — see below |
+| Seven-step demo rehearsal | 7/7 routes and artefacts verified over HTTP |
+
+**Why the browser step is still open.** A real Chromium was obtainable
+(`@sparticuz/chromium` installs from the npm registry and extracts to `/tmp`),
+but it cannot start here: `libnspr4.so`, `libnss3.so` and `libnssutil3.so` are
+absent, there is no root, and `apt` has no writable lists directory. Playwright's
+browser CDN is outside the allowed network. So the pixel-level pass — layout,
+sticky headers, focus rings, print output — remains for a machine with a real
+browser. Everything above is the strongest verification this environment allows.
