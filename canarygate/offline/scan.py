@@ -74,6 +74,8 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
     setup, policy = data.setup, data.policy
     runner = FixtureRunner(target.handle)
     scope_bytes = files("canarygate.offline").joinpath("scope.yaml").read_bytes()
+    spec_bytes = files("canarygate.offline").joinpath("fixture.yaml").read_bytes()
+    fixture_inventory = parse_inventory(spec_bytes.decode("utf-8"))
     resource = next(iter(setup.resources.values()), None)
     account_a, account_b = setup.accounts.get("user_a"), setup.accounts.get("user_b")
     setup_status = {"strategy": "recipe_read_only_discovery", "authentication": "SKIPPED",
@@ -87,7 +89,9 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
               "evidence": {"ownership": None, "disclosure": None},
               "checks": pending_checks() + pending_input_checks(),
               "verdict": "SKIPPED", "reason": "Setup incomplete", "remediation": None,
-              "scope_hash": hashlib.sha256(scope_bytes).hexdigest(), "constraints": {}}
+              "scope_hash": hashlib.sha256(scope_bytes).hexdigest(),
+              "spec_hash": hashlib.sha256(spec_bytes).hexdigest(),
+              "inventory": fixture_inventory, "constraints": {}}
 
     def skip(reason, *, gate=None, status="SKIPPED"):
         if gate:
@@ -182,7 +186,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             result["verdict"], result["reason"] = "INCONCLUSIVE", "No private baseline disclosure established"
         # OpenAPI establishes authentication requirements, not ownership policy.
         auth_required = any(e["path"] == resource.detail.path and e["method"] == resource.detail.method
-                            and e["expected_access"] == "authenticated" for e in inventory())
+                            and e["expected_access"] == "authenticated" for e in fixture_inventory)
         actor_private = baselines[account_a.username][1].get(resource.private_field)
         if (auth_required and isinstance(actor_private, str) and actor_private and actor_private != private_value
                 and not any(value in actor_private for value in (ids[account_a.username], ids[account_b.username]))
@@ -197,7 +201,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
         auth_checks = result["checks"][:len(pending_checks())]
         result["checks"] = auth_checks + run_input_checks(
             runner, actor=account_a.username, role=account_a.role,
-            token=tokens[account_a.username], endpoints=inventory(), summary=_summary)
+            token=tokens[account_a.username], endpoints=fixture_inventory, summary=_summary)
         return result
     except (GuardRejected, ValueError, KeyError, TypeError):
         result["status"] = "failed"

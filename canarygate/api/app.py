@@ -1,81 +1,89 @@
-"""Local-only, in-memory API. It does not accept or scan live targets."""
+"""Local-only API with fixture-only SQLite persistence; no live targets."""
+from contextlib import asynccontextmanager
 from html import escape
 import json
-from threading import Lock
+from pathlib import Path
+import sqlite3
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from canarygate.database.store import FixtureStore, default_database_path
+from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
 from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse)
 
-# FastAPI's default Swagger/ReDoc pages load CDN assets; disable them so the
-# backend never instructs a browser to contact external systems.
-app = FastAPI(title="CanaryGate offline fixture API", version="0.1.0", docs_url=None, redoc_url=None)
-_runs: dict[str, dict] = {}
-_lock = Lock()
+router = APIRouter()
 
 
-@app.get("/api/health", response_model=Health)
+def get_store(request: Request) -> FixtureStore:
+    return request.app.state.store
+
+
+def _database_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500, detail="Stored fixture data failed integrity verification") from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(status_code=500, detail="Fixture storage unavailable or invalid") from None
+
+
+@router.get("/api/health", response_model=Health)
 def health():
     return {"status": "ok", "mode": "fixture", "live_scanning": False}
 
 
-@app.post("/api/spec/upload", status_code=501)
+@router.post("/api/spec/upload", status_code=501)
 def spec_upload():
     return {"detail": "Spec upload is not implemented; only the bundled fixture is available."}
 
 
-@app.get("/api/endpoints", response_model=Inventory)
+@router.get("/api/endpoints", response_model=Inventory)
 def endpoints():
     return {"mode": "fixture", "endpoints": inventory()}
 
 
-@app.get("/api/setup/status", response_model=SetupResponse)
-def setup_status():
-    with _lock:
-        latest = next(reversed(_runs.values()), None) if _runs else None
-        return {"mode": "fixture", "setup": latest["setup"] if latest else None,
-                "message": "Run the fixture scan to evaluate setup." if latest is None else "Latest fixture scan setup."}
+@router.get("/api/setup/status", response_model=SetupResponse)
+def setup_status(store: FixtureStore = Depends(get_store)):
+    latest = _database_call(store.latest)
+    return {"mode": "fixture", "setup": latest["setup"] if latest else None,
+            "message": "Run the fixture scan to evaluate setup." if latest is None else "Latest fixture scan setup."}
 
 
-@app.post("/api/scan", status_code=201, response_model=FixtureRun)
-def start_scan():
-    result = run_fixture()
-    with _lock:
-        _runs[result["id"]] = result
-    return result
+@router.post("/api/scan", status_code=201, response_model=FixtureRun)
+def start_scan(store: FixtureStore = Depends(get_store)):
+    # The returned value is the redacted, integrity-checked version that was stored.
+    return _database_call(store.save, run_fixture())
 
 
-def _find(run_id: str):
-    with _lock:
-        run = _runs.get(run_id)
+def _find(store: FixtureStore, run_id: str):
+    run = _database_call(store.get, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Fixture scan not found")
     return run
 
 
-@app.get("/api/scan/{run_id}", response_model=FixtureRun)
-def scan(run_id: str):
-    return _find(run_id)
+@router.get("/api/scan/{run_id}", response_model=FixtureRun)
+def scan(run_id: str, store: FixtureStore = Depends(get_store)):
+    return _find(store, run_id)
 
 
-@app.get("/api/findings", response_model=FindingsResponse)
-def findings():
-    with _lock:
-        return {"mode": "fixture", "findings": list(_runs.values())}
+@router.get("/api/findings", response_model=FindingsResponse)
+def findings(store: FixtureStore = Depends(get_store)):
+    return {"mode": "fixture", "findings": _database_call(store.list)}
 
 
-@app.get("/api/matrix", response_model=MatrixResponse)
-def matrix():
-    with _lock:
-        cells = [{key: run[key] for key in ("id", "endpoint", "actor", "target_resource", "expected_access", "expected_source", "verdict")} for run in _runs.values()]
+@router.get("/api/matrix", response_model=MatrixResponse)
+def matrix(store: FixtureStore = Depends(get_store)):
+    runs = _database_call(store.list)
+    cells = [{key: run[key] for key in ("id", "endpoint", "actor", "target_resource", "expected_access", "expected_source", "verdict")} for run in runs]
     return {"mode": "fixture", "cells": cells}
 
 
-@app.get("/api/reports/{run_id}", response_model=FixtureRun, responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
-def report(run_id: str, format: str = "json"):
-    run = _find(run_id)
+@router.get("/api/reports/{run_id}", response_model=FixtureRun, responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def report(run_id: str, format: str = "json", store: FixtureStore = Depends(get_store)):
+    run = _find(store, run_id)
     if format == "json":
         return run
     if format != "html":
@@ -100,7 +108,7 @@ def report(run_id: str, format: str = "json"):
                          ("Expected access / source", f"{run['expected_access']} / {run['expected_source']}"),
                          ("Remediation", run["remediation"] or "No finding-specific remediation")):
         html += field(label, value)
-    html += "<h2>Endpoint inventory (OpenAPI authentication requirements only)</h2>" + block(inventory())
+    html += "<h2>Endpoint inventory (OpenAPI authentication requirements only)</h2>" + block(run["inventory"])
     html += "<h2>Three setup gates and BOLA coverage</h2>" + block(run["setup"])
     html += "<h2>Separate ownership and disclosure evidence</h2>"
     for kind, evidence in run["evidence"].items():
@@ -117,5 +125,24 @@ def report(run_id: str, format: str = "json"):
                    if check["verdict"] == "SAFE" and check["category"] != "Disclosure")
     html += block(secured if secured else ["None observed in this fixture run"])
     html += "<h2>Not yet executed</h2><p>JWT tampering, remaining validation and disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Individual skipped checks are listed above.</p>"
-    html += "<h2>Fixture constraint checklist</h2>" + block(run["constraints"]) + field("Scope file SHA-256", run["scope_hash"])
+    html += "<h2>Fixture constraint checklist</h2>" + block(run["constraints"]) + field("Scope file SHA-256", run["scope_hash"]) + field("Specification SHA-256", run["spec_hash"])
     return HTMLResponse(html + "</body></html>")
+
+
+def create_app(database_path: str | Path | None = None) -> FastAPI:
+    store = FixtureStore(database_path if database_path is not None else default_database_path())
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        store.initialize()
+        yield
+
+    # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
+    application = FastAPI(title="CanaryGate offline fixture API", version="0.1.0",
+                          docs_url=None, redoc_url=None, lifespan=lifespan)
+    application.state.store = store
+    application.include_router(router)
+    return application
+
+
+app = create_app()

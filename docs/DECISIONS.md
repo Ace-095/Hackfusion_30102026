@@ -49,7 +49,7 @@ built a wheel whose bundled fixture files were verified. Windows CI must run
 after these changes are pushed; it has not been claimed as passing for this
 checkpoint.
 
-## 2026-10-30 — specification and safety corrections checkpoint
+## 2026-10-30 — specification and safety corrections checkpoint (historical)
 
 The supplied v3.2 Markdown is stored unchanged in `docs/spec/`. It still contains
 `base_url` and lacks the two promised new numbered tests, so the user's explicit
@@ -90,7 +90,7 @@ A built wheel contained all bundled fixture files. Windows CI for the current
 changes has not run. These tests do not constitute the full section 15
 acceptance suite or demonstrate live-target safety.
 
-## 2026-10-30 — fixture authentication checkpoint
+## 2026-10-30 — fixture authentication checkpoint (historical)
 
 AUTHN-01 (missing token), AUTHN-02 (malformed token) and AUTHN-03 (wrong
 scheme) run against the synthetic protected resource only after a valid owner
@@ -128,7 +128,7 @@ GitHub Actions subsequently passed on both Windows and Linux for commit `dff0db5
 (run 41023826401). CI now publishes pytest failures as annotations and preserves
 pytest's actual exit code.
 
-## 2026-10-30 — input validation and disclosure checkpoint
+## 2026-10-30 — input validation and disclosure checkpoint (historical)
 
 The fixture scope now lists four **exact** read-only path/query combinations;
 other values, encodings and extra parameters are rejected before transport.
@@ -156,6 +156,36 @@ results are not the full v3.2 acceptance suite or evidence of live-target safety
 GitHub Actions also passed on Linux and Windows for checkpoint commit `937b33f`
 (run 41024758853).
 
+## 2026-10-30 — fixture persistence and evidence checkpoint
+
+Fixture scan results and minimized redacted evidence are stored in a local
+SQLite file (`.canarygate/fixture.sqlite3` by default, configurable with
+`CANARYGATE_DB_PATH`). The API is still local-only and unauthenticated. Each
+operation opens its own SQLite connection, writes use transactions and
+parameterized SQL, duplicate run IDs cannot overwrite a record, and the JSON
+report is size-limited. The fixture database and sidecars are Git-ignored.
+
+Before writing, incoming evidence hashes are verified, credential-like fields,
+patterns and known synthetic secrets are redacted, request/response fields are
+minimized, and evidence hashes are recomputed over the stored summaries. On read,
+both the report hash and each evidence hash are checked; corrupted records yield
+a generic error instead of being served. SHA-256 hashes are **not signatures**:
+a database writer who recomputes them can modify records. Redaction is designed
+for the built-in fixture and is **not approved for arbitrary live credentials or
+real API traffic**. Full redacted raw HTTP evidence, signing and database schema
+migration are not implemented. No live target execution has been enabled.
+
+Each run now retains its parsed fixture inventory and specification hash, so a
+later spec change cannot silently alter a historical HTML report. The JSON API
+response adds `inventory` and `spec_hash`; the contract remains provisional. The
+VS Code procedure for demonstrating restart persistence is in
+`docs/checkpoints/04-persistence.md`. Automated tests cover SQLite restart,
+concurrent writes, credential redaction, evidence minimization, SQL parameters,
+failed writes and corrupted report/evidence records. 90 tests passed locally on
+Linux/Python 3.11 with one third-party deprecation warning. The local server was
+also stopped and restarted and the original redacted report retrieved. These
+results do not establish full v3.2 acceptance or live-target safety.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
@@ -164,7 +194,8 @@ GitHub Actions also passed on Linux and Windows for checkpoint commit `937b33f`
 - [ ] Implement reviewed live-network guard with DNS pinning and all safety limits.
 - [ ] Implement full readiness gates and honest setup statuses.
 - [ ] Implement remaining P0 security checks, evidence storage/redaction and reports.
-- [ ] Implement SQLite, secured endpoints and constraint checklist.
+- [x] Add fixture-only SQLite persistence for minimized evidence and reports.
+- [ ] Complete secured endpoints, constraint checklist and reviewed live-data persistence.
 - [ ] Implement P1 BFLA/matrix per spec after P0.
 - [ ] Run full offline integration and section 15 adversarial acceptance suite.
 - [ ] Integrate collaborator's frontend after contract agreement.

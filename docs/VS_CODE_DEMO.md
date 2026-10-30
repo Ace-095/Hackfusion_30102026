@@ -78,8 +78,11 @@ fixture tests, not proof of full v3.2 acceptance.
    These test scope, dangerous/unknown operations, DNS isolation, no redirects,
    missing identity, ownership failure, shared/public resources, invalid-token
    probes, opaque-token skips, validation/disclosure responses and secure behavior.
-5. Stop the backend with **Ctrl+C** in the first terminal. Data is in memory and
-   disappears when the process stops. Restart it and rerun the demo to reproduce.
+5. Copy the HTML report URL, stop the backend with **Ctrl+C**, and start the same
+   backend command again from the same repository folder. Reopen the copied URL:
+   the fixture report is retrieved from `.canarygate/fixture.sqlite3`. Stop the
+   backend after the demo. The optional `CANARYGATE_DB_PATH` environment variable
+   selects a different local database file; use the same path after restart.
 
 The API schema is available locally at `http://127.0.0.1:8000/openapi.json`.
 Swagger and ReDoc are intentionally disabled because their default assets are
@@ -102,5 +105,7 @@ process first; the demo command deliberately connects only to port 8000.
 - “Three bounded invalid inputs are compared to a valid control; disclosure
   signatures are inspected in those fixture responses. An ambiguous 200 or 400
   is not automatically SAFE, and unimplemented checks are SKIPPED.”
-- “Live DNS pinning, real accounts, remaining security checks and persistence
-  are pending; the report does not claim they passed.”
+- “The redacted fixture report survives a restart. Its hashes detect accidental
+  corruption but are not signatures; full live-data redaction is not implemented.”
+- “Live DNS pinning, real accounts, remaining security checks and production
+  persistence are pending; the report does not claim they passed.”

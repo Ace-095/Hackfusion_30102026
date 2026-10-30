@@ -5,18 +5,18 @@ import socket
 import pytest
 from fastapi.testclient import TestClient
 
-from canarygate.api.app import app
+from canarygate.api.app import create_app
 from canarygate.offline.scan import fixture_recipe, run_fixture
 from canarygate.offline.target import FixtureTarget
 
 
-def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch):
+def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch, tmp_path):
     def forbidden(*args, **kwargs):
         raise AssertionError("real network access attempted")
     # Windows asyncio creates a loopback socketpair while TestClient starts.
     # Install the outbound guard only after that internal event loop exists;
     # every API request and scanner operation below remains guarded.
-    with TestClient(app) as client:
+    with TestClient(create_app(tmp_path / "fixture.sqlite3")) as client:
         monkeypatch.setattr(socket.socket, "connect", forbidden)
         monkeypatch.setattr(socket, "getaddrinfo", forbidden)
         assert client.get("/api/health").json() == {"status": "ok", "mode": "fixture", "live_scanning": False}

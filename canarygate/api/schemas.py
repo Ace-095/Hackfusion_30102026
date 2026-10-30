@@ -105,6 +105,8 @@ class FixtureRun(BaseModel):
     reason: str
     remediation: str | None
     scope_hash: str
+    spec_hash: str
+    inventory: list[InventoryEndpoint]
     constraints: FixtureConstraints
 
 

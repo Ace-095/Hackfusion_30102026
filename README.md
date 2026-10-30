@@ -2,8 +2,8 @@
 
 CanaryGate is planned as an evidence-based API authorization testing system.
 This checkpoint implements **a synthetic offline read-BOLA pipeline**, scoped
-authentication probes and bounded input/disclosure checks, exposed through a
-provisional FastAPI interface. It cannot scan live targets. It is not
+authentication probes and bounded input/disclosure checks, with local SQLite
+persistence, exposed through a provisional FastAPI interface. It cannot scan live targets. It is not
 a complete implementation of the frozen specification or a production safety
 guard. Fixture findings must never be represented as live-target results.
 
@@ -54,7 +54,8 @@ and `.venv\Scripts\python.exe -m pytest` directly. Dependencies are pinned in
 See [collaboration and milestones](docs/DEVELOPMENT.md),
 [contract review notes](docs/CONTRACTS.md), [API draft](docs/API.md), and
 [decision and checkpoint log](docs/DECISIONS.md), and
-[checkpoint 3 demo](docs/checkpoints/03-input-disclosure.md).
+[checkpoint 3 demo](docs/checkpoints/03-input-disclosure.md), and
+[checkpoint 4 demo](docs/checkpoints/04-persistence.md).
 
 ## Run the fixture API locally
 
@@ -66,9 +67,11 @@ In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed
 [VS Code and judge demo guide](docs/VS_CODE_DEMO.md) has Windows/Linux steps.
 The provisional schema is available at `/openapi.json`. Swagger/ReDoc are disabled
-because their default assets use external CDNs. This unauthenticated in-memory
-server is for local use only; do not expose it to other users or the Internet.
-The API contracts are not yet approved/frozen.
+because their default assets use external CDNs. This unauthenticated local
+server must not be exposed to other users or the Internet. Fixture reports
+persist in `.canarygate/fixture.sqlite3` relative to the working directory;
+`CANARYGATE_DB_PATH` can select another local file. The API contracts are not
+yet approved/frozen. The fixture redactor is not suitable for arbitrary live data.
 
 ## Safety baseline for future implementation
 
