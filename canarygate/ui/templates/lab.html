@@ -11,6 +11,7 @@
                   browser never talks to the lab: it submits a port to CanaryGate, and
                   CanaryGate performs the guarded requests.",
                  trail=[("Dashboard", "/ui/"), ("TargetLab validation", None)]) %}
+  <a class="btn btn-sm" href="/ui/lab/matrix">Asset matrix</a>
   <a class="btn btn-sm btn-ghost" href="/ui/reports">Lab reports</a>
 {% endcall %}
 
@@ -63,6 +64,8 @@
     {% set legitimate = catalog.combinations|selectattr("kind", "equalto", "legitimate_owner_request")|list|length %}
     {% set cross = catalog.combinations|selectattr("kind", "equalto", "cross_account_attempt")|list|length %}
     <p class="note mt-1">{{ catalog.combinations|length }} combinations: {{ legitimate }} legitimate owner request(s) and {{ cross }} cross-account attempt(s). Labels come from the same constants the scans use.</p>
+    <p class="note">The <a href="/ui/lab/matrix">3×3 asset matrix</a> shows every combination
+      of these accounts and assets, filled only from stored runs.</p>
     <p class="note"><b>Two datasets, never mixed:</b> this demo tenant is separate from the
       frozen offline fixture (<span class="mono">alice</span> / <span class="mono">bob</span>
       in <span class="mono">scope.yaml</span>), which is unchanged and shown on the fixture
