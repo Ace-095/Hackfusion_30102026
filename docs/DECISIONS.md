@@ -184,7 +184,9 @@ concurrent writes, credential redaction, evidence minimization, SQL parameters,
 failed writes and corrupted report/evidence records. 90 tests passed locally on
 Linux/Python 3.11 with one third-party deprecation warning. The local server was
 also stopped and restarted and the original redacted report retrieved. These
-results do not establish full v3.2 acceptance or live-target safety.
+results do not establish full v3.2 acceptance or live-target safety. GitHub
+Actions passed on Linux and Windows for checkpoint commit `f5a004e`
+(run 41027248092).
 
 ## Outstanding checkpoints
 
