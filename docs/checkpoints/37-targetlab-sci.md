@@ -153,6 +153,10 @@ exhausted · offline run claiming networking.
   `loopback_tls=6`, 17 API routes checked.
 - Wheel: 130 files, 231,320 bytes, no certificates, keys, tests or `targetlab`
   package.
+- Delivered in commit `fc965fb` on `arena/aa67fa1b-hackfusion-30102026`.
+- CI: workflow run **41087011678** — `ubuntu-latest` success and
+  `windows-latest` success, including the two-run reset scenario and the real
+  TLS servers.
 - Also fixed here: the redactor now knows the TargetLab fixture secrets, so a
   regression that leaked one would be scrubbed as well as asserted against.
 
