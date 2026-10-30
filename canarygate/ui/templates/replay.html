@@ -24,6 +24,7 @@
 ) %}
   <a class="btn btn-ghost" href="{{ back_href }}">Back to the run</a>
   {% if mode != 'unavailable' %}
+  <button type="button" class="btn btn-ghost" data-print>{{ icon("file") }} Print timeline</button>
   <a class="btn btn-ghost" href="#replay-build">How this is built</a>
   {% endif %}
 {% endcall %}
@@ -157,6 +158,11 @@
         </div>
 
         {% if event.why %}<p class="replay-why">{{ event.why }}</p>{% endif %}
+        {% if event.evidence_part %}
+          <p class="replay-basis">
+            {{ icon("lock") }} Evidence attached here by: <span class="mono">{{ event.evidence_basis }}</span>
+          </p>
+        {% endif %}
 
         {% if event.check_id %}
         <div class="replay-check">

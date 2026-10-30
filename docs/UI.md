@@ -218,7 +218,7 @@ feature; none of them are faked.
 | G9 | Evidence is minimized by design (no raw traffic) | `/ui/scans/{id}` | Shows redacted summaries + hashes, explains what is absent | No change proposed — this is a safety property, not a gap to close |
 | G10 | No CSRF token for UI form posts | all forms | None needed while the API is unauthenticated and local; adding cookies/sessions later would require CSRF protection | Add CSRF tokens together with any authentication work |
 | G11 | Severity/risk ranking absent from the contract | `/ui/findings` | Ranks by verdict only, with an on-page explanation | Add `severity: Literal["critical","high","medium","low","info"] \| None` + `severity_source` to `SecurityCheck`/`FixtureRun`. Must stay `None` when the backend has no basis for it — an invented severity is worse than none |
-| G13 | Transcript runs expose no per-request capture time | `/ui/suites/*/replay` | Renders them as a *sequence* in backend list order and says so | A `captured_at` per transcript entry (or an ordered `steps[]` on the run) would let scenario and authentication runs use the same timeline the fixture run already has |
+| G13 | Transcript runs expose no per-request capture time (deferred by product decision — not a demo blocker) | `/ui/suites/*/replay` | Renders them as a *sequence* in backend list order and says so | A `captured_at` per transcript entry (or an ordered `steps[]` on the run) would let scenario and authentication runs use the same timeline the fixture run already has |
 | G12 | No configuration submission path | `/ui/configure` | Shows bundled config read-only, form disabled with reasons | Same as G3/G4: a validated config object plus a scan-job contract, only after guard + authorization work |
 
 Contract changes to the frozen models or the existing routes were **not** made.
@@ -452,7 +452,7 @@ was checked, against real responses:
 | Actor / role | **Yes** per event | **Yes** per evidence part | **Yes** per check |
 | Ownership evidence | **Yes** — `run.evidence.ownership` | **Yes** | n/a (not a BOLA run) |
 | Disclosure evidence | **Yes** — `run.evidence.disclosure` | **Yes** | n/a |
-| Explicit observation → finding link | **No** — no foreign key; the link is (actor, method, path, status) identity plus the phase name | Same (phase name) | Same (check id) |
+| Explicit observation → finding link | **No** — no foreign key; the link is derived (phase, then request identity, then nearest timestamp) | Same (phase name) | Same (check id) |
 
 Consequences, all enforced in code:
 
@@ -463,7 +463,7 @@ Consequences, all enforced in code:
 2. **Evidence parts annotate events, they do not become events.** The ownership
    evidence describes the same request as the `owner_baseline` observation one
    layer of interpretation later; emitting both would make one request look like
-   two. Matching is by request identity, and the page states the rule.
+   two. Matching is phase-first (see §12.4), and the page states the basis it used.
 3. **Skipped checks are absent, not empty.** A SKIPPED check performed no
    request, so it has no event; it stays listed on the run page.
 4. **Nothing is invented.** Ordering, relative offsets and labels are the only
@@ -496,3 +496,41 @@ clamp at the ends, `←`/`→`/`Home`/`End` move correctly, announcements descri
 the current event, play advances on its own, pause freezes, and the verdict is
 revealed exactly at the final step. jsdom has no layout engine, so this proves
 the behaviour, not the pixels.
+
+
+### 12.4 Multiple identical requests (audit + fix)
+
+The first matcher used `(actor, method, path, status)` alone and marked the
+**last** match. That is wrong when a request is repeated: a retry, or the same
+actor reading the same path in two different phases, can steal the annotation
+from the request the evidence actually describes.
+
+`tests/integration/test_ui_replay_adapter.py` reproduces that failure with
+payloads shaped exactly like backend responses (no database, no backend change).
+Three of its cases failed against the first matcher:
+
+| Case | Old behaviour | Current behaviour |
+| --- | --- | --- |
+| Alice reads Bob's item during `discovery` **and** as `cross_user_read`; disclosure evidence exists | matched the later event by luck | phase filter selects `cross_user_read` first |
+| Two `cross_user_read` reads (retry) 6 s apart; evidence timestamp sits 0.5 s after the **first** | marked the retry (wrong request) | nearest capture timestamp wins |
+| Two `owner_baseline` reads of the same resource; evidence sits next to the first | marked the second | nearest capture timestamp wins |
+| Evidence identity matches no captured request | unmarked, noted | unmarked, noted (unchanged) |
+
+The rule is now, in order: **phase** (`owner_baseline` for ownership,
+`cross_user_read` for disclosure) → **request identity** → **nearest capture
+timestamp** (within 5 s; otherwise the last match) → and when several requests
+still match, the page says how many and which rule chose. Every annotated event
+renders its basis:
+
+```
+Evidence attached here by: phase cross_user_read · the only captured match
+Evidence attached here by: phase owner_baseline · nearest capture timestamp (4 ms …)
+```
+
+An unmatched evidence part is never attached to a plausible neighbour: it is
+reported in "How this replay is built" instead.
+
+Verified on real runs: the fixture run (5 observations + 13 executed probes)
+marks exactly one ownership event and one disclosure event, and the 9 SKIPPED
+checks produce no events at all. INCONCLUSIVE and unknown check verdicts render
+as recorded — the adapter copies the verdict, it never derives one.

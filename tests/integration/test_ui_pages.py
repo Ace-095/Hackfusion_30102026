@@ -574,3 +574,34 @@ def test_replay_unavailable_state_is_explicit(tmp_path):
         # A stored run always renders; the recorder never shows a blank page.
         body = client.get(f"/ui/scans/{run_id}/replay").text
         assert "No replay is available for this run" not in body
+
+
+def test_replay_prints_the_whole_timeline_even_mid_playback(tmp_path):
+    """Printing must not print only the step the player happens to be on."""
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        body = client.get(f"/ui/scans/{run_id}/replay").text
+        assert "data-print" in body
+
+        css = client.get("/ui/static/css/replay.css").text
+        assert "@media print" in css
+        assert ".replay-event { display: grid !important" in css
+        assert ".replay-verdict { display: block !important" in css
+
+        # Keyboard affordances are implemented in the player and documented on the page.
+        script = client.get("/ui/static/js/replay.js").text
+        for key in ('"ArrowRight"', '"ArrowLeft"', '"Home"', '"End"', 'aria-pressed',
+                    "prefers-reduced-motion"):
+            assert key in script, key
+        assert "Home" in body and "Space" in body
+
+
+def test_replay_shows_why_each_evidence_part_landed_on_its_event(tmp_path):
+    with _client(tmp_path) as client:
+        run_id = client.post("/ui/actions/fixture-scan", follow_redirects=False)\
+            .headers["location"].rsplit("/", 1)[-1]
+        body = client.get(f"/ui/scans/{run_id}/replay").text
+        assert body.count('class="replay-basis"') == 2
+        assert "phase owner_baseline" in body
+        assert "phase cross_user_read" in body

@@ -124,6 +124,7 @@ def _observation_event(record, index):
         "assertions": _tri(record.get("assertions")),
         "checklist": [],
         "evidence_part": None,
+        "evidence_basis": None,
         "why": PHASE_WHY.get(phase),
         "sha256": record.get("sha256"),
         "redacted": record.get("redacted", True),
@@ -175,6 +176,7 @@ def _probe_event(check, evidence, index):
         "assertions": [],
         "checklist": _tri(evidence.get("checklist")),
         "evidence_part": None,
+        "evidence_basis": None,
         "why": None,
         "sha256": evidence.get("sha256"),
         "redacted": evidence.get("redacted", True),
@@ -206,6 +208,7 @@ def _evidence_only_event(part, evidence, index):
         "assertions": [],
         "checklist": _tri(evidence.get("checklist")),
         "evidence_part": part,
+        "evidence_basis": "phase order in the offline transcript",
         "why": None,
         "sha256": evidence.get("sha256"),
         "redacted": evidence.get("redacted", True),
@@ -216,12 +219,61 @@ def _evidence_only_event(part, evidence, index):
     }
 
 
+#: Which capture phase each evidence part is built from. The backend records the
+#: owner baseline under ``owner_baseline`` and the boundary-crossing read under
+#: ``cross_user_read``; using the phase first removes the common ambiguity where
+#: the same actor read the same path for two different reasons.
+PHASE_FOR_PART = {"ownership": "owner_baseline", "disclosure": "cross_user_read"}
+
+#: How far apart an evidence summary and the observation it describes may be
+#: before the timestamp stops being useful as a tie-breaker. The summary is
+#: built from the same response a few milliseconds later, so this is generous.
+MATCH_WINDOW_MS = 5000
+
+
+def _distance_ms(event, record):
+    left = _parse(event.get("timestamp"))
+    right = _parse(record.get("timestamp"))
+    if left is None or right is None:
+        return None
+    return abs(int((right - left).total_seconds() * 1000))
+
+
+def _choose_candidate(candidates, record):
+    """Pick the captured request an evidence summary most likely describes.
+
+    Order of evidence, strongest first:
+      1. the phase the part is built from (owner baseline / cross-user read);
+      2. the capture timestamp closest to the evidence summary's own timestamp;
+      3. the later event, because the summary is written after its request.
+
+    Returns ``(event, basis)`` where ``basis`` is rendered on the page so the
+    reader can see exactly why an annotation landed where it did.
+    """
+    timed = [(event, _distance_ms(event, record)) for event in candidates]
+    usable = [(event, distance) for event, distance in timed
+              if distance is not None and distance <= MATCH_WINDOW_MS]
+    if usable:
+        best = min(usable, key=lambda pair: (pair[1], -candidates.index(pair[0])))
+        return best[0], f"nearest capture timestamp ({best[1]} ms from the evidence summary)"
+    return candidates[-1], "last captured match; no usable timestamps to disambiguate"
+
+
 def _attach_evidence_parts(events, run):
     """Mark which events the run's two evidence parts describe.
 
-    Matching is by *identity of the recorded request* (actor + method + path +
-    status), never by position, and the match is reported on the page so the
-    reader can check it. Evidence objects are not emitted as extra events.
+    The backend stores no foreign key from an evidence object to the request
+    that produced it, so the link is derived. It is derived the same way every
+    time and the basis is printed on the page:
+
+    1. filter by the capture phase the part is built from;
+    2. inside that phase, match the request identity
+       (actor + method + path + status);
+    3. if several requests still match, take the capture timestamp closest to
+       the evidence summary's own timestamp.
+
+    Evidence objects are never emitted as extra events, and an unmatched part is
+    reported instead of being attached to a plausible-looking neighbour.
     """
     notes = []
     evidence = run.get("evidence") or {}
@@ -235,18 +287,37 @@ def _attach_evidence_parts(events, run):
             record.get("path") or record.get("path_template"),
             record.get("status_code"),
         )
-        matches = [
+        identity = [
             event for event in events
             if (event["actor"], event["method"], event["path"], event["status"]) == key
         ]
-        if not matches:
+        if not identity:
             notes.append(
                 f"The {part} evidence part does not correspond to a captured request in "
                 "this run's observation set, so it is not marked on the timeline."
             )
             continue
-        target = matches[-1]
+
+        expected_phase = PHASE_FOR_PART[part]
+        phased = [event for event in identity if event["phase"] == expected_phase]
+        if phased:
+            candidates, phase_basis = phased, f"phase {expected_phase}"
+        else:
+            # Unusual payload (a probe-shaped run, or a phase rename): still
+            # annotate, but say that the phase did not disambiguate.
+            candidates, phase_basis = identity, "request identity only (no phase match)"
+
+        if len(candidates) > 1:
+            target, time_basis = _choose_candidate(candidates, record)
+            notes.append(
+                f"{len(candidates)} captured requests share the identity of the {part} "
+                f"evidence part; the one chosen by {time_basis.split(';')[0]} is marked."
+            )
+        else:
+            target, time_basis = candidates[0], "the only captured match"
+
         target["evidence_part"] = part
+        target["evidence_basis"] = f"{phase_basis} · {time_basis}"
         target["why"] = {
             "ownership": (
                 "This exact request is the backend's ownership evidence: the resource "
@@ -257,11 +328,6 @@ def _attach_evidence_parts(events, run):
                 "crossed the account boundary."
             ),
         }[part]
-        if len(matches) > 1:
-            notes.append(
-                f"{len(matches)} captured requests match the {part} evidence identity; "
-                "the last one in capture order is marked."
-            )
     return notes
 
 

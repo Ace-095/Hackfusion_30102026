@@ -372,3 +372,15 @@
 .status-chip.status-none { color: var(--ink-3); border-style: dashed; }
 .tight-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: var(--fs-sm); color: var(--ink-2); }
 .tight-list code { font-family: var(--mono); font-size: 0.78em; color: var(--ink); overflow-wrap: anywhere; }
+
+/* Why an evidence part landed on this event: visible, not a tooltip. */
+.replay-basis {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.replay-basis svg { width: 12px; height: 12px; }
+.replay-basis .mono { color: var(--ink-2); font-size: 0.68rem; }
