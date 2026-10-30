@@ -240,6 +240,16 @@ class GuardedHTTPXRunner:
                                 if op.method == "GET" and op.classification == "READ_ONLY")
         self._client = httpx.Client(transport=self._transport, trust_env=False, follow_redirects=False)
 
+    @property
+    def scope(self):
+        return self._scope
+
+    def supports_read_path(self, path: str) -> bool:
+        return isinstance(path, str) and path in self._paths
+
+    def halt(self):
+        self._transport._run_guard.halt()
+
     def get(self, actor: str, path: str) -> httpx.Response:
         if not isinstance(path, str) or path not in self._paths:
             raise ValueError("request outside scope")

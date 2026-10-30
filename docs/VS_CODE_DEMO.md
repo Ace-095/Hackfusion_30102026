@@ -141,3 +141,5 @@ For shared run-guard verification, see [checkpoint 14](checkpoints/14-run-guard.
 For network-deadline verification, see [checkpoint 15](checkpoints/15-network-deadline.md).
 
 For guarded authentication verification, see [checkpoint 16](checkpoints/16-guarded-login.md).
+
+For the explicit profile observation tests, see [checkpoint 17](checkpoints/17-identity-observation.md).

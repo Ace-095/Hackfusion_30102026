@@ -742,3 +742,87 @@ def test_guarded_login_actual_tls_and_http_framing_over_socketpair(monkeypatch):
     assert b'Host: api.organizer.example:443\r\n' in headers + b'\r\n'
     assert b'Authorization:' not in headers
     assert __import__('json').loads(body) == {'username': 'alice', 'password': 'synthetic-password'}
+
+
+def test_identity_check_observes_explicit_profile_without_exposing_body(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice","secret":"synthetic-private"}'))
+    result = observe_identity(runner, actor='alice', path='/profile', identity_field='username')
+    assert result.status == 'MATCHED' and result.account == 'alice'
+    assert 'synthetic-private' not in repr(result) and 'token-alice' not in repr(result)
+    assert sum(e[0] == 'request' for e in mocked_wire[0]) == 1
+
+
+@pytest.mark.parametrize('status,body', [
+    (401, b'{"username":"alice"}'), (200, b'{}'), (200, b'{"username":null}'),
+    (200, b'{"username":""}'), (200, b'[]'), (200, b'not-json'),
+    (200, b'{"username":"alice","username":"alice"}'),
+])
+def test_identity_check_cannot_verify_ambiguous_profile(mocked_wire, status, body):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    mocked_wire[1].appendleft(FakeResponse(status, body))
+    result = observe_identity(GuardedHTTPXRunner(scope, {'alice': 'token-alice'}),
+                             actor='alice', path='/profile', identity_field='username')
+    assert result.status != 'MATCHED'
+
+
+def test_observed_identity_mismatch_halts_run(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"bob"}'))
+    result = observe_identity(runner, actor='alice', path='/profile', identity_field='username')
+    assert result.status == 'MISMATCH'
+    with pytest.raises(ValueError, match='halted'): runner.get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+@pytest.mark.parametrize('actor,path,field', [
+    ('eve', '/profile', 'username'), ('alice', '/other', 'username'),
+    ('alice', '/profile?foo=1', 'username'), ('alice', '/profile', 'a.b'),
+])
+def test_identity_check_skips_invalid_setup_without_socket(mocked_wire, actor, path, field):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice'})
+    result = observe_identity(runner, actor=actor, path=path, identity_field=field)
+    assert result.status == 'SKIPPED'
+    assert not any(e[0] == 'socket' for e in mocked_wire[0])
+
+
+def test_guarded_login_then_explicit_profile_observation(mocked_wire, monkeypatch):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.accounts.login_config import LoginConfig
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    cfg = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                      token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {}, login_config=cfg)
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice"}'))
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"token":"synthetic-token"}'))
+    assert runner.login('alice').json() == {'token_obtained': True, 'identity_verified': False}
+    observation = observe_identity(runner, actor='alice', path='/profile', identity_field='username')
+    assert observation.status == 'MATCHED'
+    requests = [e for e in mocked_wire[0] if e[0] == 'request']
+    assert [e[1] for e in requests] == ['POST', 'GET']
+    assert requests[1][3]['Authorization'] == 'Bearer synthetic-token'
+
+
+def test_identity_mismatch_halts_other_runners_in_same_run(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity
+    from canarygate.guard.run_guard import RunSafetyGuard
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    guard = RunSafetyGuard(scope)
+    one, two = [GuardedHTTPXRunner(scope, {'alice': 'token-alice'}, run_guard=guard) for _ in range(2)]
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"bob"}'))
+    assert observe_identity(one, actor='alice', path='/profile', identity_field='username').status == 'MISMATCH'
+    with pytest.raises(ValueError, match='halted'): two.get('alice', '/items')

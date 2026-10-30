@@ -522,6 +522,24 @@ contracts; the v3.2 recipe and readiness gates still need integration and review
 Direct Python calls can send authorized POST login and GET requests: do not use
 against a target without written approval and independent end-to-end review.
 
+## Checkpoint 17 — explicit profile identity observation
+
+Test-first cases introduced a bounded, ephemeral identity observation using a
+specified scoped read-only profile path and top-level field through the guarded
+HTTPX runner. A 200 response with a matching field is only `MATCHED`, never
+identity verification or authorization proof. Missing/ambiguous data is
+`INCONCLUSIVE`, unscoped setup is `SKIPPED`, and a clear mismatch halts the
+shared run. Returned records contain no raw profile data or credentials. Tests
+cover malformed and duplicate-key JSON, mismatches, unscoped inputs, shared
+halts and a guarded login followed by a profile observation. They use mock
+sockets only; no external target was contacted. Local full suite: 308 passed,
+one third-party warning. See [judge demo](checkpoints/17-identity-observation.md).
+
+This is not the two-account identity readiness gate or ownership verification.
+Independent cross-account controls, resource discovery, generic recipes and the
+live scan orchestrator remain missing. It is not exposed through the API and is
+not authorization to run against a target.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.
