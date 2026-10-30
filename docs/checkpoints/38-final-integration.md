@@ -102,7 +102,10 @@ the checker, not by weakening it.
   `implemented=47 / partial=9 / missing=2 / unreachable=0`, `real_networking=0`,
   `loopback_tls=7`, 17 API routes checked.
 - Demo: `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)`.
-- Delivered in commit `PENDING`; CI recorded in the follow-up documentation commit.
+- Delivered in commit `fc5f361` on `arena/aa67fa1b-hackfusion-30102026`.
+- CI: workflow run `fc5f361` checks — `ubuntu-latest` success and
+  `windows-latest` success, including the subprocess demo run and the real
+  loopback TLS servers.
 
 ## Remaining gaps (unchanged)
 
