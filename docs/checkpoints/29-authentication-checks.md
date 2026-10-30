@@ -154,7 +154,9 @@ presented as a clean result.
 
 - Local full suite: **609 passed**, one third-party Starlette/AnyIO warning.
 - New tests: 69 (50 security/unit, 19 application-level).
-- CI: recorded in the hand-off for the pushed commit (Ubuntu + Windows).
+- CI run `41060771387` on commit `27fd836` passed both `tests (ubuntu-latest,
+  3.11)` and `tests (windows-latest, 3.11)` on the first attempt.
+- Wheel build (87 files) includes `canarygate/report/templates/authentication.html`.
 
 ## Remaining gaps
 
