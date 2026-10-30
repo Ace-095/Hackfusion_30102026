@@ -103,6 +103,9 @@ the **lab directly**; CanaryGate's own transport is checkpoint 35.
 - The lab also ran as a real uvicorn process on `127.0.0.1:8765` for the curl
   transcript above, then was stopped.
 
+**Remote verification:** delivered in commit `ece5e0f`; CI run **41073125720**
+passed on `ubuntu-latest` and `windows-latest` (19 lab tests included).
+
 ## What this does and does not prove
 
 **Does:** the interaction scenario CanaryGate must detect is real, externally
