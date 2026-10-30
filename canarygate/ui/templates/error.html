@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status_code }}{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Request failed</h1>
+    <p class="page-sub">The UI rendered this instead of a JSON error body.</p>
+  </div>
+</section>
+
+<div class="alert alert-danger">
+  <p><strong>HTTP {{ status_code }} — {{ title }}</strong></p>
+  <p class="mono small">{{ detail }}</p>
+</div>
+
+<section class="card">
+  <header class="card-head"><h2>What to do next</h2></header>
+  <ul class="bullets">
+    <li>404 usually means the run id does not exist in the local database.</li>
+    <li>500 with "integrity verification" means a stored record failed its checksum
+      check. The backend refuses to show it; this UI will not guess its contents.</li>
+    <li>500 with "storage unavailable" usually means the SQLite file cannot be created
+      or read. Check <span class="mono">CANARYGATE_DB_PATH</span> and file permissions.</li>
+  </ul>
+  <div class="link-row">
+    <a class="btn btn-primary" href="/ui/">Back to dashboard</a>
+    <a class="btn btn-ghost" href="/api/health">API health (JSON)</a>
+  </div>
+</section>
+{% endblock %}

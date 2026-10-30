@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge, status_badge, tri, kv, constraints_panel, suite_report_links %}
+{% block title %}{{ proof_family }} {{ run.id|short_id }}{% endblock %}
+
+{% macro scenario_evidence(title, evidence, purpose) -%}
+<section class="card">
+  <header class="card-head">
+    <h2>{{ title }}</h2>
+    {% if evidence %}<span class="badge badge-info mono">HTTP {{ evidence.status_code }}</span>{% endif %}
+  </header>
+  {% if evidence %}
+    <p class="note">{{ purpose }}</p>
+    <dl class="kv">
+      {{ kv("Actor", evidence.actor ~ " (" ~ evidence.role ~ ")", True) }}
+      {{ kv("Request", evidence.method ~ " " ~ evidence.path_template, True) }}
+      {{ kv("Recorded", evidence.timestamp, True) }}
+      {{ kv("SHA-256", evidence.sha256, True) }}
+    </dl>
+    <h3 class="subhead">Evidence checklist</h3>
+    <table class="table table-compact">
+      <tbody>
+        {% for key, value in evidence.checklist.items() %}
+        <tr><th scope="row" class="mono">{{ key }}</th><td>{{ tri(value) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">
+      <p class="empty-title">No evidence recorded for this phase</p>
+      <p class="empty-detail">The verdict below explains what could be established.</p>
+    </div>
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <a class="back-link" href="/ui/suites">← test suites</a>
+    <h1 class="verdict-heading">
+      {% if family == "read-bola" %}
+        {{ verdict_badge(run.verdict) }}
+        <span class="mono">{{ run.scenario_id }}</span>
+      {% else %}
+        {{ status_badge(run.status) }}
+        <span class="mono">{{ run.title }}</span>
+      {% endif %}
+    </h1>
+    <p class="page-sub">
+      {% if family == "read-bola" %}
+        {{ run.reason }}
+      {% else %}
+        Authentication transcript run for scenario <span class="mono">{{ run.scenario_id }}</span>.
+        Per-check verdicts are listed below; there is no single authentication verdict in
+        this contract.
+      {% endif %}
+    </p>
+  </div>
+  <div class="toolbar">
+    {{ suite_report_links(family, run.id) }}
+  </div>
+</section>
+
+<div class="alert alert-warn">
+  <strong>Offline transcript.</strong>
+  transport=<span class="mono">{{ run.transport }}</span>,
+  network_transport_enabled=<span class="mono">{{ run.network_transport_enabled|lower }}</span>.
+  These are bundled synthetic recordings, not live-target results.
+</div>
+
+{% if family == "read-bola" and run.remediation %}
+<div class="alert alert-info"><strong>Recommended remediation:</strong> {{ run.remediation }}</div>
+{% endif %}
+{% if family == "read-bola" and run.verdict == "SKIPPED" %}
+<div class="alert alert-warn">
+  <strong>SKIPPED means the test was not performed.</strong> It is not a pass.
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <header class="card-head"><h2>Run</h2>{{ status_badge(run.status) }}</header>
+    <dl class="kv">
+      {{ kv("Run id", run.id, True) }}
+      {{ kv("Recorded", run.created_at, True) }}
+      {{ kv("Family", proof_family) }}
+      {{ kv("Mode", run.mode, True) }}
+      {{ kv("Scenario", run.scenario_id, True) }}
+      {{ kv("Transcript SHA-256", run.transcript_sha256, True) }}
+    </dl>
+  </section>
+
+  <section class="card">
+    <header class="card-head"><h2>Scope used</h2></header>
+    <dl class="kv">
+      {{ kv("Origin", run.scope.origin, True) }}
+      {{ kv("Host / port", run.scope.hostname ~ ":" ~ run.scope.port, True) }}
+      {{ kv("Authorization reference", run.scope.written_authorization_reference) }}
+      {{ kv("Request budget", run.scope.request_budget, True) }}
+      {{ kv("Scope SHA-256", run.scope.scope_sha256, True) }}
+    </dl>
+    <h3 class="subhead">Accounts</h3>
+    <ul class="inline-list">
+      {% for account in run.scope.accounts %}
+      <li class="mono small">{{ account.account }} ({{ account.role }})</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+{% if family == "read-bola" %}
+  <div class="grid grid-2">
+    <section class="card">
+      <header class="card-head"><h2>Setup</h2></header>
+      <table class="table table-compact">
+        <tbody>
+          <tr><th scope="row">Authentication</th><td>{{ status_badge(run.setup.authentication) }}</td></tr>
+          <tr><th scope="row">Ownership verification</th><td>{{ status_badge(run.setup.ownership_verification) }}</td></tr>
+          <tr><th scope="row">BOLA coverage</th><td>{{ status_badge(run.setup.bola_coverage) }}</td></tr>
+        </tbody>
+      </table>
+      {% if run.setup.reason %}<p class="note">{{ run.setup.reason }}</p>{% endif %}
+    </section>
+
+    <section class="card">
+      <header class="card-head"><h2>Recipe and policy</h2></header>
+      <dl class="kv">
+        {{ kv("Resource type", run.recipe.resource_type, True) }}
+        {{ kv("Discovery", run.recipe.discovery, True) }}
+        {{ kv("Detail", run.recipe.detail, True) }}
+        {{ kv("Id field", run.recipe.id_field, True) }}
+        {{ kv("Ownership field", run.recipe.ownership_field, True) }}
+        {{ kv("Ownership model", run.recipe.ownership_model, True) }}
+        {{ kv("Expected access", run.policy.expected_access, True) }}
+        {{ kv("Expected source", run.policy.expected_source) }}
+      </dl>
+      <p class="note dim">The private field name is <span class="mono">{{ run.recipe.private_field }}</span>;
+        values are never rendered.</p>
+    </section>
+  </div>
+
+  <h2 class="section-title">Two-part evidence</h2>
+  <p class="section-sub">Ownership first, then disclosure. Both parts are required for a
+    CONFIRMED read-BOLA verdict.</p>
+  <div class="grid grid-2">
+    {{ scenario_evidence("1 · Ownership evidence", run.evidence.ownership,
+       "Establishes that the resource belongs to the other account.") }}
+    {{ scenario_evidence("2 · Disclosure evidence", run.evidence.disclosure,
+       "Establishes that the acting account received private data it should not see.") }}
+  </div>
+
+  <section class="card">
+    <header class="card-head"><h2>Read-BOLA decision checklist</h2></header>
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Decision key</th><th scope="col">Established</th></tr></thead>
+        <tbody>
+          {% for key, value in run.checklist.items() %}
+          <tr><th scope="row" class="mono">{{ key }}</th><td>{{ tri(value) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+{% else %}
+  <section class="grid grid-4" aria-label="Authentication summary">
+    <div class="stat stat-compact"><span class="stat-label">Executed</span><span class="stat-value">{{ run.summary.executed }} / {{ run.summary.total }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">CONFIRMED</span><span class="stat-value">{{ run.summary.confirmed }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">SUSPECTED</span><span class="stat-value">{{ run.summary.suspected }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">SAFE</span><span class="stat-value">{{ run.summary.safe }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">INCONCLUSIVE</span><span class="stat-value">{{ run.summary.inconclusive }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">SKIPPED</span><span class="stat-value">{{ run.summary.skipped }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">Scheme</span><span class="stat-value small mono">{{ run.scheme }}</span></div>
+    <div class="stat stat-compact"><span class="stat-label">Signature verification</span><span class="stat-value small mono">{{ run.signature_verification }}</span></div>
+  </section>
+
+  <div class="alert alert-info">
+    Decoded JWT claims are used only to label accounts. They are never proof of identity,
+    privilege or authorization. claims_unverified=<span class="mono">{{ run.claims_unverified|lower }}</span>.
+  </div>
+
+  <section class="card">
+    <header class="card-head"><h2>Authentication checks</h2></header>
+    <div class="table-scroll">
+      <table class="table table-wide">
+        <thead>
+          <tr><th scope="col">Check</th><th scope="col">Verdict</th><th scope="col">Reason</th>
+              <th scope="col">Evidence</th><th scope="col">Remediation</th></tr>
+        </thead>
+        <tbody>
+          {% for check in run.checks %}
+          <tr>
+            <th scope="row" class="mono nowrap">{{ check.id }}</th>
+            <td>{{ verdict_badge(check.verdict) }}</td>
+            <td class="small">{{ check.reason }}</td>
+            <td class="small">
+              {% if check.evidence %}
+              <details class="disclosure">
+                <summary>probe {{ check.evidence.probe }} · HTTP {{ check.evidence.status_code }}</summary>
+                <dl class="kv">
+                  {{ kv("Path", check.evidence.path_template, True) }}
+                  {{ kv("Identity effect", check.evidence.identity_effect, True) }}
+                  {{ kv("Capability", check.evidence.capability, True) }}
+                  {{ kv("Alternate status", check.evidence.alternate_status_code, True) }}
+                  {{ kv("Denial body checked", check.evidence.denial_body_checked) }}
+                  {{ kv("SHA-256", check.evidence.sha256, True) }}
+                </dl>
+                <table class="table table-compact">
+                  <tbody>
+                    {% for key, value in check.evidence.checklist.items() %}
+                    <tr><th scope="row" class="mono">{{ key }}</th><td>{{ tri(value) }}</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </details>
+              {% else %}
+                <span class="dim">none — not performed</span>
+              {% endif %}
+            </td>
+            <td class="small">{{ check.remediation if check.remediation else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+<section class="card">
+  <header class="card-head"><h2>Constraint counters</h2></header>
+  {{ constraints_panel(run.constraints) }}
+  <p class="note dim">Request budget remaining: <span class="mono">{{ run.constraints.budget_remaining }}</span></p>
+</section>
+
+{% if family == "read-bola" %}
+<section class="card">
+  <header class="card-head"><h2>Inventory captured with this run</h2></header>
+  {% if run.inventory %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th><th scope="col">Source</th></tr></thead>
+      <tbody>
+        {% for endpoint in run.inventory %}
+        <tr>
+          <td><span class="method method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span></td>
+          <td class="mono">{{ endpoint.path }}</td>
+          <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+          <td class="mono small">{{ endpoint.expected_source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty"><p class="empty-title">No inventory snapshot recorded</p></div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <header class="card-head"><h2>Limitations the backend recorded</h2></header>
+  <ul class="bullets">
+    {% for limitation in run.limitations %}
+    <li>{{ limitation }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

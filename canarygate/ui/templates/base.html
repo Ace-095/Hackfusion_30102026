@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}CanaryGate{% endblock %} · CanaryGate</title>
+  {#- All assets are served locally: no CDN, font or analytics requests. -#}
+  <link rel="stylesheet" href="/ui/static/css/app.css">
+  <script src="/ui/static/vendor/htmx.min.js" defer></script>
+  <script src="/ui/static/js/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">CG</span>
+      <span class="brand-text">
+        <strong>CanaryGate</strong>
+        <small>evidence-based API authorization testing</small>
+      </span>
+    </div>
+    <span class="mode-pill" title="The API reports mode=fixture and live_scanning=false">
+      OFFLINE FIXTURE BUILD · NO LIVE SCANNING
+    </span>
+    <button type="button" class="nav-toggle" data-nav-toggle
+            aria-controls="site-nav" aria-expanded="false">Menu</button>
+  </header>
+
+  <div class="shell">
+    <nav id="site-nav" class="nav" aria-label="Main navigation" data-nav>
+      {% for key, href, label in nav %}
+      <a class="nav-link{% if active == key %} is-active{% endif %}" href="{{ href }}"
+         {% if active == key %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+      <div class="nav-note">
+        <p>Local only. The API has no authentication.</p>
+        <p><a href="/openapi.json" target="_blank" rel="noopener">OpenAPI schema</a></p>
+      </div>
+    </nav>
+
+    <main id="main" class="main">
+      <div class="banner" role="note">
+        <strong>Fixture-only build.</strong>
+        Every number on this page comes from the backend's offline fixture run or
+        offline transcript. It is not evidence about any real or
+        organizer-supplied API. API contracts are provisional.
+        <a href="/ui/setup">Readiness</a> and
+        <a href="/ui/reports">reports</a> state exactly what the backend did.
+      </div>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <footer class="footer">
+    <p>
+      CanaryGate v3.2 · local offline checkpoint ·
+      backend mode <span class="mono">fixture</span> ·
+      live scanning disabled · all assets served locally.
+    </p>
+    <p class="footer-dim">
+      Do not expose this server. Do not treat fixture verdicts as live-target results.
+    </p>
+  </footer>
+</body>
+</html>

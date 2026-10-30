@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge, status_badge, tri, empty_state %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="page-sub">
+      The state of the local backend, unedited. Where the backend cannot prove
+      something, this page says so instead of showing a placeholder.
+    </p>
+  </div>
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">Run bundled fixture scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+  </form>
+</section>
+
+<section id="scan-panel" aria-live="polite">
+  {% if setup is none %}
+    <div class="alert alert-warn">
+      <strong>No fixture scan has been recorded yet.</strong>
+      Authentication, resource discovery and ownership verification are all
+      unverified until the first run. Nothing on this page is a finding.
+    </div>
+  {% endif %}
+</section>
+
+<section class="grid grid-4" aria-label="Backend state">
+  <div class="stat">
+    <span class="stat-label">API health</span>
+    <span class="stat-value">{{ health.status }}</span>
+    <span class="stat-foot mono">{{ health.mode }} · live_scanning={{ health.live_scanning|lower }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Fixture endpoints</span>
+    <span class="stat-value">{{ endpoints|length }}</span>
+    <span class="stat-foot">from <span class="mono">GET /api/endpoints</span></span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Stored fixture runs</span>
+    <span class="stat-value">{{ run_count }}</span>
+    <span class="stat-foot">local SQLite, survives restarts</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Bundled offline scenarios</span>
+    <span class="stat-value">{{ suite_count }}</span>
+    <span class="stat-foot">read-BOLA and authentication transcripts</span>
+  </div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <header class="card-head">
+      <h2>Readiness gates</h2>
+      <a class="card-link" href="/ui/setup">full setup view</a>
+    </header>
+    {% if gates %}
+      <table class="table">
+        <thead>
+          <tr><th scope="col">Gate</th><th scope="col">Reported state</th><th scope="col">Why it matters</th></tr>
+        </thead>
+        <tbody>
+          {% for gate in gates %}
+          <tr>
+            <th scope="row">{{ gate.name }}</th>
+            <td>{{ status_badge(gate.value) }}</td>
+            <td class="dim">{{ gate.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if setup.reason %}
+        <p class="note"><strong>Backend reason:</strong> {{ setup.reason }}</p>
+      {% endif %}
+      <p class="note dim">{{ setup_message }}</p>
+    {% else %}
+      {{ empty_state("Setup not evaluated yet",
+         "These gates are produced by a fixture scan. Run one to see what the backend
+          could authenticate, discover and verify.") }}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <header class="card-head">
+      <h2>Latest verdict</h2>
+      {% if latest %}<a class="card-link" href="/ui/scans">all runs</a>{% endif %}
+    </header>
+    {% if latest %}
+      <p class="verdict-line">
+        {{ verdict_badge(latest.verdict) }}
+        <span class="mono">{{ latest.endpoint }}</span>
+      </p>
+      <p class="reason">{{ latest.reason }}</p>
+      <dl class="kv">
+        <div class="kv-row"><dt>Actor</dt><dd class="mono">{{ latest.actor }} ({{ latest.account_role }})</dd></div>
+        <div class="kv-row"><dt>Target resource</dt><dd class="mono">{{ latest.target_resource }}</dd></div>
+        <div class="kv-row"><dt>Verified owner</dt><dd class="mono">{{ latest.verified_owner }}</dd></div>
+        <div class="kv-row"><dt>Expected access</dt><dd class="mono">{{ latest.expected_access }}</dd></div>
+        <div class="kv-row"><dt>Expected-access source</dt><dd>{{ latest.expected_source }}</dd></div>
+        <div class="kv-row"><dt>Recorded</dt><dd class="mono">{{ latest.created_at }}</dd></div>
+      </dl>
+      <div class="link-row">
+        <a class="btn btn-primary btn-sm" href="/ui/scans/{{ latest.id }}">Open run</a>
+        <a class="btn btn-ghost btn-sm" href="/ui/scans/{{ latest.id }}/evidence">Evidence</a>
+      </div>
+    {% else %}
+      {{ empty_state("No verdict yet",
+         "A verdict only exists after a fixture run is stored. This build never
+          shows a sample verdict.") }}
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <header class="card-head"><h2>Verdict distribution</h2></header>
+    <dl class="bars">
+      {% for name, count in counts.items() %}
+      <div class="bar-row">
+        <dt>{{ name }}</dt>
+        <dd>
+          <span class="bar"><span class="bar-fill bar-{{ name|lower }}"
+            style="width: {{ (count / run_count * 100)|round(0, 'floor') if run_count else 0 }}%"></span></span>
+          <span class="bar-count">{{ count }}</span>
+        </dd>
+      </div>
+      {% endfor %}
+    </dl>
+    <p class="note dim">Counted across {{ run_count }} stored fixture run(s). SKIPPED is a
+      legitimate outcome: it means a check was not performed, never that it passed.</p>
+  </section>
+
+  <section class="card">
+    <header class="card-head"><h2>What this build does not do</h2></header>
+    <ul class="bullets">
+      {% for fact in build_facts %}
+      <li>{{ fact }}</li>
+      {% endfor %}
+      <li>No live network execution: the guarded HTTPX component is not connected to the
+        scanner, and the fixture target is in-process, not a network service.</li>
+      <li>No authenticated UI, no multi-user access, no background job queue.</li>
+    </ul>
+  </section>
+</div>
+
+<section class="card">
+  <header class="card-head">
+    <h2>Recent fixture runs</h2>
+    <a class="card-link" href="/ui/scans">open scan list</a>
+  </header>
+  {% if runs %}
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Recorded</th><th scope="col">Endpoint</th><th scope="col">Actor</th>
+          <th scope="col">Target</th><th scope="col">Verdict</th><th scope="col">Run</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td class="mono small">{{ run.created_at }}</td>
+          <td class="mono">{{ run.endpoint }}</td>
+          <td class="mono">{{ run.actor }}</td>
+          <td class="mono">{{ run.target_resource }}</td>
+          <td>{{ verdict_badge(run.verdict) }}</td>
+          <td><a href="/ui/scans/{{ run.id }}">{{ run.id|short_id }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ empty_state("No stored runs",
+       "Run the bundled fixture scan to produce the first read-BOLA result.") }}
+  {% endif %}
+</section>
+{% endblock %}

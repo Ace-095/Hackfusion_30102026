@@ -1,0 +1,7 @@
+{#- HTMX fragment: keeps a failed action inside the page instead of replacing it. -#}
+<div class="alert alert-danger" role="alert">
+  <p><strong>Request failed — HTTP {{ status_code }}</strong></p>
+  <p class="mono small">{{ detail }}</p>
+  <p class="small">Nothing was stored or changed by this failed request. Reload the page
+    to see the current backend state.</p>
+</div>

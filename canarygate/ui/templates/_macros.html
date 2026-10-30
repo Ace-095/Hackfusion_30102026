@@ -1,0 +1,120 @@
+{% macro verdict_badge(value) -%}
+<span class="{{ value|verdict_class }}">{{ value if value else "UNKNOWN" }}</span>
+{%- endmacro %}
+
+{% macro status_badge(value) -%}
+<span class="{{ value|status_class }}">{{ value if value else "NOT REPORTED" }}</span>
+{%- endmacro %}
+
+{% macro tri(value) -%}
+{% if value is sameas true %}<span class="tri tri-yes" title="observed">yes</span>
+{% elif value is sameas false %}<span class="tri tri-no" title="not observed">no</span>
+{% else %}<span class="tri tri-none" title="not performed or not recorded">not recorded</span>{% endif %}
+{%- endmacro %}
+
+{% macro kv(label, value, mono=False) -%}
+<div class="kv-row">
+  <dt>{{ label }}</dt>
+  <dd class="{% if mono %}mono{% endif %}">{{ value if value not in (None, "") else "—" }}</dd>
+</div>
+{%- endmacro %}
+
+{% macro fixture_report_links(run_id) -%}
+<div class="link-row">
+  <a class="btn btn-ghost" href="/api/reports/{{ run_id }}?format=html" target="_blank" rel="noopener">
+    Backend HTML report</a>
+  <a class="btn btn-ghost" href="/api/reports/{{ run_id }}" target="_blank" rel="noopener">JSON run</a>
+  <a class="btn btn-ghost" href="/api/reports/{{ run_id }}?view=sections" target="_blank" rel="noopener">
+    JSON sections</a>
+  <a class="btn btn-ghost" href="/api/reports/{{ run_id }}?include_observations=true" target="_blank" rel="noopener">
+    JSON + observations</a>
+</div>
+{%- endmacro %}
+
+{% macro suite_report_links(family, run_id) -%}
+{% set base = "/api/scenario-scans/" ~ run_id ~ "/report" if family == "read-bola" else "/api/authentication-scans/" ~ run_id ~ "/report" %}
+<div class="link-row">
+  <a class="btn btn-ghost" href="{{ base }}?format=html" target="_blank" rel="noopener">Backend HTML report</a>
+  <a class="btn btn-ghost" href="{{ base }}" target="_blank" rel="noopener">JSON run</a>
+  <a class="btn btn-ghost" href="{{ base }}?view=sections" target="_blank" rel="noopener">JSON sections</a>
+</div>
+{%- endmacro %}
+
+{% macro empty_state(title, detail=None) -%}
+<div class="empty">
+  <p class="empty-title">{{ title }}</p>
+  {% if detail %}<p class="empty-detail">{{ detail }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro evidence_card(title, evidence, purpose) -%}
+{#- Fixture EvidenceSummary: redacted summary plus hash, never raw traffic. -#}
+<section class="card">
+  <header class="card-head">
+    <h2>{{ title }}</h2>
+    {% if evidence %}<span class="badge badge-info mono">HTTP {{ evidence.status_code }}</span>{% endif %}
+  </header>
+  {% if evidence %}
+    <p class="note">{{ purpose }}</p>
+    <dl class="kv">
+      <div class="kv-row"><dt>Actor</dt><dd class="mono">{{ evidence.actor }} ({{ evidence.role }})</dd></div>
+      <div class="kv-row"><dt>Request</dt><dd class="mono">{{ evidence.method }} {{ evidence.path }}</dd></div>
+      <div class="kv-row"><dt>Recorded</dt><dd class="mono">{{ evidence.timestamp }}</dd></div>
+      <div class="kv-row"><dt>Private canary matched</dt><dd>{{ tri(evidence.private_canary_matched) }}</dd></div>
+      <div class="kv-row"><dt>Redacted</dt><dd>{{ tri(evidence.redacted) }}</dd></div>
+      <div class="kv-row"><dt>Summary SHA-256</dt><dd class="mono small break">{{ evidence.sha256 }}</dd></div>
+    </dl>
+    <h3 class="subhead">Evidence checklist</h3>
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Condition</th><th scope="col">Observed</th></tr></thead>
+      <tbody>
+        {% for key, value in evidence.checklist.items() %}
+        <tr><th scope="row" class="mono">{{ key }}</th><td>{{ tri(value) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <details class="disclosure">
+      <summary>Redacted request / response summary</summary>
+      <pre class="json">{{ evidence.request|pretty_json }}</pre>
+      <pre class="json">{{ evidence.response|pretty_json }}</pre>
+    </details>
+  {% else %}
+    <div class="empty">
+      <p class="empty-title">No evidence was recorded for this part</p>
+      <p class="empty-detail">Missing evidence does not mean the check passed. The verdict
+        reason above explains what the backend could establish.</p>
+    </div>
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{% macro constraints_panel(constraints) -%}
+{#- Renders the backend's own scope/constraint counters. No values are computed here. -#}
+<div class="grid grid-4">
+  <div class="stat">
+    <span class="stat-label">Requests sent</span>
+    <span class="stat-value">{{ constraints.requests_sent }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Blocked by guard</span>
+    <span class="stat-value">{{ constraints.blocked_by_guard }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Redirects followed</span>
+    <span class="stat-value">{{ constraints.redirects_followed }} / {{ constraints.redirects_observed }} observed</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Network transport</span>
+    <span class="stat-value">{{ "enabled" if constraints.network_transport_enabled else "disabled" }}</span>
+  </div>
+</div>
+<ul class="checklist">
+  <li><span class="tri tri-{{ 'yes' if constraints.out_of_scope_requests_executed == 0 else 'no' }}"></span>
+      Out-of-scope requests executed: {{ constraints.out_of_scope_requests_executed }}</li>
+  <li><span class="tri tri-{{ 'yes' if constraints.destructive_requests_executed == 0 else 'no' }}"></span>
+      Destructive requests executed: {{ constraints.destructive_requests_executed }}</li>
+  <li><span class="tri tri-{{ 'yes' if constraints.external_requests_executed == 0 else 'no' }}"></span>
+      External requests executed: {{ constraints.external_requests_executed }}</li>
+</ul>
+{% if constraints.halted_reason %}<p class="note">Halted: {{ constraints.halted_reason }}</p>{% endif %}
+{%- endmacro %}

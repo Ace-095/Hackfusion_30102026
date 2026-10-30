@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Endpoint inventory{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Endpoint inventory</h1>
+    <p class="page-sub">
+      Served by <span class="mono">GET /api/endpoints</span> from the bundled
+      synthetic fixture specification. Each row shows the expected access the
+      backend derived and the provenance of that expectation.
+    </p>
+  </div>
+  <a class="btn btn-ghost" href="/ui/spec">Inspect a different spec (read-only)</a>
+</section>
+
+{% if endpoints %}
+<div class="table-scroll">
+  <table class="table table-wide">
+    <thead>
+      <tr>
+        <th scope="col">Method</th>
+        <th scope="col">Path</th>
+        <th scope="col">Expected access</th>
+        <th scope="col">Provenance</th>
+        <th scope="col">Declared auth requirement</th>
+        <th scope="col">Parameters</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for endpoint in endpoints %}
+      <tr>
+        <td><span class="method method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span></td>
+        <td class="mono">{{ endpoint.path }}</td>
+        <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+        <td class="mono small">{{ endpoint.expected_source }}</td>
+        <td class="mono small">
+          {% if endpoint.security %}
+            {% for requirement in endpoint.security %}
+              {% for scheme in requirement.keys() %}{{ scheme }}{% if not loop.last %}, {% endif %}{% endfor %}
+            {% endfor %}
+          {% else %}
+            <span class="dim">none declared</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if endpoint.parameters %}
+            <ul class="inline-list">
+              {% for parameter in endpoint.parameters %}
+              <li class="mono small">
+                {{ parameter.name }} <span class="dim">({{ parameter['in'] }}{% if parameter.required %}, required{% endif %})</span>
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <span class="dim">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  {{ empty_state("The inventory is empty",
+     "The backend returned no endpoints for the fixture specification.") }}
+{% endif %}
+
+<section class="card">
+  <header class="card-head"><h2>How to read this table</h2></header>
+  <ul class="bullets">
+    <li><strong>Expected access</strong> is the backend's classification:
+      <span class="mono">public</span>, <span class="mono">authenticated</span>,
+      <span class="mono">role:&lt;name&gt;</span>, <span class="mono">owner-only</span> or
+      <span class="mono">unknown</span>. <span class="mono">unknown</span> is a valid answer and
+      can never become a CONFIRMED verdict.</li>
+    <li><strong>Provenance</strong> is the source of that expectation. OpenAPI
+      <span class="mono">security</span> expresses authentication requirements, not
+      authorization policy, so it is labelled as such. The fixture's
+      <span class="mono">owner-only</span> rule comes from the synthetic fixture policy.</li>
+    <li>An uploaded specification is inspected in memory only. It never changes this
+      inventory, never selects a target and is never scanned.</li>
+  </ul>
+</section>
+{% endblock %}

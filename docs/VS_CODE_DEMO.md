@@ -1,9 +1,11 @@
 # Run the backend checkpoint in VS Code
 
 This is an **offline synthetic fixture demonstration**, not a scan of the
-organizer's API. The frontend/dashboard, live-target scanner, complete security
-checks and full production safety guard are not yet implemented. The backend
-server has no user authentication: use it locally and do not expose it publicly.
+organizer's API. A local frontend exists at `/ui/` (Jinja2 + vendored HTMX), but
+the live-target scanner, the remaining security checks and the full production
+safety guard are not yet implemented, and the UI cannot start a live scan. The
+backend server has no user authentication: use it locally and do not expose it
+publicly. See [UI.md](UI.md) for what the interface does and does not show.
 
 ## One-time setup (both operating systems)
 

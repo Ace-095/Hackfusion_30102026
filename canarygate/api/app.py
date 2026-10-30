@@ -6,6 +6,7 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from canarygate.database.auth_store import AuthenticationStore
@@ -290,6 +291,13 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     application.state.scenario_store = scenario_store
     application.state.auth_store = auth_store
     application.include_router(router)
+    # Frontend addition: server-rendered UI (Jinja2 + locally vendored HTMX).
+    # Imported here, not at module scope, because the UI calls the handlers in
+    # this module in-process. Assets are served from this package: no CDN.
+    from canarygate.ui.routes import router as ui_router
+    from canarygate.ui.templating import STATIC_ROOT
+    application.mount("/ui/static", StaticFiles(directory=STATIC_ROOT), name="ui-static")
+    application.include_router(ui_router)
     return application
 
 

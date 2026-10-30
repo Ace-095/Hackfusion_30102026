@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge, empty_state %}
+{% block title %}Authorization matrix{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Authorization matrix</h1>
+    <p class="page-sub">
+      Served by <span class="mono">GET /api/matrix</span>. One cell per stored fixture
+      run: who acted, against which resource, what the backend expected and what it
+      concluded.
+    </p>
+  </div>
+</section>
+
+<div class="alert alert-warn">
+  <strong>This is a partial matrix.</strong>
+  The backend derives cells from recorded runs, not from the full endpoint × actor
+  grid. Empty combinations are missing coverage, not passes. The complete matrix is a
+  P1 feature in the specification.
+</div>
+
+{% if cells %}
+<div class="table-scroll">
+  <table class="table table-wide" id="matrix-table">
+    <thead>
+      <tr>
+        <th scope="col">Endpoint</th>
+        <th scope="col">Actor</th>
+        <th scope="col">Target resource</th>
+        <th scope="col">Expected access</th>
+        <th scope="col">Expected source</th>
+        <th scope="col">Verdict</th>
+        <th scope="col">Run</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cell in cells %}
+      <tr>
+        <td class="mono">{{ cell.endpoint }}</td>
+        <td class="mono">{{ cell.actor }}</td>
+        <td class="mono">{{ cell.target_resource }}</td>
+        <td><span class="pill">{{ cell.expected_access }}</span></td>
+        <td class="mono small">{{ cell.expected_source }}</td>
+        <td>{{ verdict_badge(cell.verdict) }}</td>
+        <td><a href="/ui/scans/{{ cell.id }}">{{ cell.id|short_id }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  {{ empty_state("The matrix is empty",
+     "No fixture run has been stored, so the backend has no cells to report. Run the
+      fixture scan first.") }}
+{% endif %}
+
+<section class="card">
+  <header class="card-head"><h2>Reading a cell</h2></header>
+  <ul class="bullets">
+    <li><span class="mono">expected_access</span> is a claim with provenance. When it is
+      <span class="mono">unknown</span>, no CONFIRMED verdict is possible.</li>
+    <li><strong>SAFE</strong> means the behaviour matched the expected access for that
+      actor; it is only claimed when the oracle actually ran.</li>
+    <li><strong>INCONCLUSIVE</strong> and <strong>SKIPPED</strong> are honest gaps. They
+      are shown, never folded into SAFE.</li>
+    <li>BFLA cells are P1 and are not produced by this build.</li>
+  </ul>
+</section>
+{% endblock %}
