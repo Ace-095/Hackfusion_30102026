@@ -23,8 +23,8 @@ import hashlib
 import hmac
 import http.client
 import json
-import socket
 import re
+import socket
 import ssl
 import threading
 import weakref
@@ -57,6 +57,13 @@ def _unique_object(pairs):
     return result
 
 
+#: The lab publishes its process identity in this header; only a 16-hex value is
+#: accepted, and the raw header is never stored. Two lab processes may reuse the
+#: same loopback port, so this is the identity the evidence is attributed to.
+LAB_INSTANCE_HEADER = "X-Lab-Instance"
+LAB_INSTANCE_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+
+
 class TargetLabTransport:
     """The only code path that may open a socket to TargetLab."""
 
@@ -87,10 +94,30 @@ class TargetLabTransport:
             raise ValueError("run guard scope mismatch")
         self._lock = threading.Lock()
         self._requests = 0
+        self._lab_instance: str | None = None
 
     @property
     def scope(self):
         return self._scope
+
+    @property
+    def lab_instance(self) -> str | None:
+        """The lab process this transport talked to, if it published an id."""
+        with self._lock:
+            return self._lab_instance
+
+    def _note_lab_instance(self, value: str | None) -> None:
+        """Record the lab identity once; a change means the evidence spans two labs."""
+        if value is None:
+            return
+        with self._lock:
+            if self._lab_instance is None:
+                self._lab_instance = value
+                return
+            if self._lab_instance == value:
+                return
+        self._run_guard.halt()
+        raise TargetLabRefused("the TargetLab instance changed during the run")
 
     @property
     def requests_sent(self):
@@ -157,6 +184,9 @@ class TargetLabTransport:
             status = raw.status
             if 300 <= status < 400:
                 raise TargetLabRefused("redirect refused")
+            published = (raw.getheader(LAB_INSTANCE_HEADER) or "").strip()
+            if published and not LAB_INSTANCE_PATTERN.fullmatch(published):
+                raise TargetLabRefused("malformed TargetLab instance header")
             content = raw.read(MAX_RESPONSE_BYTES + 1)
             if len(content) > MAX_RESPONSE_BYTES:
                 raise TargetLabRefused("response exceeds size limit")
@@ -177,6 +207,7 @@ class TargetLabTransport:
                     sock.close()
                 except Exception:
                     self._run_guard.halt()
+        self._note_lab_instance(published or None)
         self._run_guard.record_status(status)
         with self._lock:
             self._requests += 1
@@ -216,6 +247,11 @@ class TargetLabRunner(GuardedReadRunner):
     @property
     def scope(self):
         return self._scope
+
+    @property
+    def lab_instance(self) -> str | None:
+        """The lab process this runner authenticated against, if it published one."""
+        return self._transport.lab_instance
 
     def supports_read_path(self, path: str) -> bool:
         return isinstance(path, str) and path in self._paths

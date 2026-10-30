@@ -15,6 +15,7 @@ the tests cannot drift from the server:
 Three demo accounts (mallapa, sakshi, harsha) each own one asset, so every ordered
 pair of distinct accounts is a cross-account read the lab can exercise.
 """
+import uuid
 from dataclasses import dataclass, field
 from threading import Lock
 
@@ -115,6 +116,10 @@ SECURE_PATHS = ("/records/{record_id}/secure", "/admin/users")
 class LabState:
     """Mutable per-process state. A fresh app instance starts from a clean slate."""
 
+    #: Stable identity for this lab process, published on every response so a
+    #: scanner can tell two lab instances apart even when they reuse a port. It
+    #: carries no ground truth and changes when the process restarts.
+    instance_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     compatibility: set[str] = field(default_factory=set)
     logins: int = 0
     rejected_logins: int = 0

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import page_head, verdict_badge, status_badge, stat, empty, icon,
-                              kv, verdict_legend, journey %}
+                              kv, verdict_legend, journey, tri %}
 {% block title %}TargetLab asset matrix{% endblock %}
 
 {% block content %}
@@ -45,50 +45,49 @@
           "cells with more than one source / from an older lab instance", small=True) }}
 </section>
 
+<section class="card" aria-labelledby="demo-action-title">
+  <div class="card-head">
+    <h2 id="demo-action-title">{{ icon("play") }} Run the full demonstration</h2>
+    <span class="hint">three sequential runs · the catalog's coverage pairs</span>
+  </div>
+  <div class="card-body">
+    <p class="note">Runs the catalog's three coverage pairs in order through the ordinary
+      scan API — each pair is one normal run with its own scope, request budget and safety
+      guard — then rebuilds this matrix from what was stored. It is not a new scan mode and
+      it cannot mark a cell: if a pair is refused, the page says so and those cells stay
+      untested.</p>
+    <form class="form" method="post" action="/ui/actions/lab-demo-run">
+      <div class="field-row-2">
+        <label class="field">
+          <span>TargetLab port</span>
+          <input type="number" name="port" min="1024" max="65535" required
+                 inputmode="numeric" placeholder="e.g. 8765">
+        </label>
+        <div class="field">
+          <span>Pairs that will run, in order</span>
+          <ul class="inline-list">
+            {% for pair in coverage %}
+            <li class="mono xs">{{ pair.actor }} → {{ pair.owner }}</li>
+            {% endfor %}
+          </ul>
+          <p class="note">Full coverage is claimed only when all nine cells end up with a
+            stored check. Takes a few seconds: three runs, at most 18 requests each.</p>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          {{ icon("play") }} Run full authorization demonstration</button>
+      </div>
+    </form>
+  </div>
+</section>
+
 <section class="card" aria-labelledby="asset-matrix-title">
   <div class="card-head">
     <h2 id="asset-matrix-title">{{ icon("matrix") }} Requesting account × asset</h2>
     <span class="hint">rows request · columns are the private assets · click a cell for its evidence</span>
   </div>
-  <div class="matrix-wrap">
-    <table class="matrix table-compact">
-      <caption class="visually-hidden">
-        Requesting account by asset. Diagonal cells are verified owner access; off-diagonal
-        cells are cross-account attempts. A cell with no stored check is labelled untested.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Requester</th>
-          {% for column in columns %}
-          <th scope="col" class="mono">{{ column.asset_id }}<br>
-            <span class="cell-meta">{{ column.account }} · {{ column.asset_label }}</span></th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for account, title, row_cells in rows %}
-        <tr>
-          <th scope="row" class="mono">{{ account }}<br><span class="cell-meta">{{ title }}</span></th>
-          {% for item in row_cells %}
-          <td class="{% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}is-selected{% endif %}{% if item.state == 'untested' %} cell-untested{% endif %}">
-            <a class="cell-link"
-               href="/ui/lab/matrix?cell={{ item.requester }}:{{ item.asset_id }}#cell-detail"
-               {% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}aria-current="true"{% endif %}>
-              {% if item.state == "tested" %}
-                {{ verdict_badge(item.verdict) }}
-                <span class="cell-meta mono">{{ item.evidence.check_id }} · run {{ item.evidence.run_id|short_id }}{% if item.stale %} · stale{% endif %}</span>
-              {% else %}
-                <span class="badge badge-empty">untested</span>
-                <span class="cell-meta">no stored check</span>
-              {% endif %}
-            </a>
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% include "partials/matrix_grid.html" %}
   <div class="card-foot">{{ verdict_legend() }}
     <p class="note mt-1">Diagonal cells come from the owner-baseline check of a stored run;
       a BOLA run records no secure-route owner read, so the diagonal has no secure
@@ -106,6 +105,7 @@
     <dl class="kv">
       {{ kv("Requesting account", selected.requester, True) }}
       {{ kv("Asset", selected.asset_id ~ " — " ~ (columns|selectattr("asset_id", "equalto", selected.asset_id)|map(attribute="asset_label")|first), True) }}
+      {{ kv("Asset type", columns|selectattr("asset_id", "equalto", selected.asset_id)|map(attribute="asset_type")|first, True) }}
       {{ kv("Resource owner", selected.owner, True) }}
       {{ kv("Request kind", selected.kind) }}
       {{ kv("Expected access", selected.expected_access) }}
@@ -116,15 +116,27 @@
     <p>{{ verdict_badge(selected.verdict) }} <span class="small">{{ selected.reason }}</span></p>
     <dl class="kv">
       {{ kv("Source run", selected.evidence.run_id, True) }}
+      {{ kv("Evidence ID", selected.evidence.run_id ~ "#" ~ selected.evidence.check_id, True) }}
       {{ kv("Check", selected.evidence.check_id ~ " · " ~ selected.evidence.direction, True) }}
       {{ kv("Endpoint", selected.evidence.endpoint, True) }}
       {{ kv("HTTP status", selected.evidence.status if selected.evidence.status is not none else "—", True) }}
       {{ kv("Evidence SHA-256", selected.evidence.evidence_sha256, True) }}
       {{ kv("Recorded", selected.evidence.created_at ~ " · port " ~ selected.evidence.port, True) }}
       {{ kv("Requests in that run", selected.evidence.requests_sent, True) }}
+      {{ kv("Lab instance", selected.evidence.lab_instance or "not published by this lab", True) }}
       {{ kv("Evidence flags", selected.evidence.checklist_true ~ " / " ~ selected.evidence.checklist_total ~ " relevant flags true", True) }}
       {{ kv("Duplicate sources", selected.sources, True) }}
     </dl>
+    <h3 class="section-sub mt-1">Why this verdict</h3>
+    <dl class="kv">
+      {{ kv("Private disclosure recorded", tri(selected.evidence.private_disclosure)) }}
+      {{ kv("Verified denial recorded", tri(selected.evidence.verified_denial)) }}
+      {{ kv("Owner baseline verified", tri(selected.evidence.owner_baseline)) }}
+    </dl>
+    {% if selected.evidence.remediation %}
+    <p class="note"><b>Remediation recorded by the oracle:</b>
+      {{ selected.evidence.remediation }}</p>
+    {% endif %}
     {% if selected.superseded_runs %}
     <p class="note">Older stored runs also answered this cell and are listed as superseded,
       not deleted:
@@ -213,11 +225,13 @@
           <th scope="row" class="mono nowrap">
             <a href="/ui/lab/matrix?cell={{ item.requester }}:{{ item.asset_id }}#cell-detail">{{ item.requester }} → {{ item.owner }}</a>
           </th>
-          <td class="mono small">{{ item.evidence.endpoint }}</td>
+          <td class="mono small">{{ item.evidence.endpoint }}<br>
+            <span class="cell-meta">{{ item.evidence.check_id }} · {{ item.evidence.evidence_sha256[:12] }}…</span></td>
           <td class="mono">{{ item.evidence.status if item.evidence.status is not none else "—" }}</td>
           <td>{{ verdict_badge(item.verdict) }}</td>
           {% if item.secure %}
-          <td class="mono small">GET /records/{id}/secure</td>
+          <td class="mono small">GET /records/{id}/secure<br>
+            <span class="cell-meta">{{ item.secure.check_id }} · {{ item.secure.evidence_sha256[:12] }}…</span></td>
           <td class="mono">{{ item.secure.status if item.secure.status is not none else "—" }}</td>
           <td>{{ verdict_badge(item.secure.verdict) }}</td>
           {% else %}
@@ -278,7 +292,8 @@
           <td>The lab's per-account compatibility flag for the pair you select
             (403 → 401 → 200 → 403 is re-proven from scratch).</td>
           <td>Every stored run, matrix cell, evidence hash, report and reset proof already
-            recorded. Nothing is deleted or rewritten.</td>
+            recorded. Nothing is deleted or rewritten, and the grid above does not change
+            when this proof runs.</td>
         </tr></tbody>
       </table>
     </div>
@@ -309,7 +324,8 @@
       <div class="form-actions">
         <button class="btn" type="submit">{{ icon("reload") }} Prove the reset</button>
         <span class="note">A reset is evidence, not a cleanup: it cannot consume the
-          primary interaction run's one-read state.</span>
+          primary interaction run's one-read state, and it does not reset, delete or rewrite
+          the read-BOLA matrix above.</span>
       </div>
     </form>
   </div>

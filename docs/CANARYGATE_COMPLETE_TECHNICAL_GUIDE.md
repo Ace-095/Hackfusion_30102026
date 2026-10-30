@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP39](#17-checkpoint-history-cp26cp39)
+- [§17 Checkpoint history CP26–CP40](#17-checkpoint-history-cp26cp40)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -1959,12 +1959,35 @@ Section 14.7 describes the *endpoint* matrix: rows are API operations, columns a
 Three properties make it defensible, and all three are enforced by the pydantic contract rather than by the template:
 
 1. **Two states, not five.** A cell is `tested` or `untested`. An untested cell has no verdict, no reason, no evidence, `sources: 0` and `actual_access: "no_evidence"`; the model raises if anything else is supplied. Missing evidence therefore cannot be rendered as `SAFE`, `SKIPPED` or `INCONCLUSIVE` — those five verdicts describe a *check*, and "nothing ran" is not a check.
-2. **Every tested cell is traceable.** It carries `run_id`, `check_id`, `direction`, `status`, `endpoint`, `evidence_sha256`, `created_at`, `port` and the four booleans the label is derived from. `tools/demo_kit.py` re-opens the cited run and compares verdict, digest and status; `tools/consistency_audit.py` rebuilds the whole matrix from the database with no API and no socket.
-3. **Duplicates and staleness are reported.** The newest run wins (`sources` counts the rest, `superseded_runs` names them), and a cell whose selected run used a different loopback port than the newest run is marked `stale`. Ties on the second-precision timestamp are broken by storage order — the store's `rowid` — because ordering by UUID looked equivalent and is not.
+2. **Every tested cell is traceable.** It carries `evidence_id` (`<run id>#<check id>`), `run_id`, `check_id`, `direction`, `status`, `endpoint`, `evidence_sha256`, `created_at`, `port`, `lab_instance` and the four booleans the label is derived from; a confirmed cell also carries the oracle's `remediation` text, and nothing else does. `tools/demo_kit.py` re-opens the cited run and compares verdict, digest and status; `tools/consistency_audit.py` rebuilds the whole matrix from the database with no API and no socket.
+3. **Duplicates and staleness are reported.** The newest run wins (`sources` counts the rest, `superseded_runs` names them), and a cell whose selected run came from another lab instance — or, when an instance id is missing, from another loopback port than the newest run — is marked `stale`. Ties on the timestamp are broken by storage order — the store's `rowid` — because ordering by UUID looked equivalent and is not; `created_at` carries microseconds, so the tie-break now only applies to genuinely simultaneous writes.
 
-Measured at head, on a fresh database: zero runs ⇒ 9 untested; one run ⇒ 4 tested / 5 untested (2 CONFIRMED, 2 SAFE); the three `coverage_pairs` ⇒ 9 tested, 6 CONFIRMED, 3 SAFE, `duplicated_cells: 3`; a second lab instance on a different port ⇒ `stale_cells: 3`. The page (`/ui/lab/matrix`) shows the same numbers and links each cell to `/ui/lab/bola/{run_id}#{check_id}`.
+Measured at head, on a fresh database: zero runs ⇒ 9 untested; one run ⇒ 4 tested / 5 untested (2 CONFIRMED, 2 SAFE); the three `coverage_pairs` ⇒ 9 tested, 6 CONFIRMED, 3 SAFE, `duplicated_cells: 3`, `lab_instances: 1`; a second lab instance on a different port ⇒ `stale_cells: 3`. The page (`/ui/lab/matrix`) shows the same numbers and links each cell to `/ui/lab/bola/{run_id}#{check_id}`.
 
 The reset workflow is reachable from this page because a judge who has just seen a CONFIRMED interaction asks "and does it clear?" The page states the boundary in two columns: the reset clears the lab's per-account compatibility flag, and it preserves every stored run, matrix cell, evidence hash, report and reset proof. It is a separate controlled execution, not a cleanup of the evidence on screen.
+
+### 14.10 The five-minute demonstration (CP40)
+
+A judge who has never seen CanaryGate should be able to fill the grid without being taught the API. `/ui/lab/matrix` therefore carries one primary action — **RUN FULL AUTHORIZATION DEMONSTRATION** — whose form has a single field, the TargetLab port:
+
+```
+POST /ui/actions/lab-demo-run      (form field: port)
+  → GET /api/lab-catalog           (the three coverage_pairs, in catalog order)
+  → POST /api/lab-bola-scans ×3    (one ordinary run per pair, sequential)
+  → GET /api/lab-matrix            (rebuilt from what was just stored)
+  → /ui/lab/demo                   (coverage, per-pair outcomes, the 3×3 grid)
+```
+
+Four properties keep it honest:
+
+1. **No second testing mechanism.** Each pair goes through the same `start_lab_bola_scan` handler, the same scope builder, the same central safety guard and the same store as a single run typed into the other form. The action is orchestration over the public API, not a new scanning mode, and the tests prove the stored runs are ordinary `LabBolaRun` documents with six checks each.
+2. **The pairs are the catalog's.** They are read from `GET /api/lab-catalog`, never derived in the page or in JavaScript; the browser submits a port and nothing else. Changing the demo tenant changes the demonstration.
+3. **Coverage is claimed only from evidence.** The page renders "all nine cells have stored evidence" when, and only when, the rebuilt matrix reports `untested == 0`; otherwise it renders "coverage is incomplete", names each failed pair with the backend's own refusal text, and shows the grid as it really is.
+4. **Progress and failure are visible.** The result page is one document (no fragment): a judge sees, per pair, the stored run it produced, that run's verdict, its confirmed count and its requests against the budget. Nothing is retried automatically, and a failed pair is never replaced by a later success.
+
+The result page and the matrix page share one grid partial (`partials/matrix_grid.html`), so there is exactly one place that decides how a cell is drawn. Every cell links to `?cell=<requester>:<asset>`; the detail panel shows the requesting account, the resource owner, the asset and its type, expected vs actual access, the verdict and its reason, the run id, the evidence id, the evidence hash, the lab instance, the HTTP status, the four booleans, the oracle's remediation for a confirmed cell — and, beside it, the secure route's own check, its own digest and its 403. That side-by-side is the vulnerable-vs-secure argument: the six CONFIRMED cells describe the deliberately vulnerable route, and each one is shown next to a secure route that refused the same request.
+
+The reset distinction is printed on both pages: the SCI reset is a separate controlled execution and it does not reset, delete or rewrite the BOLA scan history or the grid.
 
 
 ---
@@ -2085,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP39
+## 17. Checkpoint history CP26–CP40
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2105,6 +2128,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 37 | Real HTTPS SCI | `scan/lab_sci.py`, reset proof | First real interaction finding; fixed the single-baseline bug |
 | 38 | Final integration | `tools/demo.py`, `tools/demo_kit.py`, `tools/p0_audit.py` | Froze features; proved every reporting surface agrees over one stored payload |
 | 39 | Demo asset matrix | `scan/lab_matrix.py`, `scan/lab_matrix_models.py`, `/api/lab-matrix`, `/ui/lab/matrix` | Projected stored checks onto the nine account × asset combinations; untested is a distinct state, never SAFE |
+| 40 | Judge experience | `/ui/actions/lab-demo-run`, `lab_demo_result.html`, `partials/matrix_grid.html`, `X-Lab-Instance` | One port fills all nine cells through three ordinary sequential runs; coverage is claimed only from stored evidence; instance ids replace the port heuristic |
 
 ### 17.1 Three moments that define the project's credibility
 

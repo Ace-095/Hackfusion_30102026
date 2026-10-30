@@ -422,9 +422,15 @@ def compare_asset_matrix(matrix, stages, checker=None):
         checker.equal("cell-status-mismatch", stage["statuses"].get(check_id),
                       evidence["status"], f"{label} status")
         checker.equal("cell-missing-reason", True, bool(cell.get("reason")), f"{label} reason")
-        checker.equal("cell-observed-access", "private_record_returned",
-                      cell["actual_access"] if evidence["status"] == 200 else "denied",
-                      f"{label} access from status")
+        # Observed access is derived from the response, never from the verdict: a 200
+        # is either the account's own record or somebody else's private record, and an
+        # owner cell is never counted as a disclosure.
+        expected_access = ("own_record_returned"
+                           if cell.get("kind") == "legitimate_owner_request"
+                           else "private_record_returned")
+        checker.equal("cell-observed-access",
+                      expected_access if evidence["status"] == 200 else "denied",
+                      cell["actual_access"], f"{label} access from status")
         if cell.get("kind") == "legitimate_owner_request":
             checker.equal("owner-cell-disclosure", False, evidence["private_disclosure"],
                           f"{label} is not a disclosure")

@@ -890,12 +890,7 @@ def lab_matrix_page(request: Request, cell: str = ""):
     result = _guard(request, build)
     if not isinstance(result, dict):
         return result
-    rows = [(account["account"], account["title"],
-             [next(item for item in result["cells"]
-                   if item["requester"] == account["account"]
-                   and item["asset_id"] == column["asset_id"])
-              for column in result["accounts"]])
-            for account in result["accounts"]]
+    rows = _matrix_rows(result)
     selected = None
     if cell:
         requester, _, asset = cell.partition(":")
@@ -915,6 +910,49 @@ def lab_matrix_page(request: Request, cell: str = ""):
 def catalog_coverage_pairs():
     """The catalog's minimum set of runs that answers all nine cells."""
     return build_lab_catalog()["coverage_pairs"]
+
+
+def _matrix_rows(matrix: dict) -> list[tuple]:
+    """Rows of the 3x3 grid: (account, title, cells in column order).
+
+    Pure presentation: every cell is the object the backend returned, so a cell can
+    never show something the API did not carry.
+    """
+    return [(account["account"], account["title"],
+             [next(item for item in matrix["cells"]
+                   if item["requester"] == account["account"]
+                   and item["asset_id"] == column["asset_id"])
+              for column in matrix["accounts"]])
+            for account in matrix["accounts"]]
+
+
+def _coverage_outcomes(request: Request, port: int) -> list[dict]:
+    """Run the catalog's coverage pairs in order, one ordinary scan each.
+
+    This is orchestration, not a new scanning path: each pair goes through the same
+    ``POST /api/lab-bola-scans`` handler, with its own scope, budget and safety
+    guard. A refusal is recorded with the backend's own detail and the loop moves to
+    the next pair, so a partial demonstration still shows exactly what happened.
+    """
+    outcomes = []
+    for pair in catalog_coverage_pairs():
+        payload = LabBolaScanRequest(port=port, actor=pair["actor"], owner=pair["owner"])
+        try:
+            run = _api().start_lab_bola_scan(payload, store=_store(request, "lab_bola"))
+        except HTTPException as exc:
+            outcomes.append({"actor": pair["actor"], "owner": pair["owner"],
+                             "ok": False, "detail": str(exc.detail)})
+            continue
+        except (OSError, ValueError) as exc:  # storage or decoding failure
+            outcomes.append({"actor": pair["actor"], "owner": pair["owner"],
+                             "ok": False, "detail": str(exc)})
+            continue
+        outcomes.append({"actor": pair["actor"], "owner": pair["owner"], "ok": True,
+                         "run_id": run["id"], "verdict": run["verdict"],
+                         "confirmed": run["summary"]["confirmed"],
+                         "requests_sent": run["constraints"]["requests_sent"],
+                         "budget": run["scope"]["request_budget"]})
+    return outcomes
 
 
 def _bola_comparison(run: dict) -> list[dict]:
@@ -1167,6 +1205,37 @@ async def lab_bola_scan_action(request: Request):
                                           {"run": result, "family": "bola",
                                            "family_spec": LAB_FAMILIES["bola"]})
     return RedirectResponse(f"/ui/lab/bola/{result['id']}", status_code=303)
+
+
+@router.post("/ui/actions/lab-demo-run")
+async def lab_demo_run_action(request: Request):
+    """Run all three coverage pairs sequentially, then show what was stored.
+
+    The pairs come from ``GET /api/lab-catalog`` (``coverage_pairs``); the browser
+    submits only a port. Full coverage is reported only when the rebuilt matrix has
+    no untested cell — otherwise the page names every pair that failed and keeps the
+    remaining cells untested.
+    """
+    fields = await _form_fields(request)
+    port_text = (fields.get("port") or "").strip()
+    if not port_text.isdigit() or not 1024 <= int(port_text) <= 65535:
+        return _backend_error(
+            request,
+            HTTPException(status_code=422,
+                          detail="The TargetLab port must be a whole number between "
+                                 "1024 and 65535."), fragment=False)
+    port = int(port_text)
+    outcomes = _coverage_outcomes(request, port)
+    matrix = _guard(request, lambda: build_lab_matrix(
+        list(reversed(_listed(_lab_store(request, "bola"))))))
+    if not isinstance(matrix, dict):
+        return matrix
+    return _page(request, "lab_demo_result.html", "lab_matrix", port=port,
+                 outcomes=outcomes, matrix=matrix, rows=_matrix_rows(matrix),
+                 columns=matrix["accounts"], selected=None,
+                 stored=sum(1 for item in outcomes if item["ok"]),
+                 complete=matrix["summary"]["untested"] == 0,
+                 coverage=catalog_coverage_pairs())
 
 
 @router.post("/ui/actions/lab-sci-scan")

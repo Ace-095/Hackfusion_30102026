@@ -29,11 +29,14 @@ def _check(check_id, direction, actor, owner, verdict, *, status=200, **flags):
                          else "GET /records/{id}/secure"),
             "evidence_sha256": _sha(f"{check_id}{actor}{owner}{verdict}"),
             "reason": f"stored reason for {check_id}", "checklist": checklist,
-            "evidence": {"bounded": True}}
+            "evidence": {"bounded": True},
+            # The oracle attaches remediation to a confirmed check, and only to it.
+            "remediation": ("Enforce object-level authorization." if verdict == "CONFIRMED"
+                            else None)}
 
 
 def _stored_run(run_id, actor, owner, *, created_at, port=8765, cross="CONFIRMED",
-                secure="SAFE", baseline="SAFE"):
+                secure="SAFE", baseline="SAFE", lab_instance=None):
     """A stored-run projection for one ordered pair (unit fixture, not a scan)."""
     checks = [
         _check("LAB-BOLA-01", "owner_baseline", actor, actor, baseline),
@@ -41,11 +44,19 @@ def _stored_run(run_id, actor, owner, *, created_at, port=8765, cross="CONFIRMED
         _check("LAB-BOLA-03", "cross_account", actor, owner, cross,
                private_disclosure=cross == "CONFIRMED",
                **({"status": 403, "verified_denial": True} if cross == "SAFE" else {})),
+        _check("LAB-BOLA-04", "cross_account", owner, actor, cross,
+               private_disclosure=cross == "CONFIRMED",
+               **({"status": 403, "verified_denial": True} if cross == "SAFE" else {})),
         _check("LAB-BOLA-05", "cross_account_secure", actor, owner, secure,
                status=403, verified_denial=secure == "SAFE"),
+        _check("LAB-BOLA-06", "cross_account_secure", owner, actor, secure,
+               status=403, verified_denial=secure == "SAFE"),
     ]
+    scope = {"port": port}
+    if lab_instance is not None:
+        scope["lab_instance"] = lab_instance
     return {"id": run_id, "created_at": created_at, "mode": "targetlab_bola",
-            "scope": {"port": port}, "checks": checks,
+            "scope": scope, "checks": checks,
             "constraints": {"requests_sent": 18}}
 
 
@@ -102,13 +113,14 @@ def test_a_missing_cell_stays_untested_while_others_are_tested():
                                            created_at="2026-10-30T10:00:00Z")])
     tested = [cell for cell in matrix["cells"] if cell["state"] == "tested"]
     untested = [cell for cell in matrix["cells"] if cell["state"] == "untested"]
-    # This projection records one owner baseline per account plus one cross direction,
-    # so three cells are tested. Everything else stays untested and is never SAFE.
-    assert len(tested) == 3 and len(untested) == 6
+    # This projection records both owner baselines and both cross directions, so
+    # four cells are tested. The other five stay untested and are never SAFE.
+    assert len(tested) == 4 and len(untested) == 5
+    assert all(cell["asset_id"] in {"MKT-2026-041", "BRD-2026-018"} for cell in tested)
     assert {(cell["requester"], cell["asset_id"]) for cell in untested} == {
-        ("mallapa", "ADS-2026-027"), ("sakshi", "MKT-2026-041"),
-        ("sakshi", "ADS-2026-027"), ("harsha", "MKT-2026-041"),
-        ("harsha", "BRD-2026-018"), ("harsha", "ADS-2026-027")}
+        ("mallapa", "ADS-2026-027"), ("sakshi", "ADS-2026-027"),
+        ("harsha", "MKT-2026-041"), ("harsha", "BRD-2026-018"),
+        ("harsha", "ADS-2026-027")}
     assert all(cell["verdict"] is None for cell in untested)
 
 
@@ -171,3 +183,62 @@ def test_a_tested_cell_must_match_its_evidence_verdict():
     payload["verdict"] = "SAFE"
     with pytest.raises(ValueError):
         LabMatrixCell(**payload)
+
+
+def _cell(matrix, requester, asset_id):
+    for item in matrix["cells"]:
+        if item["requester"] == requester and item["asset_id"] == asset_id:
+            return item
+    raise AssertionError(f"no cell {requester}:{asset_id}")
+
+
+def test_a_new_lab_instance_on_the_same_port_makes_older_evidence_stale():
+    """Two lab processes can reuse an ephemeral port; the identity decides."""
+    first = _stored_run(RUN_A, "mallapa", "sakshi", created_at="2026-10-30T10:00:00Z",
+                        port=8765, lab_instance="a" * 16)
+    second = _stored_run(RUN_B, "sakshi", "harsha", created_at="2026-10-30T11:00:00Z",
+                         port=8765, lab_instance="b" * 16)
+    matrix = build_lab_matrix([first, second])
+    assert matrix["summary"]["ports"] == [8765]         # one port, two processes
+    assert matrix["summary"]["lab_instances"] == 2
+    assert _cell(matrix, "sakshi", "ADS-2026-027")["stale"] is False
+    for requester, asset in (("mallapa", "MKT-2026-041"), ("mallapa", "BRD-2026-018"),
+                             ("sakshi", "MKT-2026-041")):
+        assert _cell(matrix, requester, asset)["stale"] is True
+    # Both runs answer sakshi's own asset; the newest instance wins and is fresh.
+    shared = _cell(matrix, "sakshi", "BRD-2026-018")
+    assert shared["sources"] == 2 and shared["stale"] is False
+    assert matrix["summary"]["stale_cells"] == 3
+
+
+def test_the_same_instance_on_a_new_port_is_not_stale():
+    first = _stored_run(RUN_A, "mallapa", "sakshi", created_at="2026-10-30T10:00:00Z",
+                        port=8765, lab_instance="a" * 16)
+    second = _stored_run(RUN_B, "sakshi", "harsha", created_at="2026-10-30T11:00:00Z",
+                         port=9001, lab_instance="a" * 16)
+    matrix = build_lab_matrix([first, second])
+    assert matrix["summary"]["lab_instances"] == 1
+    assert matrix["summary"]["stale_cells"] == 0
+
+
+def test_without_an_instance_id_the_port_is_still_the_fallback():
+    first = _stored_run(RUN_A, "mallapa", "sakshi", created_at="2026-10-30T10:00:00Z",
+                        port=8765)
+    second = _stored_run(RUN_B, "sakshi", "harsha", created_at="2026-10-30T11:00:00Z",
+                         port=9001)
+    matrix = build_lab_matrix([first, second])
+    assert matrix["summary"]["lab_instances"] == 0
+    assert matrix["summary"]["stale_cells"] == 3
+    assert _cell(matrix, "mallapa", "BRD-2026-018")["evidence"]["lab_instance"] is None
+
+
+def test_a_tested_cell_carries_an_evidence_id_and_its_remediation():
+    run = _stored_run(RUN_A, "mallapa", "sakshi", created_at="2026-10-30T10:00:00Z")
+    run["checks"][2]["remediation"] = "Enforce object-level authorization."
+    matrix = build_lab_matrix([run])
+    cross = _cell(matrix, "mallapa", "BRD-2026-018")
+    assert cross["evidence"]["evidence_id"] == f"{RUN_A}#LAB-BOLA-03"
+    assert cross["evidence"]["remediation"] == "Enforce object-level authorization."
+    owner = _cell(matrix, "mallapa", "MKT-2026-041")
+    assert owner["evidence"]["evidence_id"] == f"{RUN_A}#LAB-BOLA-01"
+    assert owner["evidence"]["remediation"] is None

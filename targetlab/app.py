@@ -67,8 +67,13 @@ def create_lab_app(state: LabState | None = None) -> FastAPI:
     @app.middleware("http")
     async def loopback_only(request: Request, call_next):
         if not host_name(request.headers.get("host", "")) in LOOPBACK_HOSTS:
-            return JSONResponse({"error": "non_loopback_host_rejected"}, status_code=403)
-        return await call_next(request)
+            return JSONResponse({"error": "non_loopback_host_rejected"}, status_code=403,
+                                headers={"X-Lab-Instance": lab.instance_id})
+        response = await call_next(request)
+        # Operational identity only: it says which lab process answered, never
+        # anything about its declared flaws.
+        response.headers["X-Lab-Instance"] = lab.instance_id
+        return response
 
     @app.get("/health", tags=["lab"])
     def health():

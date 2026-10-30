@@ -1114,3 +1114,47 @@ looking for.
 The reset workflow is reachable from the matrix page, with the distinction stated on
 the page: the reset is a separate controlled two-run scenario, and what it clears is
 the lab's in-memory one-read state — not the stored evidence, which it preserves.
+
+### Checkpoint 40: the demonstration is orchestration, not a new scanner
+
+**One port in, one page out.** The judge-facing action submits a port and nothing
+else. The three pairs come from `GET /api/lab-catalog` (`coverage_pairs`), because
+the browser must never invent an account pairing: if the catalog says a pair exists,
+the pair exists; if it does not, the page cannot make one up. The alternative —
+letting the page post nine combinations and looping in JavaScript — was rejected
+twice over: it would duplicate the pairing rules in the frontend, and it would put a
+nine-request loop on the far side of an HTTP boundary where a partial failure is
+easy to hide.
+
+**Three ordinary runs, sequentially.** `/ui/actions/lab-demo-run` calls the same
+`start_lab_bola_scan` handler the single-combination form uses, once per pair, in
+catalog order, and stops at the first refusal's *report* rather than at the first
+refusal's *loop*. Nothing is parallelised: the guard's budget is per run, the lab's
+state is per account, and the demonstration is a sequence a judge watches. A refusal
+is stored as the backend's own detail on the result page — a failed pair leaves the
+cells it would have answered untested, and the page says "coverage is incomplete"
+and names the pair.
+
+**"Full coverage" is a claim about evidence, not intent.** The page prints "all nine
+cells have stored evidence" only when the rebuilt matrix reports `untested == 0`.
+There is no path from "the three runs were requested" to "the matrix is full": the
+runs must have stored checks that answer all nine combinations, which is exactly
+what the aggregator tests.
+
+**Instance identity before port heuristics.** A port is a location, not an identity:
+a restarted lab reuses it, and two labs can share it. TargetLab now publishes
+`X-Lab-Instance` on every response; the lab transport records it as
+`scope.lab_instance`; the matrix compares instance ids when both sides publish one
+and only falls back to the port when one does not. The port heuristic is kept
+because older stored runs predate the header and must stay interpretable.
+
+**Microsecond timestamps, storage order still decides.** `created_at` moved from
+seconds to microseconds so that three consecutive demo runs sort chronologically on
+their own. The aggregator's tie-break on `rowid` stays as the final rule, because
+"two identical timestamps" should still have a deterministic answer.
+
+**The reset stays a separate operation.** The matrix page explains, in two columns,
+what the SCI reset clears and what it preserves, and says explicitly that it does
+not reset, delete or rewrite the BOLA scan history or the grid above it. The one
+thing a judge must not conclude from a green reset proof is that the evidence
+changed — it did not.

@@ -80,6 +80,7 @@ TEST_EVIDENCE = {
     "tests/integration/test_sci_scenarios.py": "recorded_offline",
     "tests/lab/test_targetlab_api.py": "in_process_api",
     "tests/lab/test_targetlab_transport.py": "loopback_tls",
+    "tests/lab/test_targetlab_instance.py": "loopback_tls",
     "tests/integration/test_targetlab_scan.py": "loopback_tls",
     "tests/integration/test_targetlab_bola.py": "loopback_tls",
     "tests/lab/test_lab_bola_contract.py": "unit",

@@ -470,7 +470,10 @@ of the run declare exactly the selected pair.
 A run exercises that pair in both directions and on both routes, so the nine
 combinations are answered by the six ordered pairs; the interface uses the
 catalog's `pair` for the selected combination and reads the verdict back from
-`GET /api/lab-matrix` (below), never from the page.
+`GET /api/lab-matrix` (below), never from the page. `GET /api/lab-catalog` also
+lists `coverage_pairs` — the three ordered pairs whose three runs answer all nine
+cells — which `/ui/actions/lab-demo-run` executes one after the other.
+
 Requires `CANARYGATE_TARGETLAB_CA`; without it the API answers `400`. If the lab is
 unreachable, refuses TLS, or never returns a single response, the API answers
 `502` and stores nothing.
@@ -486,6 +489,13 @@ The run (`LabBolaRun`) contains:
 | `ground_truth` | `rows` comparing each check with the declared lab table, plus `evaluated_after_verdicts: true` and `used_as_decision_input: false`. |
 | `transport` | `destination: "127.0.0.1"`, `tls_verification: "pinned_test_ca_with_hostname_check"`, `redirects: "refused"`, `retries: "none"`, `dns: "not_used"`, `network_transport_enabled: true`, `live_target_contacted: false`. |
 | `constraints` | `requests_sent`, `blocked_by_guard`, `budget_remaining`, `halted`, `redirects_observed: 0`, `destructive_requests_executed: 0`. |
+
+`scope` records the authorized pair, the port, the request budget and — when the
+TargetLab publishes one — `lab_instance`, the `X-Lab-Instance` value the run
+observed. A run whose lab instance changes mid-run halts with
+`TargetLabRefused` instead of finishing against a different instance, and the
+stored `created_at` timestamps carry microseconds so successive runs sort
+deterministically.
 
 - `GET /api/lab-bola-scans/{run_id}` — the stored run.
 - `GET /api/lab-bola-scans/{run_id}/report?view=sections` — executive summary,
@@ -522,10 +532,13 @@ evidence hash through. The same aggregation is available offline through
             "kind": "cross_account_attempt", "state": "tested",
             "expected_access": "owner-only", "actual_access": "private_record_returned",
             "verdict": "CONFIRMED", "reason": "...",
-            "evidence": {"run_id": "…", "check_id": "LAB-BOLA-03",
+            "evidence": {"evidence_id": "…-…#LAB-BOLA-03", "run_id": "…",
+                         "check_id": "LAB-BOLA-03",
                          "direction": "cross_account", "verdict": "CONFIRMED",
                          "status": 200, "endpoint": "GET /records/{id}",
                          "evidence_sha256": "…", "created_at": "…", "port": 8765,
+                         "lab_instance": "6f1a…c90d",
+                         "remediation": "…",
                          "requests_sent": 18, "checklist_true": 9, "checklist_total": 9,
                          "private_disclosure": true, "verified_denial": false,
                          "ownership_verified": true, "owner_baseline": false},
@@ -534,7 +547,8 @@ evidence hash through. The same aggregation is available offline through
             "stale": false, "sources": 1, "superseded_runs": []}],
  "summary": {"cells": 9, "tested": 9, "untested": 0, "confirmed": 6, "suspected": 0,
              "safe": 3, "inconclusive": 0, "skipped": 0, "runs_considered": 3,
-             "ports": [8765], "stale_cells": 0, "duplicated_cells": 3},
+             "ports": [8765], "lab_instances": 1, "stale_cells": 0,
+             "duplicated_cells": 3},
  "notes": ["..."]}
 ```
 
@@ -548,7 +562,8 @@ that check:
 
 | `actual_access` | Meaning |
 |---|---|
-| `private_record_returned` | the check recorded `private_disclosure` (cross-account) or the verified owner baseline read (owner cell) |
+| `own_record_returned` | an owner cell whose baseline read returned the account's own record |
+| `private_record_returned` | a cross-account check that recorded `private_disclosure` |
 | `denied` | the check recorded `verified_denial` |
 | `not_attempted` | the check was `SKIPPED` |
 | `unverified_response` | a response arrived but the evidence did not establish access or denial |
@@ -559,14 +574,29 @@ that check:
 not the ten-key run checklist; the run's own facts stay on
 `GET /api/lab-bola-scans/{run_id}`.
 
+Every tested cell also carries a pointer a judge can follow:
+`evidence.evidence_id` is `<run id>#<check id>`, the same string the run page and
+the report use, so a cell can always be resolved back to one stored check.
+`evidence.remediation` repeats the oracle's repair text for a `CONFIRMED` cell and
+is `null` otherwise; the matrix never writes its own advice.
+
 Duplicate and stale evidence stay visible rather than being silently resolved.
 `sources` counts the stored checks that answer the cell, `superseded_runs` lists
 the older runs whose answer was replaced by the newest one,
 `summary.duplicated_cells` counts cells answered more than once, and `stale`
-marks a cell whose selected run ran against a port that a later run did not use
-(`summary.stale_cells`, `summary.ports`). Ties on the second-precision timestamp
-are broken by storage order, so this endpoint and `/ui/lab/matrix` always select
-the same evidence.
+marks a cell whose selected run is not from the newest lab instance.
+
+Staleness is decided by identity first and location second. A TargetLab publishes
+`X-Lab-Instance`, the transport records it as `scope.lab_instance`, and evidence
+carries it: when the selected run and the newest run both publish an instance id,
+a different id marks the cell stale even on the same port. Only when one side does
+not publish an id does the port decide — so two lab instances that reuse a port
+are no longer mistaken for one. `summary.lab_instances` counts the distinct valid
+instance ids seen across the runs considered.
+
+Runs are ordered by `created_at` and then by storage order; `created_at` is
+recorded with microsecond precision, so the tie-break only applies to genuinely
+simultaneous writes. This endpoint and `/ui/lab/matrix` select the same evidence.
 
 The response is read-only and stable: it changes only when a run is stored. It
 answers `200` with nine untested cells on an empty database.

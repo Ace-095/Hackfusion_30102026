@@ -56,7 +56,7 @@ def test_an_empty_store_is_nine_untested_cells(client):
     assert payload["summary"] == {
         "cells": 9, "tested": 0, "untested": 9, "confirmed": 0, "suspected": 0,
         "safe": 0, "inconclusive": 0, "skipped": 0, "runs_considered": 0,
-        "ports": [], "stale_cells": 0, "duplicated_cells": 0}
+        "ports": [], "lab_instances": 0, "stale_cells": 0, "duplicated_cells": 0}
     for item in payload["cells"]:
         assert item["state"] == "untested" and item["verdict"] is None
         assert item["evidence"] is None and item["secure"] is None
@@ -70,7 +70,8 @@ def test_three_coverage_runs_answer_all_nine_cells(client, lab):
     assert summary["confirmed"] == 6 and summary["safe"] == 3
     assert summary["suspected"] == summary["inconclusive"] == summary["skipped"] == 0
     assert summary["runs_considered"] == 3 and summary["ports"] == [lab.port]
-    assert summary["stale_cells"] == 0 and summary["duplicated_cells"] == 3
+    assert summary["lab_instances"] == 1 and summary["stale_cells"] == 0
+    assert summary["duplicated_cells"] == 3
 
     for item in payload["cells"]:
         assert item["state"] == "tested"
@@ -80,12 +81,15 @@ def test_three_coverage_runs_answer_all_nine_cells(client, lab):
         assert item["expected_access"] == "owner-only"
         if diagonal:
             assert item["verdict"] == "SAFE"
-            assert item["actual_access"] == "private_record_returned"
+            # An owner reading their own asset is a baseline read, not a disclosure.
+            assert item["actual_access"] == "own_record_returned"
             assert item["secure"] is None
             assert item["sources"] == 2 and len(item["superseded_runs"]) == 1
+            assert item["evidence"]["remediation"] is None
         else:
             assert item["verdict"] == "CONFIRMED"
             assert item["actual_access"] == "private_record_returned"
+            assert item["evidence"]["remediation"], "a confirmed cell carries the oracle repair"
             assert item["secure"]["verdict"] == "SAFE"
             assert item["secure"]["status"] == 403
             assert item["secure"]["verified_denial"] is True
@@ -102,6 +106,8 @@ def test_three_coverage_runs_answer_all_nine_cells(client, lab):
         assert match["status"] == item["evidence"]["status"]
         assert match["evidence_sha256"] == item["evidence"]["evidence_sha256"]
         assert stored["id"] in {run["id"] for run in runs.values()}
+        assert item["evidence"]["evidence_id"] == f"{stored['id']}#{match['id']}"
+        assert item["evidence"]["lab_instance"] == lab.instance_id
 
 
 def test_each_cross_cell_links_the_same_run_as_its_secure_counterpart(client, lab):

@@ -43,7 +43,8 @@ DEFERRED = (
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    """Microsecond precision: two runs in the same second must still order."""
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _bounded(decision, status):
@@ -293,6 +294,7 @@ def _finish_run(plan, runner, checks, *, ownership=None, ownership_secure=None):
     scope = runner.scope
     inventory = _inventory(scope)
     checks_payload = [item.model_dump(mode="json") for item in checks]
+    lab_instance = runner.lab_instance
     run = LabBolaRun(
         id=str(uuid.uuid4()), created_at=timestamp, mode="targetlab_bola",
         status="completed" if ownership is not None and ownership.ownership_status == "SUCCESS" else "failed",
@@ -306,7 +308,10 @@ def _finish_run(plan, runner, checks, *, ownership=None, ownership_secure=None):
                "operations": [{"method": item.method, "path": item.path,
                                "classification": item.classification} for item in scope.operations],
                "expected_policy": {path: {"expected_access": access, "source": source}
-                                   for path, (access, source) in EXPECTED_POLICY.items()}},
+                                   for path, (access, source) in EXPECTED_POLICY.items()},
+               # Which lab process answered, when the lab published an identity.
+               # Operational metadata only: it says nothing about the lab's flaws.
+               **({"lab_instance": lab_instance} if lab_instance else {})},
         transport=LabBolaTransport(mode="local_lab", scheme="https", destination="127.0.0.1",
                                    port=scope.port,
                                    tls_verification="pinned_test_ca_with_hostname_check",

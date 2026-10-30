@@ -448,3 +448,134 @@ def test_no_lab_secret_reaches_the_matrix_page(client, lab):
         body = client.get(url).text
         for secret in FORBIDDEN:
             assert secret not in body, (url, secret)
+
+
+# --- the 3x3 asset matrix ---------------------------------------------------
+
+ASSETS = {"mallapa": "MKT-2026-041", "sakshi": "BRD-2026-018", "harsha": "ADS-2026-027"}
+COVERAGE = (("mallapa", "sakshi"), ("sakshi", "harsha"), ("harsha", "mallapa"))
+
+
+def _matrix_cells(body: str) -> list[str]:
+    """The nine cell anchors of the grid, in document order."""
+    return re.findall(r'<a class="cell-link"[^>]*>(.*?)</a>', body, re.S)
+
+
+def test_the_matrix_page_is_nine_untested_cells_before_any_run(client):
+    body = _text(client.get("/ui/lab/matrix"))
+    assert "Asset matrix" in body and "Untested is not SAFE" in body
+    cells = _matrix_cells(body)
+    assert len(cells) == 9
+    assert all("untested" in cell for cell in cells)
+    assert "CONFIRMED" not in "".join(cells)
+    assert "no stored check" in cells[0]
+
+
+def test_the_matrix_page_fills_every_cell_from_stored_runs(client, lab):
+    for pair in COVERAGE:
+        _run_through_ui(client, "lab-bola-scan", lab.port, actor=pair[0], asset=ASSETS[pair[1]])
+    api = client.get("/api/lab-matrix").json()
+    assert api["summary"]["tested"] == 9 and api["summary"]["untested"] == 0
+    body = _text(client.get("/ui/lab/matrix"))
+    cells = _matrix_cells(body)
+    assert len(cells) == 9
+    assert all("untested" not in cell for cell in cells)
+    for item in api["cells"]:
+        # Each cell names the check and the short id of the run it came from.
+        assert item["evidence"]["check_id"] in body
+        assert item["evidence"]["run_id"][:8] in body
+
+
+def test_the_cell_detail_shows_the_run_check_and_both_routes(client, lab):
+    _run_through_ui(client, "lab-bola-scan", lab.port, actor="mallapa", asset=ASSETS["sakshi"])
+    item = next(cell for cell in client.get("/api/lab-matrix").json()["cells"]
+                if cell["requester"] == "mallapa" and cell["asset_id"] == ASSETS["sakshi"])
+    body = _text(client.get("/ui/lab/matrix?cell=mallapa:BRD-2026-018"))
+    assert 'aria-current="true"' in body and "is-selected" in body
+    for value in (item["evidence"]["run_id"], item["evidence"]["check_id"],
+                  item["evidence"]["evidence_sha256"], "private_record_returned",
+                  "owner-only", "403"):
+        assert value in body, value
+    assert item["evidence"]["endpoint"] in body
+    # Both routes are shown with their own status and verdict.
+    assert item["secure"]["check_id"] in body
+    assert item["secure"]["evidence_sha256"][:8] in body
+    assert f'/ui/lab/bola/{item["evidence"]["run_id"]}#{item["evidence"]["check_id"]}' in body
+
+
+def test_an_untested_cell_is_shown_as_untested_not_safe(client, lab):
+    _run_through_ui(client, "lab-bola-scan", lab.port, actor="mallapa", asset=ASSETS["sakshi"])
+    api = client.get("/api/lab-matrix").json()
+    assert api["summary"]["untested"] == 5
+    body = _text(client.get("/ui/lab/matrix?cell=harsha:ADS-2026-027"))
+    assert "No stored check answers this combination" in body
+    assert "stays untested — not SAFE" in body
+    assert "CONFIRMED" not in body.split("No stored check answers this combination")[1].split("</div>")[0]
+
+
+def test_the_matrix_page_offers_the_full_demonstration_and_explains_the_reset(client):
+    body = _text(client.get("/ui/lab/matrix"))
+    assert 'action="/ui/actions/lab-demo-run"' in body
+    assert "Run full authorization demonstration" in body
+    assert "What the reset clears" in body and "What it preserves" in body
+    assert "does not reset, delete or rewrite" in body
+
+
+def test_the_full_demonstration_runs_the_catalog_pairs_and_claims_coverage(client, lab):
+    response = client.post("/ui/actions/lab-demo-run", data={"port": lab.port})
+    assert response.status_code == 200, response.text
+    body = _text(response)
+    assert "All nine cells have stored evidence" in body
+    assert "3 / 3" in body
+    for pair in COVERAGE:
+        assert f'{pair[0]} → {pair[1]}' in body
+    # Three runs were stored, and every one is linked from the result page.
+    runs = client.get("/api/lab-matrix").json()
+    assert runs["summary"]["runs_considered"] == 3 and runs["summary"]["untested"] == 0
+    for item in runs["cells"]:
+        assert item["evidence"]["run_id"][:8] in body
+
+
+def test_a_refused_demonstration_reports_partial_coverage_honestly(client, lab):
+    dead = socket.socket()
+    dead.bind(("127.0.0.1", 0))
+    port = dead.getsockname()[1]
+    dead.close()                                   # nothing is listening there now
+    response = client.post("/ui/actions/lab-demo-run", data={"port": port})
+    assert response.status_code == 200, response.text
+    body = _text(response)
+    assert "Coverage is incomplete" in body
+    assert "0 / 3" in body
+    assert "not stored" in body
+    assert "All nine cells have stored evidence" not in body
+    assert client.get("/api/lab-matrix").json()["summary"]["untested"] == 9
+
+
+@pytest.mark.parametrize("bad", ["", "not-a-port", "80", "70000"])
+def test_the_demonstration_refuses_an_unusable_port_without_running_anything(client, bad):
+    response = client.post("/ui/actions/lab-demo-run", data={"port": bad})
+    assert response.status_code == 422, response.text
+    assert "1024 and 65535" in _text(response)
+    assert client.get("/api/lab-matrix").json()["summary"]["runs_considered"] == 0
+
+
+def test_the_demonstration_stores_ordinary_runs_of_the_scan_api(client, lab):
+    body = _text(client.post("/ui/actions/lab-demo-run", data={"port": lab.port}))
+    run_ids = sorted(set(re.findall(r'/ui/lab/bola/([0-9a-f-]{36})', body)))
+    assert len(run_ids) == 3
+    for run_id in run_ids:
+        detail = client.get(f"/api/lab-bola-scans/{run_id}").json()
+        # Each is an ordinary stored run: same schema, same scope, same checks.
+        assert detail["mode"] == "targetlab_bola"
+        assert detail["scope"]["request_budget"] > 0
+        assert len(detail["checks"]) == 6
+        assert detail["scope"]["port"] == lab.port
+
+
+def test_the_matrix_page_leaks_no_lab_secret(client, lab):
+    for pair in COVERAGE:
+        _run_through_ui(client, "lab-bola-scan", lab.port, actor=pair[0], asset=ASSETS[pair[1]])
+    for url in ("/ui/lab/matrix", "/ui/lab/matrix?cell=mallapa:BRD-2026-018"):
+        body = client.get(url).text
+        for secret in FORBIDDEN:
+            assert secret not in body, (url, secret)

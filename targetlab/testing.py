@@ -32,10 +32,17 @@ def free_port() -> int:
 class LabTlsServer:
     """The real TargetLab application served over HTTPS on loopback."""
 
-    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY, app=None):
+    host = "127.0.0.1"
+
+    def __init__(self, cert=TARGETLAB_CERT, key=TARGETLAB_KEY, app=None, state=None):
+        from targetlab.state import LabState
+
         self.port = free_port()
-        self._config = uvicorn.Config(app if app is not None else create_lab_app(),
-                                      host="127.0.0.1", port=self.port,
+        self.state = state if state is not None else LabState()
+        #: The id the served lab process publishes in ``X-Lab-Instance``.
+        self.instance_id = self.state.instance_id
+        served = app if app is not None else create_lab_app(self.state)
+        self._config = uvicorn.Config(served, host="127.0.0.1", port=self.port,
                                       ssl_certfile=str(cert), ssl_keyfile=str(key),
                                       log_level="error", lifespan="off", access_log=False)
         self._server = uvicorn.Server(self._config)
@@ -69,15 +76,25 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802 - required by BaseHTTPRequestHandler
         self._respond()
 
+    def _instance(self) -> str | None:
+        instance = type(self).instance
+        if instance is not None and type(self).change_after is not None:
+            if type(self).hits > type(self).change_after:
+                return "f" * 16
+        return instance
+
     def _respond(self):
         if getattr(self, "command", None) == "POST":
             length = int(self.headers.get("Content-Length") or 0)
             if 0 < length <= 65536:
                 self.rfile.read(length)
         type(self).hits += 1
+        instance = self._instance()
         if type(self).status != 200:
             body = b'{"error":"synthetic"}'
             self.send_response(type(self).status)
+            if instance is not None:
+                self.send_header("X-Lab-Instance", instance)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -85,12 +102,16 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
             return
         if type(self).redirect:
             self.send_response(302)
+            if instance is not None:
+                self.send_header("X-Lab-Instance", instance)
             self.send_header("Location", "https://example.com/steal")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
         body = b'{"status":"ok"}'
         self.send_response(200)
+        if instance is not None:
+            self.send_header("X-Lab-Instance", instance)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -101,12 +122,19 @@ class _CountingHandler(http.server.BaseHTTPRequestHandler):
 
 
 class CountingTlsServer:
-    """A minimal TLS server that counts requests and can answer with a redirect."""
+    """A minimal TLS server that counts requests and can answer with a redirect.
 
-    def __init__(self, *, redirect: bool = False, status: int = 200):
+    ``instance`` sets the ``X-Lab-Instance`` header; ``change_after`` makes the
+    server publish a different instance id once that many requests were served,
+    so a test can prove that a mid-run identity change is refused.
+    """
+
+    def __init__(self, *, redirect: bool = False, status: int = 200,
+                 instance: str | None = None, change_after: int | None = None):
         self.port = free_port()
         handler = type("CountingHandler", (_CountingHandler,),
-                       {"hits": 0, "redirect": redirect, "status": status})
+                       {"hits": 0, "redirect": redirect, "status": status,
+                        "instance": instance, "change_after": change_after})
         self._handler = handler
         self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

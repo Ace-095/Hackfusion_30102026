@@ -46,6 +46,13 @@ before calling `POST /api/lab-scans`.
 | `GET /lab/ground-truth` | Machine-readable flaw map, accounts and markers. |
 | `GET /openapi.json`, `GET /docs` | OpenAPI 3 documentation, including the `bearerAuth` scheme. |
 
+Every response also carries `X-Lab-Instance`, a 16-hex identifier generated when the
+process starts, and `GET /health` reports it as `instance_id`. A restarted lab is
+therefore a *different* instance even when it reuses the same port, which is what
+lets the matrix tell "the lab moved" from "the evidence is old" without guessing.
+The header is a public label, not a credential: it proves nothing about identity
+and is never used as one.
+
 ## Ground truth (synthetic, public, deterministic)
 
 | Item | Value |
@@ -115,6 +122,7 @@ are declared, and it runs on the same machine. Reports must say so.
 | 37 | **Done.** Real requests reproduce deny → rejected login → leak: `SCI-AUTHZ` and `SCI-AUTHN` pass alone, the combined read returns the owner's private marker and the SCI engine returns `CONFIRMED`/`interaction_induced`. A separate two-run scenario proves a successful login clears the condition. See [checkpoint 37](checkpoints/37-targetlab-sci.md). |
 | Playground | **Done.** `GET /api/lab-catalog` publishes the demo tenant (accounts, assets, the nine combinations, the ordered pair to run for each and the three `coverage_pairs` that answer all nine). A BOLA run covers one pair and answers that combination's row; `actor`/`owner` on `/api/lab-bola-scans` and `/api/lab-sci-scans` select the pair. |
 | 39 | **Done.** `GET /api/lab-matrix` and `/ui/lab/matrix` project the stored runs onto the nine combinations. Nothing is inferred: a tested cell carries its run id, check id and evidence hash, an untested cell has no verdict at all, and three coverage runs produce 9 tested / 6 CONFIRMED / 3 SAFE with 3 duplicated cells visible. `tools/consistency_audit.py` rebuilds the same matrix offline from the database. |
+| 40 | **Done.** `/ui/lab/matrix` offers **RUN FULL AUTHORIZATION DEMONSTRATION**: one port, the catalog's three coverage pairs, three sequential ordinary runs, then the nine-cell grid rebuilt from what was stored. Each cell opens onto its requesting account, the resource owner, expected vs actual access, status, verdict, run id, evidence id and hash, the oracle's remediation, and the secure route's 403 beside it. Staleness now follows the lab's `X-Lab-Instance` before it falls back to the port. |
 
 ### The nine combinations
 

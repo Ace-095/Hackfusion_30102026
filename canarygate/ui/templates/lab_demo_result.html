@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, stat, empty, icon, kv, verdict_legend %}
+{% block title %}Full demonstration · TargetLab{% endblock %}
+
+{% block content %}
+{% call page_head("TargetLab validation",
+                 "Full demonstration",
+                 "The three coverage pairs the catalog publishes, executed one after
+                  another through the ordinary scan API. Each pair is its own run with
+                  its own budget and safety guard; nothing is merged, retried or
+                  simulated.",
+                 trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                        ("Asset matrix", "/ui/lab/matrix"), ("Full demonstration", None)]) %}
+  <a class="btn btn-sm" href="/ui/lab/matrix">Open the asset matrix</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/lab">TargetLab validation</a>
+{% endcall %}
+
+{% if complete %}
+<div class="alert alert-ok">
+  {{ icon("check") }}
+  <div><b>All nine cells have stored evidence.</b>
+    Every combination was answered by a check recorded in this database, and each cell
+    links to the run that produced it. Coverage is not a verdict: a cell can be
+    CONFIRMED, SAFE, INCONCLUSIVE or SKIPPED, and the matrix shows which.</div>
+</div>
+{% else %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div><b>Coverage is incomplete: {{ matrix.summary.untested }} of 9 cells are untested.</b>
+    {{ stored }} of {{ outcomes|length }} pairs stored a run in this attempt. An untested
+    cell has no verdict at all — it is not SAFE, and it is not an error either: it simply
+    has no evidence yet. Run the remaining pairs from the asset matrix.</div>
+</div>
+{% endif %}
+
+<section class="grid grid-4" aria-label="Demonstration result">
+  {{ stat("Pairs run", stored ~ " / " ~ outcomes|length, "sequential, catalog order") }}
+  {{ stat("Cells tested", matrix.summary.tested ~ " / 9",
+          matrix.summary.runs_considered ~ " stored run(s) considered",
+          tone=("ok" if complete else "warn")) }}
+  {{ stat("CONFIRMED", matrix.summary.confirmed, "verified cross-account disclosure",
+          tone=("danger" if matrix.summary.confirmed else None)) }}
+  {{ stat("SAFE", matrix.summary.safe, "checked denials and owner reads") }}
+</section>
+
+<section class="card" aria-labelledby="outcomes-title">
+  <div class="card-head">
+    <h2 id="outcomes-title">{{ icon("play") }} What each pair did</h2>
+    <span class="hint">one POST /api/lab-bola-scans per pair · port {{ port }}</span>
+  </div>
+  {% if outcomes %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr><th scope="col">Pair (catalog order)</th><th scope="col">Outcome</th>
+            <th scope="col">Stored run</th><th scope="col">Verdict</th>
+            <th scope="col">Checks</th><th scope="col">Requests</th></tr>
+      </thead>
+      <tbody>
+        {% for item in outcomes %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ item.actor }} → {{ item.owner }}</th>
+          {% if item.ok %}
+          <td><span class="badge badge-ok">stored</span></td>
+          <td><a class="mono" href="/ui/lab/bola/{{ item.run_id }}">{{ item.run_id|short_id }}</a></td>
+          <td>{{ verdict_badge(item.verdict) }}</td>
+          <td class="mono">{{ item.confirmed }} confirmed</td>
+          <td class="mono">{{ item.requests_sent }} / {{ item.budget }}</td>
+          {% else %}
+          <td><span class="badge badge-danger">not stored</span></td>
+          <td class="small" colspan="2">{{ item.detail }}</td>
+          <td colspan="2" class="small">No run was written, so this pair contributed no
+            evidence. The cells it would have answered stay exactly as they were.</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">A refused pair is reported with the backend's own message and the
+    demonstration continues with the next pair. Nothing is retried automatically, and a
+    failed pair never marks a cell.</div>
+  {% else %}
+  <div class="card-body">{{ empty("No pair was run", "The catalog publishes no coverage pairs.") }}</div>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="demo-matrix-title">
+  <div class="card-head">
+    <h2 id="demo-matrix-title">{{ icon("matrix") }} The matrix after the runs</h2>
+    <span class="hint">click a cell for the stored run, check and evidence hash</span>
+  </div>
+  {% include "partials/matrix_grid.html" %}
+  <div class="card-foot">{{ verdict_legend() }}
+    <p class="note mt-1">This grid is rebuilt from the database after the runs finished, not
+      from the responses in this page. What you see is what was stored.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} What this demonstration is, and is not</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li>Controlled validation against the loopback TargetLab on
+        <span class="mono">127.0.0.1:{{ port }}</span> with a pinned test CA. It is not
+        live-organizer validation.</li>
+      <li>Three runs of the ordinary workflow — no special demo endpoint, no second
+        decision engine, no ground truth read before the verdicts.</li>
+      <li>A pair that fails is shown as failed. Full coverage is only claimed when all
+        nine cells carry a stored check.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

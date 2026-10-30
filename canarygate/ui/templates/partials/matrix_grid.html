@@ -1,0 +1,40 @@
+{# The nine-cell grid. Expects: rows, columns, selected (may be None). #}
+<div class="matrix-wrap">
+  <table class="matrix table-compact">
+    <caption class="visually-hidden">
+      Requesting account by asset. Diagonal cells are verified owner access; off-diagonal
+      cells are cross-account attempts. A cell with no stored check is labelled untested.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Requester</th>
+        {% for column in columns %}
+        <th scope="col" class="mono">{{ column.asset_id }}<br>
+          <span class="cell-meta">{{ column.account }} · {{ column.asset_label }}</span></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for account, title, row_cells in rows %}
+      <tr>
+        <th scope="row" class="mono">{{ account }}<br><span class="cell-meta">{{ title }}</span></th>
+        {% for item in row_cells %}
+        <td class="{% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}is-selected{% endif %}{% if item.state == 'untested' %} cell-untested{% endif %}">
+          <a class="cell-link"
+             href="/ui/lab/matrix?cell={{ item.requester }}:{{ item.asset_id }}#cell-detail"
+             {% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}aria-current="true"{% endif %}>
+            {% if item.state == "tested" %}
+              {{ verdict_badge(item.verdict) }}
+              <span class="cell-meta mono">{{ item.evidence.check_id }} · run {{ item.evidence.run_id|short_id }}{% if item.stale %} · stale{% endif %}</span>
+            {% else %}
+              <span class="badge badge-empty">untested</span>
+              <span class="cell-meta">no stored check</span>
+            {% endif %}
+          </a>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
