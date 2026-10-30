@@ -19,8 +19,7 @@ cloning. Do not share passwords or access tokens in Git, fixtures or chat.
    [README.md](README.md), including creating your own local virtual environment.
 3. Run `python -m pytest` and confirm the tests pass locally.
 4. Read [the ownership and milestone plan](docs/DEVELOPMENT.md), the
-   [contract review notes](docs/CONTRACTS.md), and the full frozen specification
-   once supplied. Review and approve contracts together **before** independent
+   [contract review notes](docs/CONTRACTS.md), and the supplied frozen specification and safety addendum. Review and approve contracts together **before** independent
    implementation begins. The current contracts are draft, not spec-verified.
 
 ## Working on changes
@@ -31,23 +30,22 @@ per developer, created from an up-to-date `main`:
 ```sh
 git checkout main
 git pull origin main
-# Developer A chooses feature/accounts-ownership; Developer B chooses
-# feature/security-engine. Use only your own branch name below.
-git checkout -b feature/accounts-ownership
+# Backend owner or frontend collaborator chooses their own branch.
+git checkout -b feature/frontend
 ```
 
-Developer B substitutes `feature/security-engine` in the last command. Implement
-small changes in your assigned modules. Before publishing, run `python -m pytest`,
+The backend owner uses their assigned working branch instead. Implement small
+changes in your assigned modules. Before publishing, run `python -m pytest`,
 review `git status` and `git diff`, and confirm there are no secrets or generated
 scan artifacts in the changes. Then commit and push **your own** branch:
 
 ```sh
 git add <your-changed-files>
 git commit -m "Describe the change"
-git push -u origin feature/accounts-ownership
+git push -u origin feature/frontend
 ```
 
-Developer B substitutes `feature/security-engine` in the push command. Open a
+The backend owner pushes their own assigned branch instead. Open a
 pull request on GitHub from your branch into `main`, describe the change and test
 results, request the other developer's review, and wait for Linux and Windows CI
 to pass before merging. Keep PRs small. If the shared contracts need changes
@@ -70,7 +68,7 @@ synthetic and results labeled as fixtures.
 ## Repository owner checklist
 
 - [ ] Invite the other developer; confirm their access after acceptance.
-- [ ] Agree on module ownership and supply the complete v3.2 specification.
+- [ ] Agree on module ownership and review the supplied v3.2 specification.
 - [ ] Enable branch protection or a ruleset for `main` if available: require PR
       review and passing `Tests` checks on both operating systems. The workflow
       runs on pushes and pull requests, but this document does not enable rules.

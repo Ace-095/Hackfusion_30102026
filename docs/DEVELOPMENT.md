@@ -1,36 +1,30 @@
 # Development handoff
 
-## Ownership
+## Revised ownership
 
-- Developer A: OpenAPI/spec inventory, expected access and provenance, accounts,
-  authentication, setup recipes, discovery, ownership and readiness.
-- Developer B: scope, centralized guard, runner, test execution/oracles, evidence,
-  verdicts, remediation, reports, secured-endpoint section, matrix and UI.
-- Both: shared contract review, fixtures, integration and adversarial tests.
+- Backend owner: models, API, spec parsing, accounts, discovery, ownership,
+  safety/runner, security checks, evidence, verdicts, persistence and reports.
+- Frontend collaborator: `ui/`, Jinja2 templates, locally vendored HTMX and
+  local CSS, dashboard, inventory, setup, scan, findings, evidence, matrix and
+  reports UI. No frontend is implemented here.
+- Both: review the frontend/backend API contracts, integration and acceptance.
 
-The owners are proposed until both developers agree. All authentication and
-resource-discovery requests must use the same central guard as test requests.
+The revised requested workflow proposes `develop`, `feature/backend`, and
+`feature/frontend`. These branches have **not** been created. Until the owner
+sets and agrees an integration branch, `main` is the existing integration branch;
+see [CONTRIBUTING.md](../CONTRIBUTING.md). The agent works only on its assigned
+Arena branch. Do not assume the collaborator has access or that protections exist.
 
-## Collaboration
+## 16-hour priorities
 
-Agree on an integration branch and a feature branch per developer with the
-repository owner. Review small PRs, require passing Linux and Windows tests, and
-avoid concurrent changes to frozen contracts without mutual agreement. Do not
-put passwords or tokens in commits, issues, fixtures, reports or logs. Repository
-settings and branch creation require the owner's explicit action and permissions.
+1. Review the supplied frozen v3.2 specification and safety addendum; jointly
+   review contracts and freeze only after agreement. The API remains provisional.
+2. Exercise a fixture-only BOLA vertical slice early, with independent owner and
+   attacker observations and report output. Never portray fixtures as live scans.
+3. Implement and test the real centrally guarded runner before any live traffic;
+   authentication and discovery must go through the same guard.
+4. Implement remaining P0 checks, provenance, setup gates, redaction, evidence,
+   persisted reports and secured-endpoints section. P1 follows P0.
+5. Integrate continuously and run the full spec's adversarial/acceptance suite.
 
-## 16-hour deadline: priorities
-
-1. Jointly review/freeze contracts and prepare offline fixtures.
-2. Implement a guard before a mocked runner, plus parser/inventory and accounts.
-3. Verify fixture ownership for two accounts; run read-BOLA through the guard.
-4. Produce a report with separate ownership and disclosure evidence. A 200 alone
-   or an unverified ID is never enough for CONFIRMED.
-5. Add required P0 checks, secured endpoints, safety/adversarial tests, and honest
-   skipped/partial setup. Add P1 matrix/BFLA only if P0 is complete.
-6. Integrate continuously; reserve time for an offline acceptance run and demo.
-
-The acceptance suite must cover no disclosure, unverified ownership, shared
-resources, unknown permissions, missing second identity, secure behavior and
-blocked destructive operations, in addition to a confirmed fixture case. Do not
-claim the system passes until the actual pipeline and adversarial tests exist.
+See [decisions and checkpoint](DECISIONS.md) and [API contract](API.md).

@@ -1,0 +1,21 @@
+{
+  "setup": {
+    "login": {"method": "POST", "path": "/login"},
+    "accounts": {
+      "user_a": {"username": "alice", "role": "user"},
+      "user_b": {"username": "bob", "role": "user"}
+    },
+    "resources": {
+      "items": {
+        "discovery": {"method": "GET", "path": "/items"},
+        "detail": {"method": "GET", "path": "/items/{id}"},
+        "id_field": "id",
+        "ownership_field": "owner",
+        "ownership_model": "private",
+        "private_field": "private_note",
+        "known_owner_canary": "synthetic-bob-private-canary"
+      }
+    }
+  },
+  "policy": {"expected_access": "owner-only", "expected_source": "synthetic fixture policy"}
+}

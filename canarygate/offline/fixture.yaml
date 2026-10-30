@@ -1,0 +1,27 @@
+openapi: 3.0.3
+info:
+  title: Synthetic fixture API
+  version: '1.0'
+security:
+  - bearerAuth: []
+paths:
+  /login:
+    post:
+      security: []
+      responses:
+        '200': {description: Synthetic login}
+  /items:
+    get:
+      responses:
+        '200': {description: Own resources}
+  /items/{id}:
+    get:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Synthetic resource}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

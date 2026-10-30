@@ -1,10 +1,10 @@
-# CanaryGate — shared foundation
+# CanaryGate — offline backend checkpoint
 
-CanaryGate is planned as an evidence-based API authorization testing system. This
-repository currently contains **draft shared contracts and project setup only**.
-It does not yet implement a safety guard, HTTP runner, authentication, ownership
-verification, BOLA tests, reporting, or a working application. Do not use it to
-scan any target or interpret model instances as security findings.
+CanaryGate is planned as an evidence-based API authorization testing system.
+This checkpoint implements **one synthetic offline read-BOLA pipeline**, exposed
+through a provisional FastAPI interface. It cannot scan live targets. It is not
+a complete implementation of the frozen specification or a production safety
+guard. Fixture findings must never be represented as live-target results.
 
 ## Setup (Linux and Windows)
 
@@ -37,10 +37,9 @@ and `.venv\Scripts\python.exe -m pytest` directly. Dependencies are pinned in
 
 ## Before parallel development
 
-1. Obtain the complete frozen CanaryGate v3.2 specification. It is **not present**
-   in this repository. Both developers must check every contract against section
-   23 and resolve ambiguities before approval; the models here are a draft based
-   only on the supplied plan, not a verified or frozen specification.
+1. Review the [attached v3.2 specification](docs/spec/CanaryGate_v3.2_safety-corrected.md)
+   and [safety addendum](docs/SAFETY_ADDENDUM.md). Both developers must check every
+   contract against section 23 and agree before calling the contracts frozen.
 2. Review the shared contracts together, especially how setup outcomes and
    readiness gates, ownership and disclosure evidence, and results are linked.
    The proposed plan does not define all of these details. Record approval and
@@ -51,8 +50,23 @@ and `.venv\Scripts\python.exe -m pytest` directly. Dependencies are pinned in
 4. Build the first offline end-to-end BOLA demonstration continuously rather than
    deferring integration. Fixture results must be explicitly labeled as such.
 
-See [collaboration and milestones](docs/DEVELOPMENT.md) and
-[contract review notes](docs/CONTRACTS.md).
+See [collaboration and milestones](docs/DEVELOPMENT.md),
+[contract review notes](docs/CONTRACTS.md), [API draft](docs/API.md), and
+[decision and checkpoint log](docs/DECISIONS.md).
+
+## Run the fixture API locally
+
+```sh
+python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
+```
+
+In a second terminal, run `python -m canarygate.demo`. The command prints the
+fixture inventory, scan results and a local HTML report URL. The detailed
+[VS Code and judge demo guide](docs/VS_CODE_DEMO.md) has Windows/Linux steps.
+The provisional schema is available at `/openapi.json`. Swagger/ReDoc are disabled
+because their default assets use external CDNs. This unauthenticated in-memory
+server is for local use only; do not expose it to other users or the Internet.
+The API contracts are not yet approved/frozen.
 
 ## Safety baseline for future implementation
 
@@ -63,7 +77,7 @@ DNS validation and connection pinning, size limits, sequential execution, and
 credential redaction are required. DELETE is always blocked; PUT/PATCH default to
 blocked; only explicitly authorized login and creation operations are permitted.
 Do not automatically retry state-changing requests. See the full specification
-before implementing the guard. **No safety enforcement exists yet.**
+before implementing the guard. **The fixture-only guard is not a live-network guard; live execution is disabled.**
 
 Do not commit credentials, private target data, generated evidence, or reports.
 The `Identity` model excludes its token from normal Pydantic serialization and

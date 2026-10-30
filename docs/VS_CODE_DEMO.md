@@ -1,0 +1,96 @@
+# Run the backend checkpoint in VS Code
+
+This is an **offline synthetic fixture demonstration**, not a scan of the
+organizer's API. The frontend/dashboard, live-target scanner, complete security
+checks and full production safety guard are not yet implemented. The backend
+server has no user authentication: use it locally and do not expose it publicly.
+
+## One-time setup (both operating systems)
+
+1. Open this repository folder in VS Code: **File → Open Folder**. Install Python
+   **3.11** and VS Code's Python extension. Open **Terminal → New Terminal**.
+2. Create a virtual environment and install dependencies. These commands must be
+   run in the repository root, where `pyproject.toml` is located.
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pytest -q
+```
+
+If PowerShell blocks activation, use the interpreter directly instead:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Linux:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+```
+
+VS Code: use **Python: Select Interpreter** and choose the `.venv` interpreter.
+Installing dependencies may require internet access; the fixture execution does
+not contact a target or DNS server. Tests must pass before the demo. Tests are
+fixture tests, not proof of full v3.2 acceptance.
+
+## Start and demonstrate
+
+1. In the first VS Code terminal (with the virtual environment active):
+
+   ```sh
+   python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
+   ```
+
+   Leave this terminal running. Without activation on Windows, substitute
+   `.\.venv\Scripts\python.exe` for `python`.
+2. Open a **second** VS Code terminal and activate the same environment. Run:
+
+   ```sh
+   python -m canarygate.demo
+   ```
+
+   This calls the local backend, prints the fixture endpoint inventory, runs one
+   synthetic scan, prints the setup gates, ownership/disclosure evidence and
+   verdict, then prints links to the JSON and HTML reports. The fixture HTTP
+   requests are handled in-process; they do not reach any external service.
+3. Copy the printed **HTML fixture report** URL into your local browser. Show
+   the fixture label, endpoint inventory, both owner/list checks, two evidence
+   summaries, verdict, remediation, and fixture constraint checklist. The report
+   explicitly identifies checks that are not implemented.
+4. Optional: in another terminal run the focused safety tests:
+
+   ```sh
+   python -m pytest -v tests/security tests/integration/test_offline_scan.py
+   ```
+
+   These test scope, dangerous/unknown operations, DNS isolation, no redirects,
+   missing identity, ownership failure, shared/public resources and secure behavior.
+5. Stop the backend with **Ctrl+C** in the first terminal. Data is in memory and
+   disappears when the process stops. Restart it and rerun the demo to reproduce.
+
+The API schema is available locally at `http://127.0.0.1:8000/openapi.json`.
+Swagger and ReDoc are intentionally disabled because their default assets are
+loaded from external CDNs. If port 8000 is already in use, stop the other local
+process first; the demo command deliberately connects only to port 8000.
+
+## Suggested judge narration
+
+- “This is an offline fixture, not testing the organizer's environment.”
+- “Both accounts authenticate in the simulated target. Each discovers and reads
+  its own resource; each other's list must exclude it.”
+- “The finding requires verified ownership, a distinct private owner baseline,
+  and that same private data in the attacker's response. HTTP 200 alone is not
+  enough.”
+- “The guard checks the exact fixture scope, operation classification, identity
+  and budget; all HTTP uses a mock transport with no DNS or outbound connection.”
+- “Live DNS pinning, real accounts, remaining security checks and persistence
+  are pending; the report does not claim they passed.”

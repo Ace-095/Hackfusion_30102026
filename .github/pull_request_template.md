@@ -2,8 +2,8 @@
 
 ## Owner / area
 
-- [ ] Developer A: spec, accounts, setup and ownership
-- [ ] Developer B: guard, execution, oracles, evidence and reporting
+- [ ] Backend: models, API, spec, accounts, guard, execution, evidence and reports
+- [ ] Frontend: UI, templates, local assets and integration
 - [ ] Shared contracts or integration (both developers review)
 
 ## Verification
