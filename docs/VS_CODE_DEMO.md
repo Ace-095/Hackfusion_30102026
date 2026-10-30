@@ -414,6 +414,25 @@ stored. Then run `.venv/bin/python -m pytest tests/lab/test_lab_bola_adversarial
 (11 passed) to show a mutated response, a swapped token and a bad certificate all
 fail closed.
 
+### Checkpoint 38 one-command demonstration
+
+```sh
+.venv/bin/python tools/demo.py            # add --keep to inspect the database
+```
+
+Runs the four stages from a clean start — read-BOLA (`CONFIRMED`), the secure
+route (`SAFE`), the control interaction (`CONFIRMED`, `interaction_induced`) with
+its separate reset proof (`403, 401, 200, 403`), then the evidence stage — and
+exits non-zero if any surface disagrees with any other. After keeping a database:
+
+```sh
+.venv/bin/python tools/consistency_audit.py --database /path/to/demo.sqlite3
+```
+
+re-hashes every stored run and rebuilds its reports from stored evidence alone.
+[`docs/JUDGE_DEFENCE.md`](JUDGE_DEFENCE.md) is the accompanying question-and-answer
+document.
+
 ### Checkpoint 37 TargetLab interaction demo
 
 With the lab running over TLS and `CANARYGATE_TARGETLAB_CA` set:

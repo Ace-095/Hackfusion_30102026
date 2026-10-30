@@ -100,3 +100,15 @@ def test_lab_sci_requirements_are_present_and_fully_evidenced():
     assert "POST /api/lab-sci-resets" in rows["L9"]["api_routes"]
     assert rows["L10"]["area"] == "safety"
     assert rows["L12"]["area"] == "safety"
+
+
+def test_stabilization_requirements_are_present_and_fully_evidenced():
+    """Checkpoint 38 rows: cross-surface consistency, re-hashable evidence, demo, safety."""
+    report = audit()
+    rows = {row["id"]: row for row in report["rows"]}
+    for requirement in ("I1", "I2", "I3", "I4"):
+        row = rows[requirement]
+        assert row["status"] == "implemented", requirement
+        assert row["implementation"] and row["tests"], requirement
+        assert row["evidence"] == "loopback_tls", requirement
+    assert rows["I4"]["area"] == "safety"

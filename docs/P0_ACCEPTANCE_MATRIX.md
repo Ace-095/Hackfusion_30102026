@@ -242,8 +242,8 @@ distinguishability, redaction and API reachability.
 | Partial (gap stated) | 9 |
 | Missing | 2 — BFLA, live/organizer validation |
 | Unreachable through the application API | 0 |
-| Test files with a declared evidence class | 55 of 55 |
-| Loopback-only test files (`loopback_tls`) | 6 |
+| Test files with a declared evidence class | 56 of 56 |
+| Loopback-only test files (`loopback_tls`) | 7 |
 | Real-networking test files | 0 |
 | Collected tests | 760 |
 | Test files declaring real networking | 0 |
@@ -284,6 +284,13 @@ deny → rejected login → leak through the existing SCI engine (`CONFIRMED`,
 and the declared ground truth is scored only when a report is built. Twelve new
 audit rows (L7–L12) record it; no P0 requirement, verdict rule or gate changes:
 **54 requirements, 903 tests, 55 classified files.**
+
+Checkpoint 38 is a stabilization checkpoint: it adds no scanning capability. It
+adds cross-surface consistency checking (stored run, sections, nine sections, HTML
+and matrix must agree), a re-hashing audit of stored evidence, a one-command
+four-stage demonstration that fails if any surface disagrees, and a static safety
+sweep. Four audit rows (I1–I4) record it; no P0 requirement, verdict rule or gate
+changes: **58 requirements, 916 tests, 56 classified files.**
 
 **Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
 now including SCI, is accepted with documented limitations; live validation and

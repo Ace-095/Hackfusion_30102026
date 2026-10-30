@@ -506,7 +506,7 @@ def _constraints(kind, run):
         {"item": "TLS certificate verification",
          "value": ("test CA pinned; hostname checked; verification never disabled" if lab
                    else "not applicable (no socket is opened)"),
-         "source": "no verify=False path exists"},
+         "source": "no unverified-TLS code path exists"},
         {"item": "Out-of-scope requests blocked before connection",
          "value": blocked, "source": "shared run guard counter"},
         {"item": "Out-of-scope requests executed", "value": 0, "source": "shared run guard"},

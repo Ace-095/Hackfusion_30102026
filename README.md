@@ -110,7 +110,9 @@ validation work. CanaryGate can collect evidence from it over loopback HTTPS via
 `POST /api/lab-bola-scans` (checkpoint 36) and real control-interaction (SCI)
 validation through `POST /api/lab-sci-scans` + `POST /api/lab-sci-resets`
 (checkpoint 37); all require `CANARYGATE_TARGETLAB_CA` and are controlled
-validation, not live scanning: `.venv/bin/python -m targetlab` (loopback only, never deploy).
+validation, not live scanning. `.venv/bin/python tools/demo.py` runs the complete
+four-stage demonstration from a clean start, and `docs/JUDGE_DEFENCE.md` explains
+every design decision: `.venv/bin/python -m targetlab` (loopback only, never deploy).
 See [docs/TARGETLAB.md](docs/TARGETLAB.md) and
 [checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is **not**
 implemented yet; the lab is a target, not a scanner transport.
