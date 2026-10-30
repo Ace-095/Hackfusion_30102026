@@ -243,6 +243,7 @@ distinguishability, redaction and API reachability.
 | Missing | 2 — BFLA, live/organizer validation |
 | Unreachable through the application API | 0 |
 | Test files with a declared evidence class | 46 of 46 |
+| Collected tests | 760 |
 | Test files declaring real networking | 0 |
 
 SCI adds 33 tests: `tests/security/test_sci_decisions.py` (14, decision
@@ -253,6 +254,13 @@ extra interaction kinds; expected verdicts are `CONFIRMED` (A, redaction, AUTHN+
 INPUT+DISCLOSURE), `SAFE` (B), `INCONCLUSIVE` (C, D), `SKIPPED` (E, F) and
 `SUSPECTED` (H). Details: `docs/checkpoints/33-sci-interaction.md`; interfaces
 frozen in `docs/INTERFACE_FREEZE.md`.
+
+Regression work in this checkpoint found and fixed one reporting defect: an
+endpoint could appear in `secured_endpoints` while a sibling check was `CONFIRMED`
+on it in the same report (`GET /profile`, AUTHN-04a). `_secured()` now excludes
+such endpoints; no verdict rule changed. Cross-component tests also prove that a
+`CONFIRMED` authorization finding reaches a red matrix cell, and that every red
+cell is backed by a `CONFIRMED` finding in a contributing run.
 
 **Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
 now including SCI, is accepted with documented limitations; live validation and

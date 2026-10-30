@@ -356,8 +356,14 @@ def _scope_sha(run):
 
 def _secured(findings):
     secured = []
+    # A confirmed finding outranks a sibling SAFE check on the same endpoint: the
+    # report must never call an endpoint secured while listing a CONFIRMED result
+    # for it in the same run.
+    confirmed_endpoints = {item["endpoint"] for item in findings if item["verdict"] == "CONFIRMED"}
     for item in findings:
         if item["verdict"] != "SAFE":
+            continue
+        if item["endpoint"] in confirmed_endpoints:
             continue
         checklist = item.get("evidence_checklist") or {}
         if item["category"] == "Authentication" and item["id"] in {"AUTHN-01", "AUTHN-02", "AUTHN-03"}:

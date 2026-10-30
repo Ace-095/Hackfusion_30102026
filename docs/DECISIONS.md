@@ -935,6 +935,12 @@ rather than by a new generic pattern, and the test proves `redact()` rewrites th
 sentinel under a non-sensitive key instead of only asserting its absence. This is
 still known-shape coverage: no universal live-data redaction is claimed.
 
+The fourth workflow exposed a reporting defect the three earlier workflows could
+not: an endpoint was listed as secured while a sibling check was CONFIRMED on it in
+the same run. The fix is deliberately confined to the projection (`_secured()`
+skips endpoints with a confirmed finding) rather than to any verdict rule: the
+individual checks were each correct, only the summary contradicted them.
+
 Limitations carried forward: offline synthetic transcripts only, GET-only legs
 with one bounded probe, three declared interaction kinds, one SCI finding per run,
 and no live or lab validation. Complete frozen P0 remains not accepted (BFLA and

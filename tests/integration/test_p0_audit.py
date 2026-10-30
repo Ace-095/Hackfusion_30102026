@@ -56,3 +56,18 @@ def test_windows_style_test_paths_are_normalised():
     # CI runs on Windows; the audit must classify a backslash path identically.
     p0_audit.check_test_file("tests\\integration\\test_auth_checks.py::test_example")
     assert all("\\" not in key for key in p0_audit.TEST_EVIDENCE)
+
+
+def test_sci_requirements_are_present_and_fully_evidenced():
+    """Checkpoint 33 rows must stay implemented, tested and API-reachable."""
+    report = audit()
+    rows = {row["id"]: row for row in report["rows"]}
+    for requirement in ("C1", "C2", "C3", "C4", "C5", "C6", "C7"):
+        row = rows[requirement]
+        assert row["status"] == "implemented", requirement
+        assert row["implementation"] and row["tests"], requirement
+        assert all(route.startswith(("GET ", "POST ")) for route in row["api_routes"])
+    assert "POST /api/interaction-scans" in rows["C7"]["api_routes"]
+    assert "GET /api/interaction-scans/{run_id}/report" in rows["C7"]["api_routes"]
+    assert rows["C6"]["evidence"] == "recorded_offline"
+    assert rows["C1"]["evidence"] == "unit"

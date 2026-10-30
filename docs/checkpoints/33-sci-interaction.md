@@ -147,6 +147,32 @@ even under a non-sensitive key.
 symbols, collected test node ids and an evidence class, so the audit fails if any
 SCI claim loses its test.
 
+## P0 regression work done alongside SCI
+
+Adding SCI meant re-running the frozen P0 invariants over a fourth workflow, which
+found one genuine reporting defect:
+
+- **Defect.** `GET /profile` appeared in `secured_endpoints` while `AUTHN-04a` was
+  `CONFIRMED` on the same endpoint in the same report, because five sibling
+  `AUTHN-*` checks were `SAFE`. A judge would read "secured" next to "confirmed".
+- **Fix.** `_secured()` now excludes any endpoint that carries a `CONFIRMED`
+  finding in the same run. Only the projection changed; no verdict, score or
+  confirmation rule was touched.
+- **Test.** `tests/integration/test_p0_consistency.py::test_secured_endpoints_never_overlap_a_confirmed_finding`
+  fails on the old behaviour and passes now.
+
+The adversarial suite (`tests/security/test_p0_adversarial_regression.py`) was
+extended to all ten SCI scenarios: no `CONFIRMED` without a complete checklist and
+demonstrated impact, no remediation on a non-confirmed result, and no synthetic
+secret in any JSON, HTML, matrix or SQLite byte. The consistency suite now also
+checks that a `CONFIRMED` authorization finding reaches a red matrix cell, that
+every red cell is backed by a `CONFIRMED` finding in a contributing run, and that
+SCI and ordinary BOLA cells stay labelled differently after aggregation.
+
+Audit state after this checkpoint: **42 requirements, 760 collected tests, 46 test
+files, implemented 31 / partial 9 / missing 2 (BFLA, live validation), unreachable
+0, real-networking test files 0.**
+
 ## Limitations (honest)
 
 1. Offline synthetic transcripts only. No live target, no lab, no organizer API.

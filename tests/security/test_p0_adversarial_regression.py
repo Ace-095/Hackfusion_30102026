@@ -149,3 +149,73 @@ def test_matrix_cannot_show_green_for_a_confirmed_cell(monkeypatch, tmp_path):
         assert "green" in per_run_states
         assert seen >= 1 or all(cell["state"] != "green"
                                 for row in matrix["rows"] for cell in row["cells"])
+
+
+# --- Checkpoint 33: the same adversarial invariants must hold for SCI ---------
+
+from canarygate.scan import interaction_scenarios  # noqa: E402
+
+INTERACTION = ("/api/interaction-scans", interaction_scenarios.SCENARIO_IDS)
+
+
+def run_every_interaction(api):
+    base, ids = INTERACTION
+    for scenario_id in ids:
+        response = api.post(base, json={"scenario_id": scenario_id})
+        assert response.status_code == 201, (scenario_id, response.text)
+        run = response.json()
+        report = api.get(f"{base}/{run['id']}/report", params={"view": "p0"})
+        assert report.status_code == 200, (scenario_id, report.text)
+        page = api.get(f"{base}/{run['id']}/report", params={"view": "p0", "format": "html"})
+        assert page.status_code == 200
+        yield scenario_id, run, report.json()["sections"], page.text
+
+
+def test_interaction_runs_never_confirm_without_a_complete_case(monkeypatch, tmp_path):
+    with offline_client(monkeypatch, tmp_path / "sci-adversarial.sqlite3") as api:
+        for scenario_id, run, sections, _ in run_every_interaction(api):
+            findings = [item for items in sections["findings"].values() for item in items]
+            if run["verdict"] == "CONFIRMED":
+                assert all(value is True for value in run["checklist"].values()), scenario_id
+                assert run["attribution"] == "interaction_induced", scenario_id
+                assert run["remediation_key"].startswith("sci_"), scenario_id
+                assert run["combined"]["executed"] and run["combined"]["verified"], scenario_id
+                assert run["combined"]["impact"] in {"private_data", "privileged_data",
+                                                    "internal_detail"}, scenario_id
+                assert len(findings) == 1, scenario_id
+                assert findings[0]["finding_kind"] == "interaction"
+                assert findings[0]["interaction"]["attribution"] == "interaction_induced"
+            else:
+                assert run["remediation"] is None, scenario_id
+                assert len(findings) == 1, scenario_id
+                assert findings[0]["verdict"] == run["verdict"], scenario_id
+                assert findings[0]["remediation"] is None, scenario_id
+                if run["verdict"] in {"SKIPPED", "INCONCLUSIVE"}:
+                    assert [item["id"] for item in sections["skipped_and_inconclusive"]] == ["SCI-01"]
+                else:
+                    assert sections["skipped_and_inconclusive"] == [], scenario_id
+
+
+def test_interaction_runs_do_not_leak_synthetic_secrets(monkeypatch, tmp_path):
+    db = tmp_path / "sci-secrets.sqlite3"
+    with offline_client(monkeypatch, db) as api:
+        documents = []
+        for scenario_id, run, sections, page in run_every_interaction(api):
+            documents.extend((json.dumps(run), json.dumps(sections), page))
+        documents.append(api.get("/api/authorization-matrix").text)
+        documents.append(db.read_bytes().decode("utf-8", errors="ignore"))
+        combined = "\n".join(documents)
+        for secret in (*SECRETS, interaction_scenarios.SCI_SECRET):
+            assert secret not in combined, (scenario_id, secret[:16])
+
+
+def test_interaction_findings_stay_out_of_ordinary_single_control_claims(monkeypatch, tmp_path):
+    with offline_client(monkeypatch, tmp_path / "sci-kind.sqlite3") as api:
+        for scenario_id, run, sections, _ in run_every_interaction(api):
+            for items in sections["findings"].values():
+                for finding in items:
+                    assert finding["finding_kind"] in {"single_control", "interaction"}
+                    if finding["finding_kind"] == "interaction":
+                        assert set(finding["interaction"]["controls"]) == set(run["controls"])
+                        assert finding["interaction"]["kind"] == run["interaction_kind"]
+                        assert finding["id"].startswith("SCI-")
