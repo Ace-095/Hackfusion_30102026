@@ -28,6 +28,18 @@ jobs:
         run: |
           set -o pipefail
           python tools/run_ci_tests.py 2>&1 | tee pytest-output.txt
+      - name: Report failures as annotations
+        if: failure()
+        shell: python
+        run: |
+          import pathlib
+          output = pathlib.Path("pytest-output.txt")
+          text = output.read_text(encoding="utf-8", errors="replace") if output.exists() else ""
+          lines = [line for line in text.splitlines() if line.startswith(("FAILED ", "ERROR "))]
+          if not lines:
+              lines = text.splitlines()[-10:] or ["no pytest output captured"]
+          for line in lines[:10]:
+              print("::error::" + line.strip()[:900])
       - name: Upload test output
         if: always()
         uses: actions/upload-artifact@v4
