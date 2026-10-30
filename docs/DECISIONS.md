@@ -595,7 +595,8 @@ and are **not approved for serialization or storage**.
 These are observations only, not verified ownership, policy or separate
 cross-user disclosure evidence. No live scan or API integration is enabled.
 Tests used synthetic responses and mock sockets; no external target was contacted.
-Full local suite: 360 passed, one third-party warning. See
+Full local suite: 360 passed, one third-party warning. GitHub Actions run
+`41047675475` passed Ubuntu and Windows for `ddd9730`. See
 [judge demo](checkpoints/20-owner-baselines.md).
 
 ## Outstanding checkpoints
