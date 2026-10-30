@@ -300,3 +300,58 @@ def test_suite_pages_keep_the_structural_accessibility_contract(client, family):
     for path in (location, f"{location}/report"):
         body = client.get(path).text
         assert _structure_offenders(body) == [], path
+
+
+# --------------------------------------------------------------------------- #
+# Unperformed work never looks like a pass
+# --------------------------------------------------------------------------- #
+def _run_scenario_through_ui(client, action: str, scenario_id: str) -> str:
+    response = client.post(action, data={"scenario_id": scenario_id}, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    return response.headers["location"]
+
+
+def test_unperformed_and_inconclusive_checks_never_render_as_safe(client):
+    """SKIPPED means "not performed" and INCONCLUSIVE means "could not decide".
+
+    Neither may borrow SAFE's badge, on any run page, including the ones whose
+    checks are mostly unperformed. The counts are compared with the API so the
+    test cannot pass on an empty page.
+    """
+    cases = [
+        ("/ui/actions/authentication-scan", "/api/authentication-scans", "synthetic-jwt-opaque"),
+        ("/ui/actions/authentication-scan", "/api/authentication-scans",
+         "synthetic-jwt-no-observability"),
+    ]
+    seen_skipped = seen_inconclusive = 0
+    for action, api_root, scenario in cases:
+        location = _run_scenario_through_ui(client, action, scenario)
+        run_id = location.rsplit("/", 1)[-1]
+        run = client.get(f"{api_root}/{run_id}").json()
+        page = html.unescape(client.get(location).text)
+
+        verdicts = [check.get("verdict") for check in run["checks"]]
+        skipped = verdicts.count("SKIPPED")
+        inconclusive = verdicts.count("INCONCLUSIVE")
+        seen_skipped += skipped
+        seen_inconclusive += inconclusive
+
+        # The badge the page gives each label is the label's own, never SAFE's.
+        assert page.count('badge-muted">SKIPPED') == skipped, scenario
+        assert page.count('badge-info">INCONCLUSIVE') == inconclusive, scenario
+        assert f'badge-ok">SKIPPED' not in page, scenario
+        assert f'badge-ok">INCONCLUSIVE' not in page, scenario
+        # The API's own labels are present, so the run is not silently dropped.
+        assert scenario in page or run["scenario_id"] in page
+        # A run-level count that does not exist must not be invented either.
+        assert "SAFE" in page          # SAFE does occur: it is a real verdict here
+    assert seen_skipped >= 4 and seen_inconclusive >= 1, (seen_skipped, seen_inconclusive)
+
+    # The mapping itself, for every label the backend can emit.
+    from canarygate.ui.templating import verdict_class
+
+    classes = {label: verdict_class(label) for label in
+               ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED")}
+    assert classes["SAFE"] == "badge badge-ok"
+    assert [label for label, css in classes.items() if "badge-ok" in css] == ["SAFE"]
+    assert len(set(classes.values())) == len(classes)

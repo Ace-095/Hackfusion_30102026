@@ -271,10 +271,10 @@ documented default view; see §10 and the integration document.
 
 ## 7. Tests
 
-Four files, 100 tests, run with the rest of the suite and registered in
+Four files, 101 tests, run with the rest of the suite and registered in
 `tools/p0_audit.py` (`in_process_api`, or `loopback_tls` for the lab file).
 
-`tests/integration/test_ui_backend_contract.py` (32 tests) covers the integration
+`tests/integration/test_ui_backend_contract.py` (33 tests) covers the integration
 itself. For all four offline families it compares the action → stored run → page →
 section report chain field by field with the JSON API, and asserts the default
 `view=run` JSON report is 200 for every family (the defect this branch fixed). It
@@ -463,7 +463,7 @@ git diff --stat c36dda1 -- . ":(exclude)canarygate/ui"
 #           pyproject.toml, tools/p0_audit.py, tests/integration/test_ui_*.py
 
 # 3. The whole suite passes, backend tests included and unmodified
-python -m pytest -q          # 1016 passed
+python -m pytest -q          # 1017 passed
 python tools/p0_audit.py     # 58 rows, 0 failures
 
 # 4. The backend alone still has no UI routes

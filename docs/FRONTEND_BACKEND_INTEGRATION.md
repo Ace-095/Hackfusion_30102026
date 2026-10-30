@@ -3,7 +3,7 @@
 Status: **integrated and verified on this branch** (`arena/80050ed6-hackfusion-30102026`).
 The interface from `arena/a1fe3757-hackfusion-30102026` is served by the checkpoint-38
 backend, calls its handlers in the same process, and adds no security logic of its
-own. 1016 tests pass; the P0 audit is clean at 58 rows / 60 test files / 0 failures.
+own. 1017 tests pass; the P0 audit is clean at 58 rows / 60 test files / 0 failures.
 
 | Question | Answer |
 | --- | --- |
@@ -271,7 +271,7 @@ than a behaviour change:
 
 ## 8. Testing
 
-`1016 passed` on this branch (916 before the integration). The 100 UI tests are
+`1017 passed` on this branch (916 before the integration). The 101 UI tests are
 registered with an evidence class in `tools/p0_audit.py`, so the audit fails if one
 silently disappears.
 
@@ -279,12 +279,12 @@ silently disappears.
 | --- | --- | --- | --- |
 | `tests/integration/test_ui_pages.py` | 28 | `in_process_api` | Every original page renders, actions store what the API returns, no credentials in HTML, HTMX fragments vs redirects, spec inspection bounded, replay behaviour, accessibility basics |
 | `tests/integration/test_ui_replay_adapter.py` | 16 | `in_process_api` | The flight recorder orders real events and refuses to invent a timeline for transcript runs |
-| `tests/integration/test_ui_backend_contract.py` | 32 | `in_process_api` | For all four offline families: action → stored run → page matches API; sections report matches API; default JSON view 200; matrix matches `/api/authorization-matrix`; listings; empty states; HTML errors; no verdict assignment in templates; no `httpx`/`socket`/`decide` in the UI |
+| `tests/integration/test_ui_backend_contract.py` | 33 | `in_process_api` | For all four offline families: action → stored run → page matches API; sections report matches API; default JSON view 200; matrix matches `/api/authorization-matrix`; listings; empty states; HTML errors; SKIPPED and INCONCLUSIVE keep their own badges, counted against the API; no verdict assignment in templates; no `httpx`/`socket`/`decide` in the UI |
 | `tests/integration/test_ui_lab_pages.py` | 24 | `loopback_tls` | Real TLS lab: BOLA/SCI/reset pages show the API's verdicts and statuses; missing CA is 400; unreachable lab is 502 and stores nothing; invalid ports/budgets are 422; unknown ids are HTML 404; no lab secret in any page; dashboard/reports reflect stored runs |
 
 What each kind of test does **not** prove:
 
-- The 100 tests assert served HTML, not rendering in a real browser. There is no
+- The 101 tests assert served HTML, not rendering in a real browser. There is no
   headless browser in this environment: no pixel regression, no screen-reader audit,
   no keyboard-only pass. The markup is server-rendered, so this covers content and
   structure, not visual correctness.
@@ -452,7 +452,7 @@ Feature work is frozen. Each row below is a check a reviewer can repeat.
 | Check | Result | How |
 | --- | --- | --- |
 | CI on the PR head | **green on both jobs** — `tests (ubuntu-latest, 3.11)` and `tests (windows-latest, 3.11)` completed success on `a589ba0` | checks tab of PR #4 |
-| Full local suite | 1016 passed | `.venv/bin/python -m pytest tests -q` |
+| Full local suite | 1017 passed | `.venv/bin/python -m pytest tests -q` |
 | Requirement audit | 58 rows, 0 failures; 47 implemented · 9 partial · 2 missing · 0 unreachable | `.venv/bin/python tools/p0_audit.py` |
 | Clean installation | wheel built and installed into a fresh venv outside the repo; UI and API launched from `site-packages` and served every page, both static bundles and the JSON API; a form scan stored a run whose page, report and `?view=run` JSON all answered 200; a lab scan without a CA answered 400 | commands below |
 | Browser-level journey | **17/17** checks in a DOM with scripts and HTMX, against a real uvicorn server and the real TLS lab | `.venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness` |
