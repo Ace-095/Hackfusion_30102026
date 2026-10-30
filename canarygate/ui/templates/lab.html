@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import page_head, verdict_badge, status_badge, stat, empty, icon,
-                              unavailable, kv %}
+                              unavailable, kv, journey %}
 {% block title %}TargetLab validation{% endblock %}
 
 {% block content %}
@@ -14,6 +14,8 @@
   <a class="btn btn-sm" href="/ui/lab/matrix">Asset matrix</a>
   <a class="btn btn-sm btn-ghost" href="/ui/reports">Lab reports</a>
 {% endcall %}
+
+{{ journey("scans", lab=lab) }}
 
 <div class="alert alert-warn">
   {{ icon("warning") }}

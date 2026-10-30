@@ -77,6 +77,7 @@ TEST_EVIDENCE = {
     "tests/integration/test_ui_lab_pages.py": "loopback_tls",
     "tests/integration/test_ui_execution_outcomes.py": "loopback_tls",
     "tests/integration/test_tool_ergonomics.py": "in_process_api",
+    "tests/integration/test_ui_lab_proofs.py": "loopback_tls",
     "tests/integration/test_p0_consistency.py": "recorded_offline",
     "tests/integration/test_p0_report_api.py": "recorded_offline",
     "tests/integration/test_sci_scenarios.py": "recorded_offline",

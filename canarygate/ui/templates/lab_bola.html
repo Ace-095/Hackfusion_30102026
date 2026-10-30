@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_head, verdict_badge, status_badge, tri, kv, stat,
+{% from "_macros.html" import page_head, verdict_badge, status_badge, tri, kv, stat, journey,
                               empty, icon, method_chip, checklist_grid,
                               lab_transport_panel, lab_constraints_panel, verdict_legend %}
 {% block title %}Read-BOLA validation {{ run.id|short_id }}{% endblock %}
@@ -10,6 +10,7 @@
                  run.reason,
                  trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
                         (run.id|short_id, None)]) %}
+  {{ journey("findings", lab=lab) }}
   <div class="toolbar">
     {{ verdict_badge(run.verdict, "badge-lg") }}
     {{ status_badge(run.status) }}
@@ -186,7 +187,7 @@
   </div>
 </section>
 
-<section class="card" aria-labelledby="proof-title">
+<section class="card" id="proof-disclosure" aria-labelledby="proof-title">
   <div class="card-head">
     <h2 id="proof-title">{{ icon("eye") }} Disclosure proof</h2>
     <span class="hint">every step is a stored field of this run</span>
@@ -240,15 +241,48 @@
       requires the ownership proof, the owner baseline and the private disclosure together.</div>
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>{{ icon("eye") }} Evidence the run kept</h2></div>
+  <section class="card" id="proof-ownership">
+    <div class="card-head">
+      <h2>{{ icon("eye") }} Evidence the run kept</h2>
+      <span class="hint">flags grouped by route · nothing is aggregated across them</span>
+    </div>
     <div class="card-body">
-      <h3 class="section-sub">Vulnerable route ownership</h3>
-      {{ checklist_grid(run.ownership.vulnerable.baselines_verified) }}
-      <h3 class="section-sub mt-1">Vulnerable route disclosure</h3>
-      {{ checklist_grid(run.evidence.disclosure.checklist) }}
+      {% for group in evidence_groups %}
+      <h3 class="section-sub {{ 'mt-1' if not loop.first else '' }}">
+        {{ group.label }}
+        <span class="dim small">{{ group.checks|length }} check(s)</span>
+      </h3>
+      {% if group.present %}
+      <div class="table-scroll">
+        <table class="table compact" data-evidence-group="{{ group.direction }}">
+          <thead><tr><th>Check</th><th>Who</th><th>HTTP</th><th>Verdict</th><th>Flags</th></tr></thead>
+          <tbody>
+            {% for check in group.checks %}
+            <tr>
+              <td><a class="mono" href="#{{ check.id }}">{{ check.id }}</a></td>
+              <td class="mono xs">{{ check.actor }} → {{ check.owner }}</td>
+              <td class="mono">{{ check.status if check.status else "—" }}</td>
+              <td>{{ verdict_badge(check.verdict) }}</td>
+              <td class="flags">
+                {% for flag in check.flags %}
+                <span class="flag {{ 'is-true' if flag.value else 'is-false' }}"
+                      title="{{ flag.label }}">{{ flag.label }}={{ "true" if flag.value else "false" }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">{{ group.note }}</p>
+      {% else %}
+      <p class="note">No {{ group.label|lower }} were recorded in this run.</p>
+      {% endif %}
+      {% endfor %}
       <p class="note">Minimized booleans and hashes only. No token, password or private marker
-        value is stored in the run.</p>
+        value is stored in the run. A <span class="mono">false</span> on a secure-route denial is
+        the expected answer, not a missing step; a <span class="mono">false</span> on a
+        cross-account request would mean the oracle could not record that step.</p>
     </div>
   </section>
 </div>

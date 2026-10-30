@@ -1243,3 +1243,33 @@ The fixes are small, but one of them encodes a rule this project keeps re-learni
 checks out"; it is "nothing was audited", so the tool exits 2 with a sentence
 saying exactly that. Reporting success there would have been the tooling version
 of calling an untested cell SAFE.
+
+### Checkpoint 45: a proof without a page is not a proof
+
+The ownership and disclosure proofs already existed — as a dashboard card and a section
+on one run page — but the numbered journey a reviewer is told to follow still pointed at
+the fixture workflow. Clicking "5 · Ownership proof" on a lab-only database landed on an
+empty `/ui/findings`. The lesson is not that the proof was missing; it is that **a claim
+the product makes must be a destination the product can reach**. Two pages now exist, both
+pure projections over stored runs.
+
+**The journey takes the dataset as an argument rather than guessing.** `journey(lab=...)`
+receives hrefs from `proofs.proof_anchors(runs)`, which returns `None` when no lab run is
+stored. That keeps the fixture path byte-identical for the fixture workflow and prevents
+the two datasets from being mixed in one nav — a failure mode this project has guarded
+against everywhere else.
+
+**The contradiction was a reading bug, not an evidence bug.** `run.evidence.disclosure`
+ANDs `private_disclosure` across every check that carries the flag, including the
+secure-route checks where the flag is correctly `false`. Rendering that aggregate beside a
+CONFIRMED verdict produced "private disclosure: no". The stored payload and its hash are
+untouched; the page now groups the flags by route and says what a `false` means in each
+group. Changing the stored aggregate was rejected: it would have altered evidence that is
+already hashed, and the aggregate is not wrong — it is answering "was this flag true
+everywhere", which is simply not the question a reviewer is asking.
+
+**A digest that binds content is not a digest that binds identity.** Owner-baseline checks
+at the same position in different runs share an `evidence_sha256` for different accounts.
+Rather than silently changing a hashed field and leaving two vintages of evidence in the
+database, the proof page prints the run id and the check id together and states what the
+digest does and does not cover. That limitation is recorded rather than papered over.

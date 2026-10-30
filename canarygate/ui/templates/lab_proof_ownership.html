@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, icon, verdict_badge, stat, journey, empty, kv %}
+
+{% block title %}Ownership proof{% endblock %}
+
+{% block content %}
+{{ page_head("TargetLab validation",
+             "Ownership proof",
+             "Every row is one account reading its own record, stored by a real run. No row is
+              inferred from the catalog: an account with no stored owner read is reported as
+              not verified, and says so.",
+             trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                    ("Ownership proof", None)]) }}
+
+{{ journey("ownership", lab=lab) }}
+
+<div class="grid grid-3">
+  {{ stat("Accounts verified", proof.accounts_verified ~ " / " ~ proof.accounts_total,
+          "an owner read returned that account's own record", small=True) }}
+  {{ stat("Baselines stored", proof.baselines_stored,
+          "owner reads recorded across every stored run", small=True) }}
+  {{ stat("Runs considered", proof.runs_considered,
+          "read-BOLA runs in the local database", small=True) }}
+</div>
+
+<section class="card" aria-labelledby="owners-title">
+  <div class="card-head">
+    <h2 id="owners-title">{{ icon("account") }} Who verified ownership, and with which read</h2>
+    <span class="hint mono">source: GET /api/lab-bola-scans/{id} · GET /api/lab-catalog</span>
+  </div>
+  {% if proof.runs_considered == 0 %}
+  {{ empty("No owner baseline has been stored yet",
+           "An ownership claim needs a real run: two identities authenticate, then each one
+            reads its own record. Start an assessment from the workspace and come back.") }}
+  <div class="card-body">
+    <a class="btn btn-primary" href="/ui/assessment">Start an assessment</a>
+  </div>
+  {% else %}
+  <div class="table-scroll">
+    <table class="table" data-ownership-table>
+      <thead>
+        <tr><th>Account</th><th>Owns</th><th>Ownership</th><th>Verified by</th>
+          <th>Run</th><th>HTTP</th><th>Evidence SHA-256</th></tr>
+      </thead>
+      <tbody>
+        {% for row in proof.rows %}
+        <tr data-account="{{ row.account }}">
+          <td><b>{{ row.account|capitalize }}</b><br><span class="dim small">{{ row.title }}</span></td>
+          <td><span class="mono">{{ row.asset_id }}</span><br>
+            <span class="dim small">{{ row.asset_label }}</span></td>
+          <td>
+            {% if row.verified %}<span class="badge badge-ok">baseline verified</span>
+            {% elif row.check %}<span class="badge badge-warn">not verified</span>
+            {% else %}<span class="badge badge-muted">not verified</span>{% endif %}
+          </td>
+          <td>
+            {% if row.check %}
+            <a class="mono" href="/ui/lab/bola/{{ row.run_id }}#{{ row.check.id }}">{{ row.check.id }}</a>
+            <br><span class="dim small">{{ row.check.reason }}</span>
+            {% else %}<span class="dim">no stored owner read in any run</span>{% endif %}
+          </td>
+          <td>
+            {% if row.run_id %}
+            <a class="mono xs" href="/ui/lab/bola/{{ row.run_id }}">{{ row.run_id[:8] }}…</a>
+            <br><span class="dim xs">{{ row.recorded_at }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="mono">{{ row.check.status if row.check and row.check.status else "—" }}</td>
+          <td class="mono xs">
+            {% if row.check %}{{ row.check.evidence_sha256[:16] }}…{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body">
+    <p class="note">An account is marked verified only when a stored owner-baseline check
+      returned that account's own record with a recorded status. The run that proved it is
+      linked, and the check id resolves to that row on the run page.</p>
+    <p class="note">The SHA-256 above is the digest of the check's content — its id, verdict,
+      flags and bounded evidence — within the run named beside it. It is not a digest of the
+      response body: bodies, tokens and private markers are never stored. A row is identified by
+      the run id and the check id together, which is why both are printed.</p>
+  </div>
+  {% endif %}
+</section>
+
+{% if proof.runs_considered %}
+<section class="card" aria-labelledby="owns-means-title">
+  <div class="card-head"><h2 id="owns-means-title">{{ icon("shield") }} What this does and does not prove</h2></div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <div>
+        <h3 class="section-sub">It does prove</h3>
+        <ul class="bullets">
+          <li>two distinct identities authenticated over real HTTPS and each held its own token;</li>
+          <li>each account's own record was returned to that account, and the record's private
+            marker matched the owner baseline the oracle verified;</li>
+          <li>the cross-account list did not contain the other account's private record, so the
+            proof does not rest on a shared listing.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="section-sub">It does not prove</h3>
+        <ul class="bullets">
+          <li>anything about a live or organizer-supplied API — the lab is loopback-only and
+            written by the same team;</li>
+          <li>that an account owns more than the one asset the catalog declares;</li>
+          <li>that a record body is safe to disclose: bodies, tokens and markers are never
+            stored, only booleans and digests.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("arrow") }} Continue</h2></div>
+  <div class="card-body">
+    <div class="link-row">
+      <a class="btn btn-primary" href="/ui/lab/proof/disclosure">Disclosure proof</a>
+      <a class="btn" href="/ui/lab/matrix">Asset matrix</a>
+      <a class="btn btn-ghost" href="/ui/assessment">Run another assessment</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

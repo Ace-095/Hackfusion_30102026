@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP44](#17-checkpoint-history-cp26cp44)
+- [§17 Checkpoint history CP26–CP45](#17-checkpoint-history-cp26cp45)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -2108,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP44
+## 17. Checkpoint history CP26–CP45
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2133,6 +2133,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 42 | Product experience | `landing.html` + `landing.css`/`landing.js`, `/ui/assessment`, execution timeline, disclosure proof, new navigation | The journey is self-service end to end; the run page shows recorded stages and says plainly that the backend streams no live events |
 | 43 | Live experience | transport `observer`, `ui/execution.py`, `/ui/execution/{id}` + `/events`, canvas showreel, interactive dashboard | The loading screen is fed by the transport itself: one event per completed request, with the lab's status and the measured duration; no percentage and no invented progress |
 | 44 | Honest outcomes | `terminal_for(job)`, `partial` job state, server-rendered terminal block, retry form, status-specific error titles | The screen can now say *this stopped*: the reason, the next step and the retry are in the HTML, so a refresh or a reader without scripts sees the same truth; a demonstration that stored two of three runs is `partial`, never `complete` |
+| 45 | Proof surfaces | `/ui/lab/proof/ownership`, `/ui/lab/proof/disclosure`, `ui/proofs.py`, dataset-aware `journey(lab=...)`, grouped run-page evidence | The two proofs a judge is told to inspect are now their own pages, built only from stored runs; the review journey follows the dataset that has evidence instead of walking an empty fixture path, and a CONFIRMED run can no longer display a contradictory aggregate |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -2269,7 +2270,7 @@ TargetLab refuses a non-loopback `--host` (exit code 2) and rejects non-loopback
 
 | Command | Success looks like | Failure looks like |
 |---|---|---|
-| `pytest tests -q` | `1109 passed in ~123s` | any `FAILED`; CI annotates the first ten |
+| `pytest tests -q` | `1122 passed in ~144s` | any `FAILED`; CI annotates the first ten |
 | `p0_audit.py` | `58 requirements, 0 failures`, then counts | `ReferenceError`, dangling symbol, unclassified test file |
 | `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
 | `consistency_audit.py` | same invariant line, rebuilt from stored evidence | `EvidenceIntegrityError`, projection mismatch |

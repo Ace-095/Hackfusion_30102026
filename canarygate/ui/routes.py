@@ -40,6 +40,7 @@ from canarygate.scan.validation_scenarios import build_validation_scenario
 from canarygate.offline.scan import fixture_recipe
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from canarygate.ui import execution as execution_jobs
+from canarygate.ui import proofs as lab_proofs
 from canarygate.ui.replay import build_replay
 from canarygate.ui.templating import templates
 
@@ -632,6 +633,9 @@ def dashboard(request: Request):
                        "href": "/ui/findings" if verdict in {"CONFIRMED", "SUSPECTED"}
                                else "/ui/scans"}
                       for verdict, count in combined.items()],
+        # The review journey follows the dataset that actually has evidence:
+        # lab surfaces when a TargetLab run is stored, the fixture path otherwise.
+        lab=lab_proofs.proof_anchors(labs["bola"]),
     )
 
 
@@ -906,7 +910,8 @@ def lab_page(request: Request):
     history, readiness = result
     return _page(request, "lab.html", "lab", history=history,
                  readiness=readiness, families=LAB_FAMILIES,
-                 catalog=build_lab_catalog())
+                 catalog=build_lab_catalog(),
+                 lab=lab_proofs.proof_anchors(list(history["bola"])))
 
 
 def _lab_readiness() -> dict:
@@ -953,7 +958,44 @@ def lab_matrix_page(request: Request, cell: str = ""):
     return _page(request, "lab_matrix.html", "lab_matrix", matrix=result, rows=rows,
                  columns=result["accounts"], selected=selected, cell=cell,
                  comparisons=comparisons, catalog=build_lab_catalog(),
-                 coverage=catalog_coverage_pairs())
+                 coverage=catalog_coverage_pairs(),
+                 lab=lab_proofs.proof_anchors(list(reversed(_listed(_lab_store(request, "bola"))))))
+
+
+@router.get("/ui/lab/proof/ownership")
+def lab_ownership_proof_page(request: Request):
+    """Every owner baseline a stored run verified, and every account it did not.
+
+    Read-only: the page opens stored runs through the same store the API uses and
+    prints the check id, run id, HTTP status and evidence hash for each row.
+    """
+    def build():
+        runs = list(reversed(_listed(_lab_store(request, "bola"))))
+        return runs, lab_proofs.ownership_proof(runs), lab_proofs.proof_anchors(runs)
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
+        return result
+    runs, proof, anchors = result
+    return _page(request, "lab_proof_ownership.html", "lab_ownership",
+                 proof=proof, catalog=build_lab_catalog(), lab=anchors,
+                 readiness=_lab_readiness(), runs=len(runs))
+
+
+@router.get("/ui/lab/proof/disclosure")
+def lab_disclosure_proof_page(request: Request):
+    """The four stored steps of every cross-account request, and its denial."""
+    def build():
+        runs = list(reversed(_listed(_lab_store(request, "bola"))))
+        return runs, lab_proofs.disclosure_proof(runs), lab_proofs.proof_anchors(runs)
+
+    result = _guard(request, build)
+    if not isinstance(result, tuple):
+        return result
+    runs, proof, anchors = result
+    return _page(request, "lab_proof_disclosure.html", "lab_disclosure",
+                 proof=proof, catalog=build_lab_catalog(), lab=anchors,
+                 readiness=_lab_readiness(), runs=len(runs))
 
 
 def catalog_coverage_pairs():
@@ -1213,11 +1255,15 @@ def lab_run_page(request: Request, family: str, run_id: str):
                   if proof.get("port") == port]
     template = {"bola": "lab_bola.html", "sci": "lab_sci.html",
                 "reset": "lab_reset.html"}[family]
+    bola_runs = list(reversed(_listed(_lab_store(request, "bola"))))
     return _page(request, template, "lab", run=result, family=family,
                  family_spec=LAB_FAMILIES[family], resets=resets,
                  comparisons=_bola_comparison(result) if family == "bola" else [],
                  stages=_execution_stages(result) if family == "bola" else [],
-                 proof=_disclosure_proof(result) if family == "bola" else [])
+                 proof=_disclosure_proof(result) if family == "bola" else [],
+                 evidence_groups=lab_proofs.evidence_groups(result)
+                 if family == "bola" else [],
+                 lab=lab_proofs.proof_anchors(bola_runs))
 
 
 @router.get("/ui/lab/{family}/{run_id}/report")

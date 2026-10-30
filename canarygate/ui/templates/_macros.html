@@ -92,8 +92,25 @@
 {%- endmacro %}
 
 {# ---------------------------------------------------------------- journey #}
-{% macro journey(current, run_id=None) -%}
-{#- The demonstration path a reviewer can follow without explanation. -#}
+{% macro journey(current, run_id=None, lab=None) -%}
+{#- The demonstration path a reviewer can follow without explanation.
+
+    Two datasets live in this product and they must not be mixed. When `lab` is
+    given (hrefs from canarygate.ui.proofs.proof_anchors), every step after
+    Inventory points at the TargetLab surfaces built from stored lab runs;
+    otherwise the fixture workflow is used exactly as it was before. -#}
+{% if lab %}
+{% set steps = [
+  ("Dashboard", "/ui/", "dashboard"),
+  ("Inventory", "/ui/endpoints", "inventory"),
+  ("Scan results", lab.runs, "scans"),
+  ("Finding", lab.run or lab.matrix, "findings"),
+  ("Ownership proof", lab.ownership, "ownership"),
+  ("Disclosure proof", lab.disclosure, "disclosure"),
+  ("Matrix", lab.matrix, "matrix"),
+  ("Report", lab.report or lab.runs, "reports")
+] %}
+{% else %}
 {% set steps = [
   ("Dashboard", "/ui/", "dashboard"),
   ("Inventory", "/ui/endpoints", "inventory"),
@@ -104,8 +121,10 @@
   ("Matrix", "/ui/matrix", "matrix"),
   ("Report", ("/ui/scans/" ~ run_id ~ "/report") if run_id else "/ui/reports", "reports")
 ] %}
+{% endif %}
 {% set current_keys = ["ownership", "disclosure"] if current == "evidence" else [current] %}
 <nav class="journey" aria-label="Review journey">
+  <span class="journey-source">{{ "TargetLab runs" if lab else "offline fixtures" }}</span>
   {% for label, href, key in steps %}
     {% if key in current_keys %}
       <span class="step is-current" aria-current="step">

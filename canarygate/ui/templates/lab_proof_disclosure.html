@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, icon, verdict_badge, stat, journey, empty, tri %}
+
+{% block title %}Disclosure proof{% endblock %}
+
+{% block content %}
+{{ page_head("TargetLab validation",
+             "Disclosure proof",
+             "Each chain below is one cross-account request and the four stored checks that
+              decide it. Every entry is a field of a stored run: no step is inferred, and a
+              refusal is drawn as a refusal, never as a disclosure.",
+             trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                    ("Disclosure proof", None)]) }}
+
+{{ journey("disclosure", lab=lab) }}
+
+<div class="grid grid-3">
+  {{ stat("Confirmed disclosures", proof.confirmed,
+          "cross-account checks the oracle confirmed", small=True) }}
+  {{ stat("Secure-route denials", proof.denied,
+          "the same request, refused on the corrected route", small=True) }}
+  {{ stat("Checks considered", proof.chains_total + proof.secure_checks,
+          "cross-account and secure-route checks in stored runs", small=True) }}
+</div>
+
+{% if proof.chains_total == 0 %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("eye") }} No cross-account request is stored yet</h2></div>
+  {{ empty("No cross-account request has been stored yet",
+           "A disclosure claim needs a real run: one account requests the other account's
+            private record, and the oracle compares what came back with the owner's own read.") }}
+  <div class="card-body">
+    <a class="btn btn-primary" href="/ui/assessment">Start an assessment</a>
+  </div>
+</section>
+{% else %}
+
+<p class="note">{{ proof.confirmed }} confirmed of {{ proof.chains_total }} recorded requests ·
+  {{ proof.denied }} of {{ proof.secure_checks }} secure-route checks were denials ·
+  from {{ proof.runs_considered }} stored run(s).</p>
+
+{% for chain in proof.chains %}
+<section class="card proof-card" data-chain="{{ chain.requester }}:{{ chain.owner }}"
+         aria-labelledby="chain-{{ loop.index }}-title">
+  <div class="card-head">
+    <h2 id="chain-{{ loop.index }}-title">
+      {{ chain.requester }} → {{ chain.owner }}'s record
+      <span class="mono xs dim">{{ chain.asset_id }}</span>
+    </h2>
+    {{ verdict_badge(chain.request.verdict) }}
+  </div>
+  <div class="card-body stack">
+    <p class="note">{{ chain.asset_label }} · run
+      <a class="mono" href="/ui/lab/bola/{{ chain.run_id }}">{{ chain.run_id[:8] }}…</a>
+      · {{ chain.recorded_at }}</p>
+
+    <ol class="proof-chain">
+      <li data-step="owner-baseline">
+        <span class="chain-num">1</span>
+        <div>
+          <b>Owner baseline</b>
+          {% if chain.owner_baseline %}
+          <span class="dim">— {{ chain.owner }} read their own record first</span>
+          <div class="chain-facts">
+            <a class="mono xs" href="/ui/lab/bola/{{ chain.run_id }}#{{ chain.owner_baseline.id }}">{{ chain.owner_baseline.id }}</a>
+            <span class="mono">HTTP {{ chain.owner_baseline.status }}</span>
+            <span class="mono xs dim">{{ chain.owner_baseline.evidence_sha256[:16] }}…</span>
+          </div>
+          </div>
+          <p class="dim small">{{ chain.owner_baseline.reason }}</p>
+          {% else %}
+          <span class="badge badge-warn">not recorded in this run</span>
+          {% endif %}
+        </div>
+      </li>
+
+      <li data-step="requester-baseline">
+        <span class="chain-num">2</span>
+        <div>
+          <b>Requester's own record</b>
+          {% if chain.requester_baseline %}
+          <span class="dim">— {{ chain.requester }} holds a record of their own, so the request
+            comes from a real account</span>
+          <div class="chain-facts">
+            <a class="mono xs" href="/ui/lab/bola/{{ chain.run_id }}#{{ chain.requester_baseline.id }}">{{ chain.requester_baseline.id }}</a>
+            <span class="mono">HTTP {{ chain.requester_baseline.status }}</span>
+            <span class="mono xs dim">{{ chain.requester_baseline.evidence_sha256[:16] }}…</span>
+          </div>
+          {% else %}
+          <span class="badge badge-warn">not recorded in this run</span>
+          {% endif %}
+        </div>
+      </li>
+
+      <li data-step="request">
+        <span class="chain-num">3</span>
+        <div>
+          <b>Cross-account request</b>
+          <span class="dim">— {{ chain.requester }} asked for {{ chain.owner }}'s record</span>
+          <div class="chain-facts">
+            <a class="mono xs" href="/ui/lab/bola/{{ chain.run_id }}#{{ chain.request.id }}">{{ chain.request.id }}</a>
+            <span class="mono">{{ chain.request.endpoint }}</span>
+            <span class="mono">HTTP {{ chain.request.status }}</span>
+            <span class="mono xs dim">{{ chain.request.evidence_sha256[:16] }}…</span>
+          </div>
+          <p class="dim small">{{ chain.request.reason }}</p>
+        </div>
+      </li>
+
+      <li data-step="disclosure" class="{{ 'is-confirmed' if chain.confirmed else 'is-clean' }}">
+        <span class="chain-num">4</span>
+        <div>
+          <b>Private data disclosed</b>
+          <span class="dim">— judged only against the owner baseline above</span>
+          <div class="chain-facts">
+            <span class="badge {{ 'badge-danger' if chain.confirmed else 'badge-ok' }}">
+              {{ "private data disclosed" if chain.confirmed else "no disclosure recorded" }}</span>
+            {% for flag in chain.request.flags %}
+            {% if flag.key in ("private_disclosure", "private_baseline") %}
+            <span class="mono xs {{ 'is-true' if flag.value else 'is-false' }}">{{ flag.label }}={{ "true" if flag.value else "false" }}</span>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% if chain.remediation %}<p class="dim small"><b>Remediation:</b> {{ chain.remediation }}</p>{% endif %}
+        </div>
+      </li>
+
+      <li data-step="secure" class="{{ 'is-denied' if chain.secure and chain.secure.denied else ('is-open' if chain.secure else 'is-missing') }}">
+        <span class="chain-num">5</span>
+        <div>
+          <b>Same request · secure route</b>
+          {% if chain.secure %}
+          <span class="dim">— the corrected endpoint has to refuse it</span>
+          <div class="chain-facts">
+            <a class="mono xs" href="/ui/lab/bola/{{ chain.run_id }}#{{ chain.secure.id }}">{{ chain.secure.id }}</a>
+            <span class="mono">{{ chain.secure.endpoint }}</span>
+            <span class="mono">HTTP {{ chain.secure.status }}</span>
+            {% if chain.secure.denied %}<span class="badge badge-ok">denied</span>
+            {% else %}<span class="badge badge-warn">not denied</span>{% endif %}
+            <span class="mono xs dim">{{ chain.secure.evidence_sha256[:16] }}…</span>
+          </div>
+          <p class="dim small">{{ chain.secure.reason }}
+            <span class="dim">A false <span class="mono">private_disclosure</span> here is the
+            expected answer: nothing was disclosed because the read was refused.</span></p>
+          {% else %}
+          <span class="badge badge-warn">no secure-route check in this run</span>
+          <p class="dim small">Without a refusal on the corrected route this page does not claim
+            the vulnerable route is the anomaly.</p>
+          {% endif %}
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+{% endfor %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} How to read a chain</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li>A disclosure is confirmed only when step 4 matched the private marker from the
+        verified owner baseline in step 1. A <span class="mono">200</span> alone is never enough.</li>
+      <li>Step 5 is the comparison: the same request against the corrected route must be
+        refused. Without it, the finding is not drawn as confirmed.</li>
+      <li>Every step carries the id of the stored check and the SHA-256 of its evidence, so the
+        row can be re-read from <span class="mono">/api/lab-bola-scans/{id}</span>.</li>
+      <li>This is controlled validation of a loopback lab written by the same team. It is not
+        live-target or organizer validation.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("arrow") }} Continue</h2></div>
+  <div class="card-body">
+    <div class="link-row">
+      <a class="btn btn-primary" href="/ui/lab/matrix">Asset matrix</a>
+      <a class="btn" href="/ui/lab/proof/ownership">Ownership proof</a>
+      <a class="btn btn-ghost" href="/ui/assessment">Run another assessment</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
