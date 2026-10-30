@@ -719,3 +719,32 @@ is NOT_RECORDED, historical BOLA and authentication SAFE without the necessary c
 to a secured endpoint, and the one-cell matrix is marked partial. No generic
 scanner, arbitrary-target redactor or live execution is enabled. Full P0 remains
 blocked; see `docs/P0_ACCEPTANCE_MATRIX.md`.
+
+### Checkpoint 27: generic evidence integration, not generic scanning
+
+The fixture registry and the disabled guarded HTTPX path now share one
+ownership collector and one two-part read-BOLA oracle. A parallel generic
+authorization engine was rejected: it would let evidence rules drift between
+transports. The fixture wrapper preserves its existing synthetic header/origin
+contract; the guarded path uses ephemeral request metadata plus a collector
+issued provenance snapshot because credentials deliberately do not leave the
+transport boundary. These are in-process invariants, not signatures.
+
+A guarded response is accepted only if the runner recorded that exact object
+for the expected actor/path/status and its body hash still matches. Caller-made
+response copies, mutated bodies, caller-constructed ownership results, changed
+recipes and reused baselines fail closed. Hidden pagination headers are
+represented as a boolean through the guarded boundary (never their values), and
+any pagination metadata or unterminated continuation refuses ownership
+verification.
+
+`inspect_jwt_metadata` decodes only bounded metadata and never treats claims as
+identity, privilege or authorization. Crafted-token probes remain missing and
+require separately authorized operations.
+
+Redaction now normalizes camelCase and additional secret names and recognizes
+bounded cookie/assignment patterns in strings. This is still known-shape
+coverage; stored evidence remains minimized to fixed fixture fields and no
+universal live-data redaction is claimed. Generic verdicts are not persisted or
+reported, production networking remains disabled, and no lab or live target was
+scanned. Full P0 remains blocked; see `docs/P0_ACCEPTANCE_MATRIX.md`.

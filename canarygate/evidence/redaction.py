@@ -11,12 +11,22 @@ import re
 
 REDACTED = "[REDACTED]"
 _SENSITIVE_KEYS = {"authorization", "proxy-authorization", "cookie", "set-cookie", "password", "passwd",
-                   "secret", "client-secret", "api-key", "access-token", "refresh-token", "token", "private-note"}
+                   "secret", "client-secret", "api-key", "x-api-key", "access-token", "refresh-token", "id-token",
+                   "token", "x-auth-token", "x-access-token", "x-csrf-token", "private-note", "password-hash",
+                   "pwd", "passphrase", "session-id", "sessionid", "session-token", "jwt",
+                   "tokens", "credentials", "credential", "secrets", "cookies", "auth", "bearer",
+                   "authorization-header", "x-amz-security-token"}
 _KNOWN_FIXTURE_SECRETS = ("fixture-token-alice", "fixture-token-bob", "malformed-fixture", "synthetic-fixture",
                           "synthetic-alice-private-note", "synthetic-bob-private-canary")
 _AUTH_VALUE = re.compile(r"(?i)\b(?:bearer|basic)\s+[^\s\"',;]+")
 _JWT_VALUE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\b")
-_SECRET_ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|token|secret|api[_-]?key)\s*[:=]\s*[^\s\"',;]+")
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(password[_-]?hash|password|passwd|pwd|passphrase|access[_-]?token|refresh[_-]?token|"
+    r"id[_-]?token|session[_-]?(?:id|token)|client[_-]?secret|token|secret|api[_-]?key)"
+    r"\s*[:=]\s*(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s\"',;]+)"
+)
+_COOKIE_HEADER = re.compile(r"(?i)\b((?:set-)?cookie)\s*[:=][^\r\n]*")
+_CAMEL_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
 
 
 class EvidenceIntegrityError(ValueError):
@@ -31,13 +41,19 @@ def digest(value) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def _sensitive_key(key):
+    normalized = _CAMEL_BOUNDARY.sub(r"\1-\2", key).lower().replace("_", "-") if isinstance(key, str) else ""
+    return (normalized in _SENSITIVE_KEYS
+            or normalized.endswith(("-token", "-secret", "-password", "-api-key", "-session-id",
+                                    "-authorization", "-cookie")))
+
+
 def redact(value):
     """Redact known credential fields, patterns, and built-in synthetic secrets."""
     if isinstance(value, dict):
         output = {}
         for key, item in value.items():
-            normalized = key.lower().replace("_", "-") if isinstance(key, str) else ""
-            if normalized in _SENSITIVE_KEYS:
+            if _sensitive_key(key):
                 output[key] = REDACTED
             else:
                 output[key] = redact(item)
@@ -45,7 +61,8 @@ def redact(value):
     if isinstance(value, list):
         return [redact(item) for item in value]
     if isinstance(value, str):
-        text = _AUTH_VALUE.sub(REDACTED, value)
+        text = _COOKIE_HEADER.sub(lambda match: match.group(1) + ": " + REDACTED, value)
+        text = _AUTH_VALUE.sub(REDACTED, text)
         text = _JWT_VALUE.sub(REDACTED, text)
         text = _SECRET_ASSIGNMENT.sub(lambda match: match.group(1) + "=" + REDACTED, text)
         for secret in _KNOWN_FIXTURE_SECRETS:

@@ -162,4 +162,8 @@ For the bounded nested fixture detection pipeline, see [checkpoint 25](checkpoin
 
 Checkpoint 26 adds the fixture-only nine-section JSON view and the honest P0
 audit; see `docs/checkpoints/26-p0-audit.md` and `docs/P0_ACCEPTANCE_MATRIX.md`.
-These do not indicate P0 or production acceptance.
+Checkpoint 27 adds the shared fixture/mocked-HTTPX ownership and oracle proof
+path, adversarial redaction tests and a JWT metadata helper; see
+`docs/checkpoints/27-generic-integration.md`. Generic runs are not persisted,
+production networking remains disabled, and none of these documents indicates
+P0 or production acceptance.

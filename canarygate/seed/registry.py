@@ -1,15 +1,16 @@
-"""Fixture-only ownership registry based on guarded, observed HTTP responses.
+"""One ownership registry for fixture and disabled guarded-HTTPX observations.
 
-The registry never runs a BOLA probe. It accepts only the in-process fixture
-runner; it is not a live ownership registry and must not persist raw responses.
+Only test fixtures and mocked HTTP are supported; live execution remains gated.
+Transient responses and identifiers must never be persisted or logged.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import re
 
 from canarygate.guard.safety_guard import GuardRejected
 from canarygate.models.ownership import OwnedResource
 from canarygate.offline.runner import FixtureRunner
+from canarygate.network.guarded_httpx import GuardedHTTPXRunner
 from canarygate.seed.recipe import Resource
 from canarygate.seed.extraction import MISSING, extract, valid_selector
 
@@ -18,12 +19,47 @@ MAX_LIST_ITEMS = 256
 
 @dataclass(frozen=True)
 class FixtureOwnershipResult:
-    entries: tuple[OwnedResource, ...] = ()
+    entries: tuple[OwnedResource, ...] = field(default=(), repr=False)
     resource_status: str = 'SKIPPED'
     ownership_status: str = 'SKIPPED'
     reason: str = 'Ownership prerequisites were not met'
     ids: dict = field(default_factory=dict, repr=False)
     baselines: dict = field(default_factory=dict, repr=False)
+    source_runner: object = field(default=None, repr=False, compare=False)
+    identity_accounts: tuple = field(default=(), repr=False)
+    _proof: object = field(default=None, repr=False, compare=False)
+
+
+# A fail-closed in-process provenance invariant, not a cryptographic signature.
+# Only the shared collector issues this proof after both list exclusions and
+# both owner reads. It is never serialized or used as durable evidence.
+_REGISTRY_ISSUER = object()
+
+
+@dataclass(frozen=True, repr=False)
+class _RegistryProof:
+    issuer: object
+    snapshot: tuple
+    resource_json: str
+
+
+def _ownership_snapshot(result):
+    entries = tuple((e.resource_type, e.resource_id, e.owner, e.ownership_model,
+                     e.ownership_verified, e.canary, e.origin) for e in result.entries)
+    ids = tuple(sorted(result.ids.items()))
+    baselines = tuple(sorted((actor, id(pair[0]), id(pair[1])) for actor, pair in result.baselines.items()))
+    return (entries, result.resource_status, result.ownership_status, ids, baselines,
+            id(result.source_runner), result.identity_accounts)
+
+
+def is_issued_guarded_ownership(result, resource):
+    try:
+        proof = result._proof
+        return (type(proof) is _RegistryProof and proof.issuer is _REGISTRY_ISSUER
+                and proof.snapshot == _ownership_snapshot(result)
+                and proof.resource_json == Resource.model_validate(resource.model_dump()).model_dump_json())
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return False
 
 
 def _json(response):
@@ -95,19 +131,52 @@ def _unverified(resource_type, model, ids):
 
 def collect_fixture_ownership(runner, *, resource_type, resource, accounts, tokens,
                               on_discovery=None, on_exclusion=None, on_baseline=None):
-    """Discover and verify two fixture resources through the existing guard.
-
-    Only unambiguous complete private lists, distinct identities and IDs, both
-    cross-list exclusions, and matching owner-detail 200 responses can verify.
-    Shared/public candidates are recorded without asserting private isolation.
-    """
-    if (type(runner) is not FixtureRunner or not isinstance(resource, Resource)
-            or not isinstance(resource_type, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', resource_type)
-            or not isinstance(accounts, (tuple, list)) or len(accounts) != 2
-            or not all(isinstance(a, str) and a in runner.scope.accounts for a in accounts)
-            or accounts[0] == accounts[1] or not isinstance(tokens, dict)
+    """Existing fixture entry point, sharing the registry with guarded HTTPX."""
+    if (type(runner) is not FixtureRunner or not isinstance(accounts, (tuple, list))
+            or len(accounts) != 2 or not isinstance(tokens, dict)
             or any(tokens.get(a) != f'fixture-token-{a}' for a in accounts)):
         return FixtureOwnershipResult(reason='Two distinct fixture accounts and credentials are required')
+    return _collect_ownership(runner, resource_type=resource_type, resource=resource, accounts=accounts,
+                              tokens=tokens, on_discovery=on_discovery, on_exclusion=on_exclusion,
+                              on_baseline=on_baseline)
+
+
+def collect_guarded_ownership(runner, *, resource_type, resource, accounts, profile_path, identity_field):
+    """Same registry after two guarded profile controls; no live gate is enabled.
+
+    The profile controls show observed identities, not authorization. The
+    separate ownership and policy/disclosure requirements still apply.
+    """
+    if (type(runner) is not GuardedHTTPXRunner or not isinstance(accounts, (tuple, list))
+            or len(accounts) != 2 or not all(isinstance(a, str) for a in accounts)):
+        return FixtureOwnershipResult(reason='Two guarded accounts and profile controls are required')
+    from canarygate.accounts.identity_check import observe_identity_pair
+    identities = observe_identity_pair(runner, actor_a=accounts[0], actor_b=accounts[1],
+                                       path=profile_path, identity_field=identity_field)
+    if identities.status != 'MATCHED_PAIR':
+        return FixtureOwnershipResult(reason='Two guarded account profile controls were not established')
+    return _collect_ownership(runner, resource_type=resource_type, resource=resource, accounts=accounts,
+                              tokens=None, identity_accounts=tuple(accounts))
+
+
+def _collect_ownership(runner, *, resource_type, resource, accounts, tokens,
+                       on_discovery=None, on_exclusion=None, on_baseline=None, identity_accounts=()):
+    """Shared private-list, cross-exclusion and two-owner-baseline algorithm."""
+    is_fixture = type(runner) is FixtureRunner
+    scoped_accounts = (set(runner.scope.accounts) if is_fixture else
+                       {item.account for item in runner.scope.accounts})
+    if (not isinstance(resource, Resource) or not isinstance(resource_type, str)
+            or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', resource_type)
+            or not isinstance(accounts, (tuple, list)) or len(accounts) != 2
+            or not all(isinstance(a, str) and a in scoped_accounts for a in accounts)
+            or accounts[0] == accounts[1]):
+        return FixtureOwnershipResult(reason='Two distinct scoped accounts and a resource are required')
+
+    def read(actor, path):
+        if is_fixture:
+            return runner.request(actor, 'GET', runner.scope.origin + path, token=tokens[actor])
+        return runner.get(actor, path)
+
     # Pydantic model_copy(update=...) can bypass validators; revalidate before
     # any request so a forged pagination configuration cannot widen the cap.
     try:
@@ -132,13 +201,14 @@ def collect_fixture_ownership(runner, *, resource_type, resource, accounts, toke
             if next_token is not None:
                 url += '?' + resource.pagination.parameter + '=' + next_token
             try:
-                response = runner.request(actor, 'GET', url, token=tokens[actor])
-            except GuardRejected:
+                response = read(actor, url[len(runner.scope.origin):])
+            except (GuardRejected, ValueError):
                 return FixtureOwnershipResult(entries=_unverified(resource_type, resource.ownership_model, ids),
-                                              resource_status='FAILED', reason='Discovery blocked by fixture safety guard')
+                                              resource_status='FAILED', reason='Discovery was blocked or failed at the safety boundary')
             payload = _json(response) if response.status_code == 200 else None
             data = extract(payload, resource.list_field) if resource.list_field else payload
-            pagination_headers = any(name in response.headers for name in ('link', 'x-next-page', 'content-range', 'x-total-count'))
+            pagination_headers = (any(name in response.headers for name in ('link', 'x-next-page', 'content-range', 'x-total-count'))
+                                  or (not is_fixture and response.extensions.get('canary_pagination_metadata_present') is not False))
             valid = (isinstance(data, list) and len(all_ids) + len(data) <= MAX_LIST_ITEMS
                      and not pagination_headers
                      and (not resource.pagination or not _ambiguous_pagination(payload, resource.pagination.next_field))
@@ -191,10 +261,10 @@ def collect_fixture_ownership(runner, *, resource_type, resource, accounts, toke
     for actor in accounts:
         path = resource.detail.path.replace('{id}', ids[actor])
         try:
-            response = runner.request(actor, 'GET', runner.scope.origin + path, token=tokens[actor])
-        except GuardRejected:
+            response = read(actor, path)
+        except (GuardRejected, ValueError):
             return FixtureOwnershipResult(entries=candidates, resource_status='SUCCESS', ownership_status='FAILED',
-                                          reason='Owner detail blocked by fixture safety guard')
+                                          reason='Owner detail was blocked or failed at the safety boundary')
         obj = _json(response) if response.status_code == 200 else None
         matches = (isinstance(obj, dict) and extract(obj, resource.id_field) == ids[actor]
                    and extract(obj, resource.ownership_field) == actor)
@@ -207,6 +277,11 @@ def collect_fixture_ownership(runner, *, resource_type, resource, accounts, toke
     entries = tuple(OwnedResource(resource_type=resource_type, resource_id=ids[actor], owner=actor,
                                  ownership_model='private', ownership_verified=True, canary=None, origin='harvested')
                     for actor in accounts)
-    return FixtureOwnershipResult(entries=entries, resource_status='SUCCESS', ownership_status='SUCCESS',
-                                  reason='Fixture ownership verified by owner reads and cross-list isolation',
-                                  ids=ids, baselines=baselines)
+    result = FixtureOwnershipResult(entries=entries, resource_status='SUCCESS', ownership_status='SUCCESS',
+                                    reason='Ownership verified by owner reads and cross-list isolation',
+                                    ids=ids, baselines=baselines,
+                                    source_runner=None if is_fixture else runner,
+                                    identity_accounts=identity_accounts)
+    if not is_fixture:
+        result = replace(result, _proof=_RegistryProof(_REGISTRY_ISSUER, _ownership_snapshot(result), resource.model_dump_json()))
+    return result

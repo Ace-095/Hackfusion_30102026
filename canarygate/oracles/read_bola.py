@@ -1,14 +1,16 @@
-"""Two-part read-BOLA oracle for the guarded, in-process fixture only.
+"""One two-part read-BOLA oracle for fixture and mocked guarded HTTPX reads.
 
-This module performs no requests. Inputs are transient responses from the
-fixture runner and the fixture registry, not live traffic or production evidence.
+No requests occur here. General policy and production evidence are not yet
+supported; the only accepted policy/denial contract remains synthetic.
 """
 import httpx
 
 from canarygate.models.result import Result
+from canarygate.network.guarded_httpx import GuardedHTTPXRunner
 from canarygate.scope.loader import fixture_scope
 from canarygate.seed.recipe import Resource
-from canarygate.seed.registry import FixtureOwnershipResult, _json, _safe_id, _valid_detail
+from canarygate.seed.registry import (FixtureOwnershipResult, _json, _safe_id, _valid_detail,
+                                      is_issued_guarded_ownership)
 from canarygate.seed.extraction import MISSING, extract, valid_selector
 
 CHECKLIST_KEYS = (
@@ -22,7 +24,10 @@ def empty_checklist():
     return dict.fromkeys(CHECKLIST_KEYS, False)
 
 
-def _request_matches(response, actor, path):
+def _request_matches(response, actor, path, source_runner=None):
+    if source_runner is not None:
+        return (type(source_runner) is GuardedHTTPXRunner
+                and source_runner.verifies_recorded_read(response, actor, path))
     try:
         request = response.request
         return (request.method == 'GET' and request.url == httpx.URL(fixture_scope().origin + path)
@@ -55,8 +60,17 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
     if not isinstance(resource, Resource) or not isinstance(ownership, FixtureOwnershipResult):
         return result('INCONCLUSIVE', 'Fixture ownership evidence is missing')
     checks['private_resource'] = resource.ownership_model == 'private'
-    checks['distinct_accounts'] = (isinstance(actor, str) and isinstance(owner, str)
-                                   and actor != owner and {actor, owner} == {'alice', 'bob'})
+    source_runner = ownership.source_runner
+    parties_valid = isinstance(actor, str) and isinstance(owner, str) and actor != owner
+    fixture_identities = parties_valid and source_runner is None and {actor, owner} == {'alice', 'bob'}
+    guarded_identities = False
+    if parties_valid and type(source_runner) is GuardedHTTPXRunner and is_issued_guarded_ownership(ownership, resource):
+        try:
+            guarded_identities = (set(ownership.identity_accounts) == {actor, owner}
+                                  and source_runner.has_distinct_credentials(actor, owner))
+        except ValueError:
+            guarded_identities = False
+    checks['distinct_accounts'] = bool(fixture_identities or guarded_identities)
     checks['policy_denies_access'] = (expected_access == 'owner-only'
                                      and expected_source == 'synthetic fixture policy')
     if not checks['private_resource'] or not checks['distinct_accounts']:
@@ -81,7 +95,7 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
         baseline_response = baseline[0]
         path = resource.detail.path.replace('{id}', ids[account])
         if (not isinstance(baseline_response, httpx.Response) or baseline_response.status_code != 200
-                or len(baseline_response.content) > 64 * 1024 or not _request_matches(baseline_response, account, path)):
+                or len(baseline_response.content) > 64 * 1024 or not _request_matches(baseline_response, account, path, source_runner)):
             return result('INCONCLUSIVE', 'Owner baseline request failed or used the wrong identity')
         body = _json(baseline_response)
         if (not isinstance(body, dict) or extract(body, resource.id_field) != ids[account]
@@ -101,7 +115,7 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
     if not isinstance(response, httpx.Response):
         return result('INCONCLUSIVE', 'Cross-account response evidence is missing')
     path = resource.detail.path.replace('{id}', ids[owner])
-    if not _request_matches(response, actor, path):
+    if not _request_matches(response, actor, path, source_runner):
         return result('INCONCLUSIVE', 'Cross-account request identity or target is inconsistent')
     checks['attacker_request'] = True
     if len(response.content) > 64 * 1024:

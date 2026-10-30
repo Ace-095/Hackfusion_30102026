@@ -43,8 +43,11 @@ def observe_identity(runner: GuardedHTTPXRunner, *, actor: str, path: str, ident
             obj[key] = value
         return obj
 
+    def reject_constant(value):
+        raise ValueError("invalid JSON constant")
+
     try:
-        data = json.loads(response.content, object_pairs_hook=unique_object)
+        data = json.loads(response.content, object_pairs_hook=unique_object, parse_constant=reject_constant)
     except (ValueError, UnicodeError, RecursionError):
         return IdentityObservation(actor, "INCONCLUSIVE", "Identity response was not unambiguous JSON")
     observed = data.get(identity_field) if isinstance(data, dict) else None
