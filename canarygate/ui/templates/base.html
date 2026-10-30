@@ -8,9 +8,9 @@
   <meta name="description" content="CanaryGate — evidence-based API authorization testing. Local, fixture-only build.">
   <title>{% block title %}CanaryGate{% endblock %} · CanaryGate</title>
   {#- All assets are served locally: no CDN, no web fonts, no external requests. -#}
-  <link rel="stylesheet" href="/ui/static/css/app.css">
-  <script src="/ui/static/vendor/htmx.min.js" defer></script>
-  <script src="/ui/static/js/app.js" defer></script>
+  <link rel="stylesheet" href="/ui/static/css/app.css?v={{ asset_v }}">
+  <script src="/ui/static/vendor/htmx.min.js?v={{ asset_v }}" defer></script>
+  <script src="/ui/static/js/app.js?v={{ asset_v }}" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>

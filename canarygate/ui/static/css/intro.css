@@ -272,15 +272,15 @@ body.cover {
 /* Eight windows across 18 s with ~0.35 s of overlap, so scenes cross-fade
    rather than cut. The order here is the order on screen; DOM order is set for
    the reading order instead (the h1 comes first). */
-.scene-0     { --sd: 0.10s;  animation: scene-out 2.60s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-words { --sd: 2.38s;  animation: scene-slam 2.35s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-1     { --sd: 4.45s;  animation: scene-out 2.45s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-2     { --sd: 6.55s;  animation: scene-out 2.45s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-3     { --sd: 8.65s;  animation: scene-out 2.40s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-4     { --sd: 10.70s; animation: scene-out 2.35s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-5     { --sd: 12.70s; animation: scene-out 2.20s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-6     { --sd: 14.55s; animation: scene-out 2.05s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
-.scene-title { --sd: 16.25s; animation: scene-final 1.75s cubic-bezier(.16,.84,.34,1) var(--sd) both; }
+.scene-0     { --sd: 0.10s;  animation: scene-out 3.60s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-words { --sd: 3.35s;  animation: scene-slam 2.30s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-1     { --sd: 5.30s;  animation: scene-out 2.30s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-2     { --sd: 7.15s;  animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-3     { --sd: 8.95s;  animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-4     { --sd: 10.75s; animation: scene-out 2.25s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-5     { --sd: 12.55s; animation: scene-out 2.10s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-6     { --sd: 14.30s; animation: scene-out 2.00s cubic-bezier(.22,.61,.36,1) var(--sd) both; }
+.scene-title { --sd: 16.15s; animation: scene-final 1.85s cubic-bezier(.16,.84,.34,1) var(--sd) both; }
 
 @keyframes scene-out {
   0%   { opacity: 0; visibility: hidden; transform: translateY(20px) scale(0.988); filter: blur(9px) }

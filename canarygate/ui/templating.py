@@ -3,6 +3,7 @@
 All templates, CSS and JavaScript are served from this package: the project may
 not load external assets, so there are no CDN references anywhere in the UI.
 """
+import hashlib
 import json
 from pathlib import Path
 
@@ -75,6 +76,29 @@ def short_id(value: str | None, keep: int = 8) -> str:
     return value if len(value) <= keep else f"{value[:keep]}…"
 
 
+def asset_version(directory: Path = STATIC_ROOT) -> str:
+    """Fingerprint every static file, so a changed asset always gets a new URL.
+
+    The UI is served from a long-running local process and the browser is the
+    only other moving part, so an unversioned ``intro.css`` is a trap: a visitor
+    who loaded the page once keeps the old stylesheet while the server hands out
+    new markup, and the landing page silently plays the previous cut. The
+    fingerprint is derived from file *contents* (not mtimes) so it is stable
+    across a checkout and only changes when an asset really changes.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
+        digest.update(path.relative_to(directory).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:12]
+
+
+#: Injected into every template as ``asset_v``; appended to static URLs.
+ASSET_VERSION = asset_version()
+
+
 def build_templates() -> Jinja2Templates:
     environment = Environment(
         loader=FileSystemLoader(str(TEMPLATE_ROOT)),
@@ -91,6 +115,9 @@ def build_templates() -> Jinja2Templates:
     environment.filters["short_id"] = short_id
     environment.filters["humanize"] = humanize
     environment.filters["pct"] = pct
+    # Asset fingerprint: templates append it to every /ui/static URL so a new
+    # stylesheet can never be shadowed by a cached copy of the old one.
+    environment.globals["asset_v"] = ASSET_VERSION
     return Jinja2Templates(env=environment)
 
 

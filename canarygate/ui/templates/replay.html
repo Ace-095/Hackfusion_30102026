@@ -3,11 +3,11 @@
 {% block title %}Flight recorder · {{ run.get('id')|short_id }}{% endblock %}
 
 {% block head %}
-  <link rel="stylesheet" href="/ui/static/css/replay.css">
+  <link rel="stylesheet" href="/ui/static/css/replay.css?v={{ asset_v }}">
 {% endblock %}
 
 {% block scripts %}
-  <script src="/ui/static/js/replay.js" defer></script>
+  <script src="/ui/static/js/replay.js?v={{ asset_v }}" defer></script>
 {% endblock %}
 
 {% block content %}

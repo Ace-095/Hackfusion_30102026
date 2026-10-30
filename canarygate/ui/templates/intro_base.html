@@ -10,7 +10,7 @@
   <meta name="description" content="CanaryGate — evidence-based API authorization testing. A finding needs ownership proof and disclosure proof. Local, fixture-only build.">
   <title>CanaryGate · evidence-based API authorization testing</title>
   {#- Local assets only; no fonts, no CDN, no analytics, no tracking. -#}
-  <link rel="stylesheet" href="/ui/static/css/intro.css">
+  <link rel="stylesheet" href="/ui/static/css/intro.css?v={{ asset_v }}">
   <noscript><meta http-equiv="refresh" content="20; url=/ui/"></noscript>
 </head>
 <body class="cover">
@@ -49,6 +49,6 @@
 
   {% block content %}{% endblock %}
 
-  <script src="/ui/static/js/intro.js" defer></script>
+  <script src="/ui/static/js/intro.js?v={{ asset_v }}" defer></script>
 </body>
 </html>

@@ -918,3 +918,67 @@ def test_two_birds_on_one_page_do_not_collide_in_the_svg(tmp_path):
         # Every reference resolves to an id that exists on this page.
         for ref in set(re.findall(r'url\(#(canary-[^)]+)\)', body)):
             assert ref in ids, ref
+
+
+def test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay(tmp_path):
+    """A cached asset must never fight fresh markup.
+
+    The landing page once looked unchanged after a rebuild because the browser
+    served its cached copy of ``intro.css`` next to the new HTML: the stylesheet
+    still carried the previous scene windows, so the new scenes (including the
+    canary) never got a moment on screen. Every static URL now carries a content
+    fingerprint, and the document itself is never stored.
+    """
+    from canarygate.ui.templating import ASSET_VERSION
+
+    with _client(tmp_path) as client:
+        page = client.get("/")
+        assert page.headers["cache-control"] == "no-store, max-age=0"
+        assert page.headers["x-asset-version"] == ASSET_VERSION
+
+        for template_path in ("/", "/ui/", "/ui/scans"):
+            body = client.get(template_path).text
+            static_urls = re.findall(r'(?:src|href)="(/ui/static/[^"]*)"', body)
+            assert static_urls, template_path
+            for url in static_urls:
+                assert re.search(r"\?v=[0-9a-f]{12}$", url), (template_path, url)
+
+        # Fingerprinted URLs may be cached hard; that is the point of the stamp.
+        css = client.get("/ui/static/css/intro.css")
+        assert css.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_asset_fingerprint_changes_only_when_an_asset_changes(tmp_path):
+    from canarygate.ui.templating import asset_version
+
+    (tmp_path / "a.css").write_text("body { color: red }")
+    (tmp_path / "js").mkdir()
+    (tmp_path / "js" / "b.js").write_text("var x = 1;")
+
+    first = asset_version(tmp_path)
+    assert first == asset_version(tmp_path)          # stable across calls
+    assert re.fullmatch(r"[0-9a-f]{12}", first)
+
+    (tmp_path / "js" / "b.js").write_text("var x = 2;")
+    assert asset_version(tmp_path) != first           # content, not mtime
+
+
+def test_the_canary_holds_the_opening_long_enough_to_be_seen(tmp_path):
+    """The bird is the theme; it cannot be a two-frame flash.
+
+    Guards the one number a future retime is most likely to lose: the window
+    between the opening canary scene and the next cut.
+    """
+    with _client(tmp_path) as client:
+        css = client.get("/ui/static/css/intro.css").text
+
+    opening = re.search(r"\.scene-0\s*\{\s*--sd:\s*([\d.]+)s;\s*animation:\s*scene-out\s+([\d.]+)s", css)
+    assert opening, "the opening scene lost its timed window"
+    start, duration = float(opening.group(1)), float(opening.group(2))
+    assert 0 <= start < 0.5
+    assert duration >= 3.0, f"the canary is only on screen for {duration}s"
+
+    # The next cut must not start before the bird has had that time.
+    following = re.search(r"\.scene-words\s*\{\s*--sd:\s*([\d.]+)s", css)
+    assert following
+    assert start + duration >= float(following.group(1))

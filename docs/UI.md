@@ -626,14 +626,20 @@ sample verdict.
 | Scene | Window | Content |
 | --- | --- | --- |
 | 1 | 0.1 s | **The canary**, singing on the gate rail: "A canary goes quiet before you feel the gas." |
-| 2 | 2.4 s | Kinetic type: REQUEST → RESPONSE → BOUNDARY → **PROOF**, slammed in and out |
-| 3 | 4.5 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
-| 4 | 6.6 s | "A 200 response alone is never enough." |
-| 5 | 8.7 s | "Two-part evidence. One verdict." ownership / disclosure cards |
-| 6 | 10.7 s | The five verdicts blast in behind a 24-ray burst; four dim, CONFIRMED keeps focus |
-| 7 | 12.7 s | Flight-recorder rows building up, ending on CONFIRMED |
-| 8 | 14.6 s | Matrix cells filling in, with `not assessed` left visible |
-| 9 | 16.3 s | The wordmark, gate bars parting, and the canary landing on it |
+| 2 | 3.4 s | Kinetic type: REQUEST → RESPONSE → BOUNDARY → **PROOF**, slammed in and out |
+| 3 | 5.3 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
+| 4 | 7.2 s | "A 200 response alone is never enough." |
+| 5 | 9.0 s | "Two-part evidence. One verdict." ownership / disclosure cards |
+| 6 | 10.8 s | The five verdicts blast in behind a 24-ray burst; four dim, CONFIRMED keeps focus |
+| 7 | 12.6 s | Flight-recorder rows building up, ending on CONFIRMED |
+| 8 | 14.3 s | Matrix cells filling in, with `not assessed` left visible |
+| 9 | 16.2 s | The wordmark, gate bars parting, and the canary landing on it |
+
+The opening scene holds for **3.6 s** — a third longer than the rest, because the
+bird is the reason the product is called CanaryGate and it has to be legible as
+a bird, not a flash. A test (`test_the_canary_holds_the_opening_long_enough_to_be_seen`)
+fails if that window ever drops below 3 s, or if the next cut starts before the
+bird leaves.
 
 The wordmark scene is **first in the DOM** and last on screen, because reading
 order should start at the product name.
@@ -784,3 +790,36 @@ beat, off-beat tick, bar marker, master gain 0.07, **off by default**. The new
 part is that the picture listens to it — `flashBeat()` fires on downbeats and
 the stylesheet answers with a short scale pulse. Muting clears the class, so the
 motion never outlives the music.
+
+### 14.10 Caching: why a rebuild could look like no rebuild at all
+
+Symptom worth recording, because it cost a cycle: after the canary landed, the
+page still played the *previous* cut — no bird, old scene count. The server was
+serving the new files; the browser was not fetching them.
+
+Two omissions combined:
+
+* static assets were linked as bare paths (`/ui/static/css/intro.css`) with no
+  version, and
+* nothing set `Cache-Control` anywhere, so the browser was free to apply
+  heuristic freshness to both the stylesheet and the HTML document.
+
+Result: new markup + a cached stylesheet holding the *old* scene windows. The
+canary scene had no window in that stylesheet, so it never appeared, while the
+old windows still fired. The page genuinely looked unchanged.
+
+The fix (`canarygate/ui/templating.py`, `canarygate/ui/app.py`):
+
+| Piece | Behaviour |
+| --- | --- |
+| `asset_version()` | SHA-256 over every static file's path + contents, truncated to 12 hex chars; stable across checkouts, changes only when an asset changes |
+| `asset_v` template global | appended to every `/ui/static` URL as `?v=<fingerprint>` |
+| HTML | `Cache-Control: no-store, max-age=0` + `Pragma: no-cache` — the document is never reused |
+| Fingerprinted assets | `Cache-Control: public, max-age=31536000, immutable` — safe, because a changed file gets a changed URL |
+| Other responses | `no-cache` (revalidate, never serve blind) |
+| `X-Asset-Version` | the running build, readable from the network tab |
+
+Three tests hold this: fingerprints appear on every static URL, the fingerprint
+tracks file *contents* (not mtimes), and the document is never stored. If a
+future change to the landing page "does not show up", check `X-Asset-Version`
+before reading the CSS.
