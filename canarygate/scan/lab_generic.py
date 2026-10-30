@@ -17,9 +17,13 @@ from datetime import datetime, timezone
 from canarygate.evidence.redaction import digest
 from canarygate.scan.lab_models import (LabCheck, LabConstraints, LabRun, LabSummary,
                                         LabTransportInfo)
-from canarygate.scan.lab_scenarios import (ADMIN_PATH, EXPECTED_POLICY, KNOWN_ACCOUNTS,
+from canarygate.scan.lab_scenarios import (ADMIN_PATH, DEMO_PAIR, EXPECTED_POLICY,
                                            OTHER_RECORD, OWN_RECORD, PROFILE_PATH,
                                            SECURE_ENDPOINT)
+
+#: The checkpoint-34 evidence workflow reads one fixed pair. The read-BOLA and SCI
+#: workflows take an explicit pair instead; this one exists to collect raw evidence.
+PRIMARY, SECONDARY = DEMO_PAIR
 
 LIMITATIONS = (
     "Loopback-only controlled validation against a lab written by the same team; "
@@ -81,10 +85,10 @@ def run_lab_evidence(plan, runner, *, store=None):
     """Collect the seven declared TargetLab observations in a fixed order."""
     checks = []
     authenticated = {}
-    for actor in KNOWN_ACCOUNTS:
+    for actor in DEMO_PAIR:
         runner.login(actor)
         authenticated[actor] = runner.token_for(actor) is not None
-    distinct = runner.has_distinct_credentials(*KNOWN_ACCOUNTS)
+    distinct = runner.has_distinct_credentials(*DEMO_PAIR)
 
     def read(actor, path):
         """Return (response, verified, blocked). A guard refusal is not an error."""
@@ -94,7 +98,7 @@ def run_lab_evidence(plan, runner, *, store=None):
             return None, False, True
         return response, runner.verifies_recorded_read(response, actor, path), False
 
-    for check_id, actor in (("LAB-01", "alice"), ("LAB-02", "bob")):
+    for check_id, actor in (("LAB-01", PRIMARY), ("LAB-02", SECONDARY)):
         if not authenticated[actor]:
             checks.append(_failed_login_check(check_id, actor, plan))
             continue
@@ -106,7 +110,7 @@ def run_lab_evidence(plan, runner, *, store=None):
                              PROFILE_PATH, response, verified=verified, plan=plan,
                              expect_identity=True, distinct=distinct))
 
-    for check_id, actor in (("LAB-03", "alice"), ("LAB-04", "bob")):
+    for check_id, actor in (("LAB-03", PRIMARY), ("LAB-04", SECONDARY)):
         if not authenticated[actor]:
             checks.append(_failed_login_check(check_id, actor, plan))
             continue
@@ -119,9 +123,11 @@ def run_lab_evidence(plan, runner, *, store=None):
                              distinct=distinct))
 
     for check_id, actor, path, title in (
-            ("LAB-05", "alice", OTHER_RECORD["alice"], "alice reads bob's private record"),
-            ("LAB-06", "alice", SECURE_ENDPOINT, "alice is denied on bob's secure record"),
-            ("LAB-07", "alice", ADMIN_PATH, "alice is denied the admin collection")):
+            ("LAB-05", PRIMARY, OTHER_RECORD[PRIMARY],
+              f"{PRIMARY} reads {SECONDARY}'s private asset"),
+            ("LAB-06", PRIMARY, SECURE_ENDPOINT,
+              f"{PRIMARY} is denied on {SECONDARY}'s secure asset"),
+            ("LAB-07", PRIMARY, ADMIN_PATH, f"{PRIMARY} is denied the admin collection")):
         if not authenticated[actor]:
             checks.append(_failed_login_check(check_id, actor, plan))
             continue
@@ -133,7 +139,7 @@ def run_lab_evidence(plan, runner, *, store=None):
                              verified=verified, plan=plan, distinct=distinct))
 
     checks = sorted(checks, key=lambda item: item.id)
-    counts = {"authenticated": int(authenticated["alice"]) + int(authenticated["bob"]),
+    counts = {"authenticated": sum(int(authenticated[actor]) for actor in DEMO_PAIR),
               "denied": sum(item.observation == "denied" for item in checks),
               "allowed": sum(item.observation in {"allowed_owner", "allowed_other"} for item in checks),
               "unverified": sum(item.observation in {"unverified", "unexpected_status"} for item in checks),

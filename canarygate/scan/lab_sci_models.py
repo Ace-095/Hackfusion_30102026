@@ -12,9 +12,18 @@ RESET_IDS = ("RESET-01", "RESET-02", "RESET-03", "RESET-04")
 
 
 class LabSciScanRequest(BaseModel):
+    """One control-interaction run or reset proof.
+
+    ``actor`` sets the lab condition and ``owner`` names whose asset it leaks; both
+    must be provisioned demo accounts and must differ. Omitted, the documented
+    default pair is used.
+    """
+
     model_config = ConfigDict(extra="forbid", strict=True)
     port: int = Field(ge=1024, le=65535)
     request_budget: int = Field(default=16, ge=8, le=40)
+    actor: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,31}$")
+    owner: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,31}$")
 
 
 class ResetCheck(BaseModel):

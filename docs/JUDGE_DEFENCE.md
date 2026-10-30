@@ -172,14 +172,15 @@ was denied → `SAFE`. If it returned 200 with no private data →
 
 | # | Request | Result | Meaning |
 |---|---|---|---|
-| 1 | alice → bob's `GET /records/{id}/guarded` | `403 {"error":"forbidden"}` | authorization control works |
-| 2 | alice `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | authentication control works |
-| 3 | alice → **the same** guarded read | `200` + **bob's private marker** | their interaction leaks |
+| 1 | mallapa → sakshi's `GET /records/{id}/guarded` | `403 {"error":"forbidden"}` | authorization control works |
+| 2 | mallapa `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | authentication control works |
+| 3 | mallapa → **the same** guarded read | `200` + **sakshi's private marker** | their interaction leaks |
 
 The identical request by the identical actor changes outcome only because of the
 intervening rejected login. The disclosure proof compares the returned marker with
-the marker bob's own baseline returned, so a stale or unrelated value cannot
-confirm it.
+the marker sakshi's own baseline returned, so a stale or unrelated value cannot
+confirm it. The same sequence holds for every other ordered pair of the three demo
+accounts (`mallapa`, `sakshi`, `harsha`), each with that owner's asset.
 
 A separate two-run scenario (`POST /api/lab-sci-resets`) proves the state is
 really state: `403 → 401 → 200 → 403`, where the last step follows a *successful*

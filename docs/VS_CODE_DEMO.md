@@ -323,15 +323,15 @@ Open `http://127.0.0.1:8765/docs` to show the generated OpenAPI documentation an
 the `bearerAuth` scheme. Then reproduce the ground truth with curl:
 
 ```sh
-TOKEN=lab-token-alice
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/secure
+TOKEN=lab-token-mallapa
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/BRD-2026-018/secure
 # {"error":"forbidden"}
 curl -s -X POST http://127.0.0.1:8765/login -H 'Content-Type: application/json' \
-     -d '{"username":"alice","password":"x","admin":true}'
+     -d '{"username":"mallapa","password":"x","admin":true}'
 # {"error":"invalid_request"}
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/guarded
-# {"id":"rb","owner":"bob","private_note":"targetlab-bob-private-marker","compat_state":true}
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/rb/secure
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/BRD-2026-018/guarded
+# {"id":"BRD-2026-018","owner":"sakshi","private_note":"targetlab-sakshi-private-marker","compat_state":true}
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/records/BRD-2026-018/secure
 # {"error":"forbidden"}   (still secure: the flaw is narrow)
 ```
 

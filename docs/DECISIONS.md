@@ -959,7 +959,7 @@ The lab is deliberately weak, so it is deliberately contained. It refuses a
 non-loopback bind address, rejects a non-loopback `Host` header, has no outbound
 HTTP client, and is never imported by `canarygate`. Predictable credentials are
 acceptable **only** because the service is loopback-only and the values are
-obviously fake (`lab-token-alice`); they must never be reused.
+obviously fake (`lab-token-mallapa`); they must never be reused.
 
 The interaction flaw is modelled as a cross-request state bug: a rejected
 malformed login leaves a legacy compatibility flag for that account, and one

@@ -17,7 +17,7 @@ from canarygate.seed.recipe import Resource
 
 def test_the_plan_declares_both_endpoints_and_the_expected_policy():
     plan = build_bola_plan(8765)
-    assert plan.accounts == ("alice", "bob")
+    assert plan.accounts == ("mallapa", "sakshi")
     assert plan.resource.detail.path == "/records/{id}"
     assert plan.secure_resource.detail.path == "/records/{id}/secure"
     assert plan.resource.discovery.path == plan.secure_resource.discovery.path == "/records"
@@ -63,7 +63,7 @@ def test_the_oracle_trusts_the_targetlab_policy_source_only_for_the_lab_runner()
 def test_the_oracle_rejects_a_targetlab_claim_without_verified_ownership():
     decision = evaluate_read_bola(
         ownership=None, resource_type="record", resource=VULNERABLE_RESOURCE,
-        actor="alice", owner="bob", response=None, expected_access="owner-only",
+        actor="mallapa", owner="sakshi", response=None, expected_access="owner-only",
         expected_source="targetlab declared record policy")
     assert decision.verdict == "INCONCLUSIVE"
     assert not any(decision.checklist.values())

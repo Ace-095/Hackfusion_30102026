@@ -224,3 +224,42 @@ class FixtureSectionReport(BaseModel):
     mode: Literal["fixture"]
     run_id: str
     sections: FixtureSectionData
+
+
+class LabCatalogPair(BaseModel):
+    """The ordered pair of demo accounts a scan authenticates for one combination."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    actor: str
+    owner: str
+
+
+class LabCatalogAccount(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    account: str
+    title: str
+    role: str
+    asset_id: str
+    asset_type: str
+    asset_label: str
+
+
+class LabCatalogCombination(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    actor: str
+    asset_id: str
+    owner: str
+    kind: Literal["legitimate_owner_request", "cross_account_attempt"]
+    pair: LabCatalogPair
+
+
+class LabCatalog(BaseModel):
+    """Public demo-tenant catalog. No credential and no verdict is part of it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    mode: Literal["targetlab_demo"]
+    dataset: Literal["demo_tenant"]
+    accounts: list[LabCatalogAccount] = Field(min_length=3, max_length=3)
+    pairs: list[LabCatalogPair] = Field(min_length=6, max_length=6)
+    combinations: list[LabCatalogCombination] = Field(min_length=9, max_length=9)
+    notes: list[str] = Field(min_length=1, max_length=8)

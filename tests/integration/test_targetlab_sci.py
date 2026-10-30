@@ -16,9 +16,10 @@ from canarygate.api.app import create_app
 from canarygate.database.lab_sci_store import LabSciStore
 from canarygate.scan.lab_sci_scenarios import DENIAL_BODY, REJECTION_BODY
 
-FORBIDDEN = ("lab-token-alice", "lab-token-bob", "alice-lab-password", "bob-lab-password",
-             "targetlab-alice-private-marker", "targetlab-bob-private-marker",
-             "targetlab-trace-marker")
+FORBIDDEN = ("lab-token-mallapa", "lab-token-sakshi", "lab-token-harsha",
+             "mallapa-lab-password", "sakshi-lab-password", "harsha-lab-password",
+             "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker",
+             "targetlab-harsha-private-marker", "targetlab-trace-marker")
 
 
 class Recording:
@@ -99,7 +100,7 @@ def test_the_real_interaction_is_confirmed_from_verified_evidence(client, lab):
     assert run["disclosure"]["owner_baseline_collected"] is True
     assert run["disclosure"]["marker_matches_owner_baseline"] is True
     assert run["disclosure"]["marker_withheld"] is True
-    assert run["disclosure"]["owner"] == "bob" and run["disclosure"]["actor"] == "alice"
+    assert run["disclosure"]["owner"] == "sakshi" and run["disclosure"]["actor"] == "mallapa"
     assert run["ownership"]["status"] == "SUCCESS"
     assert run["ownership"]["cross_list_isolated"] is True
     assert run["requests_sent"] == 11 and run["budget_remaining"] == 5
@@ -117,10 +118,10 @@ def test_the_scanner_never_requests_the_lab_ground_truth(tmp_path, monkeypatch):
     paths = [path for _, path in recording.paths]
     assert not any(path.startswith("/lab/") for path in paths)
     assert set(recording.paths) <= {("POST", "/login"), ("GET", "/profile"), ("GET", "/records"),
-                                    ("GET", "/records/ra/guarded"), ("GET", "/records/rb/guarded")}
+                                    ("GET", "/records/MKT-2026-041/guarded"), ("GET", "/records/BRD-2026-018/guarded")}
     # The exact declared sequence: two logins, then the interaction on the guarded route.
-    # bob's owner baseline, then alice's denial, then alice's combined read
-    assert recording.paths.count(("GET", "/records/rb/guarded")) == 3
+    # sakshi's owner baseline, then mallapa's denial, then mallapa's combined read
+    assert recording.paths.count(("GET", "/records/BRD-2026-018/guarded")) == 3
     assert recording.paths.count(("POST", "/login")) == 3
 
 
@@ -321,3 +322,49 @@ def test_the_workflow_reuses_the_single_sci_engine():
                       "def is_checked_denial", "EXPECTED"):
         assert forbidden not in source, forbidden
     assert DENIAL_BODY and REJECTION_BODY
+
+
+def test_each_ordered_pair_runs_its_own_real_interaction(client, lab):
+    """Any ordered pair of demo accounts reaches the same flaw with its own asset.
+
+    The three pairs are the ones the demo catalog declares; each must confirm with
+    the disclosure attributed to the selected owner and no other account's marker.
+    """
+    markers = {"mallapa": "targetlab-mallapa-private-marker",
+               "sakshi": "targetlab-sakshi-private-marker",
+               "harsha": "targetlab-harsha-private-marker"}
+    pairs = (("mallapa", "sakshi"), ("sakshi", "harsha"), ("harsha", "mallapa"))
+    for actor, owner in pairs:
+        run = start(client, lab.port, actor=actor, owner=owner)
+        assert run["verdict"] == "CONFIRMED", (actor, owner, run["reason"])
+        assert run["disclosure"]["actor"] == actor
+        assert run["disclosure"]["owner"] == owner
+        assert run["disclosure"]["marker_matches_owner_baseline"] is True
+        assert run["disclosure"]["marker_withheld"] is True
+        payload = json.dumps(run)
+        assert markers[owner] not in payload
+        for other, marker in markers.items():
+            if other != owner:
+                assert marker not in payload
+        assert run["ownership"]["status"] == "SUCCESS"
+        assert run["scope"]["accounts"] if "accounts" in run["scope"] else True
+        assert run["requests_sent"] == 11 and run["blocked_by_guard"] == 0
+
+
+def test_the_reset_proof_follows_the_selected_pair(client, lab):
+    proof = client.post("/api/lab-sci-resets",
+                        json={"port": lab.port, "actor": "harsha", "owner": "mallapa"}).json()
+    assert proof["status"] == "proven"
+    assert proof["disclosure"]["actor"] == "harsha"
+    assert proof["disclosure"]["owner"] == "mallapa"
+    assert proof["disclosure"]["marker_matches_owner_baseline"] is True
+    assert "targetlab-mallapa-private-marker" not in json.dumps(proof)
+
+
+def test_a_selection_without_two_distinct_provisioned_accounts_is_rejected(client, lab):
+    """A pair that cannot be a cross-account read is refused before any request."""
+    for payload in ({"actor": "mallapa", "owner": "mallapa"},
+                    {"actor": "mallapa", "owner": "nobody"},
+                    {"actor": "admin", "owner": "sakshi"}):
+        response = client.post("/api/lab-sci-scans", json={"port": lab.port, **payload})
+        assert response.status_code == 400, (payload, response.text)

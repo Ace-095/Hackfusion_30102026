@@ -30,7 +30,7 @@ def runner_for(lab, *, plan=None):
     return TargetLabRunner(plan.scope, plan.credentials, ca_file=str(lab_server.TARGETLAB_CERT))
 
 
-def ownership_for(runner, accounts=("alice", "bob")):
+def ownership_for(runner, accounts=("mallapa", "sakshi")):
     for account in accounts:
         runner.login(account)
     return collect_guarded_ownership(runner, resource_type="record", resource=GUARDED_RESOURCE,
@@ -52,7 +52,7 @@ def test_a_checked_denial_is_the_only_clean_authorization_baseline():
 
 def test_an_undened_cross_account_read_is_an_individual_failure():
     verdict, reason, observable = guarded_denial_verdict(
-        200, {"id": "rb", "owner": "bob", "private_note": "x"}, DENIAL_BODY)
+        200, {"id": "rb", "owner": "sakshi", "private_note": "x"}, DENIAL_BODY)
     assert (verdict, observable) == ("CONFIRMED", True)
     assert "on its own" in reason
 
@@ -60,50 +60,50 @@ def test_an_undened_cross_account_read_is_an_individual_failure():
 # ----------------------------------------------------------- rejection mapping
 def test_only_the_exact_rejection_is_a_passing_authentication_baseline():
     verdict, reason, observable = rejection_verdict(
-        401, dict(REJECTION_BODY), REJECTION_BODY, "alice", "bob")
+        401, dict(REJECTION_BODY), REJECTION_BODY, "mallapa", "sakshi")
     assert (verdict, observable) == ("SAFE", True)
     for status, body in ((401, {"error": "other"}), (422, {"error": "invalid_request"}),
                          (400, None), (500, dict(REJECTION_BODY))):
-        verdict, _, _ = rejection_verdict(status, body, REJECTION_BODY, "alice", "bob")
+        verdict, _, _ = rejection_verdict(status, body, REJECTION_BODY, "mallapa", "sakshi")
         assert verdict == "INCONCLUSIVE", (status, body)
 
 
 def test_an_accepted_rejected_login_is_an_individual_failure():
     verdict, _, observable = rejection_verdict(
-        200, {"token": "x", "identity": "alice", "role": "user"},
-        REJECTION_BODY, "alice", "bob")
+        200, {"token": "x", "identity": "mallapa", "role": "user"},
+        REJECTION_BODY, "mallapa", "sakshi")
     assert (verdict, observable) == ("CONFIRMED", True)
 
 
 def test_an_ambiguous_rejection_response_never_passes():
     for body in (None, {}, [], {"error": 5}, {"error": ""}):
-        verdict, _, _ = rejection_verdict(401, body, REJECTION_BODY, "alice", "bob")
+        verdict, _, _ = rejection_verdict(401, body, REJECTION_BODY, "mallapa", "sakshi")
         assert verdict == "INCONCLUSIVE", body
 
 
 # ------------------------------------------------------- disclosure verification
 def test_disclosure_requires_the_owner_baseline_marker_and_the_owner_identity():
-    body = {"id": "rb", "owner": "bob", "private_note": "targetlab-bob-private-marker"}
-    impact, reason = disclosure_impact(body, owner_baseline="targetlab-bob-private-marker",
-                                       owner_id="rb", owner="bob", private_field="private_note")
+    body = {"id": "rb", "owner": "sakshi", "private_note": "targetlab-sakshi-private-marker"}
+    impact, reason = disclosure_impact(body, owner_baseline="targetlab-sakshi-private-marker",
+                                       owner_id="rb", owner="sakshi", private_field="private_note")
     assert impact == "private_data"
     # Right marker, wrong owner identity in the body: ambiguous, never CONFIRMED.
-    impact, _ = disclosure_impact({**body, "owner": "alice"},
-                                  owner_baseline="targetlab-bob-private-marker",
-                                  owner_id="rb", owner="bob", private_field="private_note")
+    impact, _ = disclosure_impact({**body, "owner": "mallapa"},
+                                  owner_baseline="targetlab-sakshi-private-marker",
+                                  owner_id="rb", owner="sakshi", private_field="private_note")
     assert impact == "ambiguous"
     # Wrong marker, missing marker, empty marker and a redacted marker are never impact.
-    for value in ("targetlab-alice-private-marker", None, "", "[redacted]", "***"):
+    for value in ("targetlab-mallapa-private-marker", None, "", "[redacted]", "***"):
         impact, _ = disclosure_impact({**body, "private_note": value},
-                                      owner_baseline="targetlab-bob-private-marker",
-                                      owner_id="rb", owner="bob", private_field="private_note")
+                                      owner_baseline="targetlab-sakshi-private-marker",
+                                      owner_id="rb", owner="sakshi", private_field="private_note")
         assert impact == "none", value
 
 
 def test_disclosure_of_another_account_marker_is_not_the_owner_marker():
-    body = {"id": "ra", "owner": "alice", "private_note": "targetlab-alice-private-marker"}
-    impact, _ = disclosure_impact(body, owner_baseline="targetlab-bob-private-marker",
-                                  owner_id="rb", owner="bob", private_field="private_note")
+    body = {"id": "ra", "owner": "mallapa", "private_note": "targetlab-mallapa-private-marker"}
+    impact, _ = disclosure_impact(body, owner_baseline="targetlab-sakshi-private-marker",
+                                  owner_id="rb", owner="sakshi", private_field="private_note")
     assert impact == "none"
 
 
@@ -152,11 +152,11 @@ def test_a_stale_response_from_another_runner_is_not_evidence(lab):
     first = runner_for(lab, plan=plan)
     second = runner_for(lab, plan=plan)
     try:
-        first.login("alice")
-        stale = first.get("alice", "/records/ra")
-        assert first.verifies_recorded_read(stale, "alice", "/records/ra") is True
+        first.login("mallapa")
+        stale = first.get("mallapa", "/records/MKT-2026-041")
+        assert first.verifies_recorded_read(stale, "mallapa", "/records/MKT-2026-041") is True
         # A different run must not accept another run's response object.
-        assert second.verifies_recorded_read(stale, "alice", "/records/ra") is False
+        assert second.verifies_recorded_read(stale, "mallapa", "/records/MKT-2026-041") is False
     finally:
         first.close()
         second.close()
@@ -167,10 +167,10 @@ def test_a_mutated_combined_response_is_not_evidence(lab):
     try:
         ownership = ownership_for(runner)
         assert ownership.ownership_status == "SUCCESS"
-        response = runner.get("alice", "/records/rb/guarded")
+        response = runner.get("mallapa", "/records/BRD-2026-018/guarded")
         assert response.status_code == 403
-        response._content = b'{"id": "rb", "owner": "bob", "private_note": "x"}'
-        assert runner.verifies_recorded_read(response, "alice", "/records/rb/guarded") is False
+        response._content = b'{"id": "rb", "owner": "sakshi", "private_note": "x"}'
+        assert runner.verifies_recorded_read(response, "mallapa", "/records/BRD-2026-018/guarded") is False
     finally:
         runner.close()
 
@@ -178,12 +178,12 @@ def test_a_mutated_combined_response_is_not_evidence(lab):
 def test_a_duplicate_probe_is_blocked_by_the_guard(lab):
     runner = runner_for(lab)
     try:
-        runner.login("alice")
-        body = wrong_password_body("alice")
-        first = runner.submit("alice", "/login", "wrong_password", body)
+        runner.login("mallapa")
+        body = wrong_password_body("mallapa")
+        first = runner.submit("mallapa", "/login", "wrong_password", body)
         assert first.status_code == 401
         with pytest.raises(ValueError):
-            runner.submit("alice", "/login", "wrong_password", body)
+            runner.submit("mallapa", "/login", "wrong_password", body)
         assert runner.stats()["requests_sent"] == 2
     finally:
         runner.close()
@@ -192,9 +192,9 @@ def test_a_duplicate_probe_is_blocked_by_the_guard(lab):
 def test_a_second_successful_login_is_blocked_in_the_same_run(lab):
     runner = runner_for(lab)
     try:
-        assert runner.login("alice") is True
+        assert runner.login("mallapa") is True
         with pytest.raises(ValueError):
-            runner.login("alice")
+            runner.login("mallapa")
     finally:
         runner.close()
 
@@ -202,11 +202,11 @@ def test_a_second_successful_login_is_blocked_in_the_same_run(lab):
 def test_the_probe_cannot_target_another_path(lab):
     runner = runner_for(lab)
     try:
-        runner.login("alice")
+        runner.login("mallapa")
         with pytest.raises((TargetLabRefused, ValueError)):
-            runner.submit("alice", "/records/rb", "wrong_password", wrong_password_body("alice"))
+            runner.submit("mallapa", "/records/BRD-2026-018", "wrong_password", wrong_password_body("mallapa"))
         with pytest.raises(ValueError):
-            runner.submit("alice", "/login", "not_a_probe", wrong_password_body("alice"))
+            runner.submit("mallapa", "/login", "not_a_probe", wrong_password_body("mallapa"))
     finally:
         runner.close()
 
@@ -214,11 +214,11 @@ def test_the_probe_cannot_target_another_path(lab):
 def test_the_ground_truth_route_stays_unreachable(lab):
     runner = runner_for(lab)
     try:
-        runner.login("alice")
+        runner.login("mallapa")
         for path in ("/lab/ground-truth", "/lab/ground-truth/", "/openapi.json",
-                     "/records/rb/guarded/"):
+                     "/records/BRD-2026-018/guarded/"):
             with pytest.raises((TargetLabRefused, ValueError)):
-                runner.get("alice", path)
+                runner.get("mallapa", path)
     finally:
         runner.close()
 
@@ -239,11 +239,11 @@ def test_owner_baselines_are_distinct_and_marker_bearing(lab):
         ownership = ownership_for(runner)
         assert ownership.ownership_status == "SUCCESS"
         markers = {}
-        for actor in ("alice", "bob"):
+        for actor in ("mallapa", "sakshi"):
             body = json.loads(ownership.baselines[actor][0].content)
             assert body["owner"] == actor
             markers[actor] = extract(body, GUARDED_RESOURCE.private_field)
-        assert markers["alice"] != markers["bob"]
+        assert markers["mallapa"] != markers["sakshi"]
         assert all(isinstance(value, str) and value for value in markers.values())
     finally:
         runner.close()
@@ -253,10 +253,10 @@ def test_the_redactor_scrubs_every_lab_fixture_secret():
     """Defence in depth: a leak would be scrubbed, not only asserted against."""
     from canarygate.evidence.redaction import redact
 
-    for secret in ("lab-token-alice", "lab-token-bob", "alice-lab-password",
-                   "bob-lab-password", "targetlab-alice-private-marker",
-                   "targetlab-bob-private-marker", "targetlab-trace-marker",
-                   "targetlab-wrong-password-for-alice"):
+    for secret in ("lab-token-mallapa", "lab-token-sakshi", "mallapa-lab-password",
+                   "sakshi-lab-password", "targetlab-mallapa-private-marker",
+                   "targetlab-sakshi-private-marker", "targetlab-trace-marker",
+                   "targetlab-wrong-password-for-mallapa"):
         assert redact({"value": f"before {secret} after"})["value"] == "before [REDACTED] after"
 
 
@@ -295,9 +295,9 @@ def test_a_swapped_token_cannot_establish_the_interaction(lab):
     plan = build_sci_plan(lab.port)
     runner = runner_for(lab, plan=plan)
     try:
-        assert runner.login("alice") is True
-        assert runner.login("bob") is True
-        runner._tokens["alice"] = runner._tokens["bob"]
+        assert runner.login("mallapa") is True
+        assert runner.login("sakshi") is True
+        runner._tokens["mallapa"] = runner._tokens["sakshi"]
         run = run_lab_sci_scan(plan, runner)
         assert run.verdict != "CONFIRMED"
         assert run.combined.executed is False

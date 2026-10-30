@@ -25,9 +25,9 @@ from pathlib import Path
 
 # Public, documented lab fixtures. Their absence from every surface is asserted,
 # not assumed: these are the values a regression would leak first.
-LAB_SECRETS = ("lab-token-alice", "lab-token-bob", "alice-lab-password", "bob-lab-password",
-               "targetlab-alice-private-marker", "targetlab-bob-private-marker",
-               "targetlab-trace-marker", "targetlab-wrong-password-for-alice")
+LAB_SECRETS = ("lab-token-mallapa", "lab-token-sakshi", "mallapa-lab-password", "sakshi-lab-password",
+               "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker",
+               "targetlab-trace-marker", "targetlab-wrong-password-for-mallapa")
 
 _BOLA_ENDPOINTS = {
     "LAB-BOLA-01": "GET /records/{id}", "LAB-BOLA-02": "GET /records/{id}",

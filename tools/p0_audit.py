@@ -88,6 +88,7 @@ TEST_EVIDENCE = {
     "tests/lab/test_lab_sci_adversarial.py": "loopback_tls",
     "tests/lab/test_lab_sci_contract.py": "unit",
     "tests/integration/test_demo_consistency.py": "loopback_tls",
+    "tests/integration/test_lab_nine_combinations.py": "loopback_tls",
     "tests/security/test_sci_decisions.py": "unit",
     "tests/integration/test_read_bola_oracle.py": "fixture",
     "tests/integration/test_resource_enumeration.py": "fixture",

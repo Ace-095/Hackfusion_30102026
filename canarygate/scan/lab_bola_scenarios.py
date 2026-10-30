@@ -1,9 +1,16 @@
-"""The fixed TargetLab read-BOLA scenario.
+"""The TargetLab read-BOLA scenario.
 
-Nothing here is configurable beyond the port and the request budget: the
-resource declarations, accounts and policy are constants because the lab is
-ours. ``EXPECTED_VERDICTS`` is *ground truth for evaluation only*; the scan
-never reads it (a test proves the verdicts are identical when it is removed).
+The resource declarations, accounts and policy are constants because the lab is
+ours. The one thing a run may select is the ordered pair of demo accounts it
+exercises: a requester and the owner of the asset being requested. Both must be
+provisioned accounts and must differ; nothing else about the scenario is
+configurable.
+
+``EXPECTED_VERDICTS`` is *ground truth for evaluation only*; the scan never reads
+it (a test proves the verdicts are identical when it is removed). Every entry is
+pair-invariant: for any ordered pair, the requester's own baseline is SAFE, the
+owner's own baseline is SAFE, both cross-account reads on the vulnerable route are
+CONFIRMED and both cross-account reads on the secure route are SAFE.
 
 The vulnerable endpoint (``/records/{id}``) ignores ownership. The secure one
 (``/records/{id}/secure``) enforces it. Both share one owner-isolated collection
@@ -37,14 +44,16 @@ SECURE_RESOURCE = Resource.model_validate({
 })
 
 # Ground truth, used only to score the finished run. Deliberately not imported by
-# the orchestrator's decision path.
+# the orchestrator's decision path. Indices are positional within the pair:
+# 01 requester's own asset, 02 owner's own asset, 03/04 the two cross-account reads
+# on the vulnerable route, 05/06 the same reads on the secure route.
 EXPECTED_VERDICTS = {
-    "LAB-BOLA-01": "SAFE",       # alice reads her own record
-    "LAB-BOLA-02": "SAFE",       # bob reads his own record
-    "LAB-BOLA-03": "CONFIRMED",  # alice reads bob's record (vulnerable route)
-    "LAB-BOLA-04": "CONFIRMED",  # bob reads alice's record (vulnerable route)
-    "LAB-BOLA-05": "SAFE",       # alice denied on bob's secure record
-    "LAB-BOLA-06": "SAFE",       # bob denied on alice's secure record
+    "LAB-BOLA-01": "SAFE",       # the requester reads their own asset
+    "LAB-BOLA-02": "SAFE",       # the owner reads their own asset
+    "LAB-BOLA-03": "CONFIRMED",  # requester reads the owner's asset (vulnerable)
+    "LAB-BOLA-04": "CONFIRMED",  # owner reads the requester's asset (vulnerable)
+    "LAB-BOLA-05": "SAFE",       # requester denied on the owner's secure asset
+    "LAB-BOLA-06": "SAFE",       # owner denied on the requester's secure asset
 }
 
 CHECK_IDS = tuple(f"LAB-BOLA-{index:02d}" for index in range(1, 7))
@@ -67,17 +76,26 @@ class LabBolaPlan:
     policy: Policy
 
 
-def build_bola_plan(port: int, *, budget: int = DEFAULT_BUDGET) -> LabBolaPlan:
-    """Build the fixed plan. Reuses the checkpoint 35 scope builder."""
-    from canarygate.scan.lab_scenarios import LAB_PASSWORDS, KNOWN_ACCOUNTS, build_lab_scope
+def _pair(actor, owner) -> tuple[str, str]:
+    """Resolve the requested ordered pair of demo accounts."""
+    from canarygate.scan.lab_scenarios import resolve_pair
+
+    return resolve_pair(actor, owner)
+
+
+def build_bola_plan(port: int, *, budget: int = DEFAULT_BUDGET, actor: str | None = None,
+                    owner: str | None = None) -> LabBolaPlan:
+    """Build the plan for one ordered pair. Reuses the checkpoint 35 scope builder."""
+    from canarygate.scan.lab_scenarios import LAB_PASSWORDS, build_lab_scope
 
     if not isinstance(port, int) or not 1024 <= port <= 65535:
         raise ValueError("a TargetLab port between 1024 and 65535 is required")
     if not isinstance(budget, int) or not MIN_BUDGET <= budget <= MAX_BUDGET:
         raise ValueError(f"a request budget between {MIN_BUDGET} and {MAX_BUDGET} is required")
+    pair = _pair(actor, owner)
     return LabBolaPlan(
-        scenario_id=SCENARIO_ID, title=TITLE, scope=build_lab_scope(port, budget=budget),
-        credentials=dict(LAB_PASSWORDS), accounts=KNOWN_ACCOUNTS,
+        scenario_id=SCENARIO_ID, title=TITLE, scope=build_lab_scope(port, budget=budget, accounts=pair),
+        credentials={name: LAB_PASSWORDS[name] for name in pair}, accounts=pair,
         resource=VULNERABLE_RESOURCE, secure_resource=SECURE_RESOURCE,
         profile_path="/profile", identity_field="identity",
         policy=Policy(expected_access="owner-only", expected_source=POLICY_SOURCE))

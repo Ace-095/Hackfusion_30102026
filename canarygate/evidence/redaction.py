@@ -24,6 +24,15 @@ _KNOWN_FIXTURE_SECRETS = ("fixture-token-alice", "fixture-token-bob", "malformed
                           "lab-token-alice", "lab-token-bob", "alice-lab-password", "bob-lab-password",
                           "targetlab-wrong-password-for-alice", "targetlab-wrong-password-for-bob",
                           "targetlab-alice-private-marker", "targetlab-bob-private-marker",
+                          # The three-account demo tenant added for the judge playground. The
+                          # two-account fixture values stay listed above: the frozen offline
+                          # dataset still ships them.
+                          "lab-token-mallapa", "lab-token-sakshi", "lab-token-harsha",
+                          "mallapa-lab-password", "sakshi-lab-password", "harsha-lab-password",
+                          "targetlab-wrong-password-for-mallapa", "targetlab-wrong-password-for-sakshi",
+                          "targetlab-wrong-password-for-harsha",
+                          "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker",
+                          "targetlab-harsha-private-marker",
                           "targetlab-trace-marker")
 _AUTH_VALUE = re.compile(r"(?i)\b(?:bearer|basic)\s+[^\s\"',;]+")
 _JWT_VALUE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\b")

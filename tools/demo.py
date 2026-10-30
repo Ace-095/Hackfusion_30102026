@@ -37,7 +37,7 @@ def _print_stage(index, title, lines):
 def _stage_1_lines(stage):
     lines = []
     for check_id in ("LAB-BOLA-01", "LAB-BOLA-02", "LAB-BOLA-03", "LAB-BOLA-04"):
-        lines.append(f"{check_id}  alice/bob  GET /records/{{id}}  "
+        lines.append(f"{check_id}  mallapa/sakshi  GET /records/{{id}}  "
                      f"status {stage['statuses'][check_id]}  {stage['checks'][check_id]}")
     lines.append("owner baselines verified against each account's own record; "
                  "the leaked marker matched the owner's baseline")
@@ -53,9 +53,9 @@ def _stage_2_lines(stage):
 def _stage_3_lines(stage, reset):
     run = stage["run"]
     return [
-        f"SCI-AUTHZ  alice -> bob's guarded record   status {stage['statuses']['SCI-AUTHZ']}  "
+        f"SCI-AUTHZ  mallapa -> sakshi's guarded record   status {stage['statuses']['SCI-AUTHZ']}  "
         f"{stage['baselines']['SCI-AUTHZ']}",
-        f"SCI-AUTHN  alice posts a wrong password    status {stage['statuses']['SCI-AUTHN']}  "
+        f"SCI-AUTHN  mallapa posts a wrong password    status {stage['statuses']['SCI-AUTHN']}  "
         f"{stage['baselines']['SCI-AUTHN']}",
         f"combined   the identical guarded read      status {stage['combined_status']}  "
         f"{run['combined']['impact']}",

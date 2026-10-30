@@ -14,8 +14,8 @@ from fastapi.testclient import TestClient
 import targetlab.testing as lab_server
 from canarygate.ui.app import create_ui_app
 
-FORBIDDEN = ("alice-lab-password", "bob-lab-password", "lab-token-alice", "lab-token-bob",
-             "targetlab-alice-private-marker", "targetlab-bob-private-marker",
+FORBIDDEN = ("mallapa-lab-password", "sakshi-lab-password", "lab-token-mallapa", "lab-token-sakshi",
+             "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker",
              "targetlab-trace-marker", "PRIVATE KEY")
 
 

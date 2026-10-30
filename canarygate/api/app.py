@@ -57,8 +57,9 @@ from canarygate.scan.validation_models import (ValidationRun, ValidationScanRequ
                                                ValidationSectionReport)
 from canarygate.scan.validation_scenarios import build_validation_scenario, runner_for as validation_runner_for
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
-from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
-                      ObservationSet, FixtureReportBundle, FixtureSectionReport, SpecInspection)
+from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, LabCatalog,
+                      MatrixResponse, ObservationSet, FixtureReportBundle, FixtureSectionReport,
+                      SpecInspection)
 
 router = APIRouter()
 
@@ -441,6 +442,18 @@ def _lab_call(method, *args):
         raise HTTPException(status_code=500, detail="Stored TargetLab data failed integrity verification") from None
 
 
+@router.get("/api/lab-catalog", response_model=LabCatalog)
+def lab_catalog():
+    """Public demo-tenant catalog for the account and asset selectors.
+
+    Static, credential-free and verdict-free: it names the accounts, their assets and
+    the ordered pair a scan runs for each of the nine combinations.
+    """
+    from canarygate.scan.lab_scenarios import build_lab_catalog
+
+    return LabCatalog.model_validate(build_lab_catalog())
+
+
 @router.post("/api/lab-scans", status_code=201, response_model=LabRun)
 def start_lab_scan(payload: LabScanRequest, store: LabStore = Depends(get_lab_store)):
     """Run the fixed evidence workflow against a loopback TargetLab over HTTPS.
@@ -514,7 +527,8 @@ def start_lab_bola_scan(payload: LabBolaScanRequest,
         raise HTTPException(status_code=400,
                             detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
     try:
-        plan = build_bola_plan(payload.port, budget=payload.request_budget)
+        plan = build_bola_plan(payload.port, budget=payload.request_budget,
+                               actor=payload.actor, owner=payload.owner)
         runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid TargetLab BOLA configuration") from None
@@ -567,12 +581,12 @@ def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
     return run
 
 
-def _open_targetlab_runner(port, *, budget, ca_file):
-    """Build the fixed plan and one guarded runner; 400 on invalid configuration."""
+def _open_targetlab_runner(port, *, budget, ca_file, actor=None, owner=None):
+    """Build the plan and one guarded runner; 400 on invalid configuration."""
     from canarygate.network.targetlab import TargetLabRunner
 
     try:
-        plan = build_sci_plan(port, budget=budget)
+        plan = build_sci_plan(port, budget=budget, actor=actor, owner=owner)
         return plan, TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid TargetLab SCI configuration") from None
@@ -587,7 +601,8 @@ def start_lab_sci_scan(payload: LabSciScanRequest,
         raise HTTPException(status_code=400,
                             detail="TargetLab CA is not configured; set CANARYGATE_TARGETLAB_CA")
     plan, runner = _open_targetlab_runner(payload.port, budget=payload.request_budget,
-                                          ca_file=ca_file)
+                                          ca_file=ca_file, actor=payload.actor,
+                                          owner=payload.owner)
     try:
         run = run_lab_sci_scan(plan, runner)
     except (TargetLabRefused, OSError):
@@ -653,7 +668,8 @@ def start_lab_sci_reset(payload: LabSciScanRequest,
     runners = []
     try:
         plan, first = _open_targetlab_runner(payload.port, budget=payload.request_budget,
-                                             ca_file=ca_file)
+                                             ca_file=ca_file, actor=payload.actor,
+                                             owner=payload.owner)
         runners.append(first)
         from canarygate.network.targetlab import TargetLabRunner
         second = TargetLabRunner(plan.scope, plan.credentials, ca_file=ca_file)

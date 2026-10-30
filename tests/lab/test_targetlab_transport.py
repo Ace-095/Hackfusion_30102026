@@ -86,9 +86,9 @@ def test_undeclared_paths_are_refused_before_any_connection():
     with lab_server.CountingTlsServer() as server:
         scope = build_lab_scope(server.port)
         transport = TargetLabTransport(scope, ca_file=lab_server.TARGETLAB_CERT)
-        for path in ("/lab/ground-truth", "/records/ra/../../etc/passwd", "/admin"):
+        for path in ("/lab/ground-truth", "/records/MKT-2026-041/../../etc/passwd", "/admin"):
             with pytest.raises(TargetLabRefused):
-                transport.request("alice", "GET", path, token="lab-token-alice")
+                transport.request("mallapa", "GET", path, token="lab-token-mallapa")
         assert server.hits == 0
         assert transport.requests_sent == 0
 
@@ -98,9 +98,9 @@ def test_runner_refuses_unscoped_reads_without_contacting_the_server():
         plan = build_lab_plan(lab.port)
         runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=lab_server.TARGETLAB_CERT)
         try:
-            assert runner.login("alice") is not False
+            assert runner.login("mallapa") is not False
             with pytest.raises(TargetLabRefused):
-                runner.get("alice", "/lab/ground-truth")
+                runner.get("mallapa", "/lab/ground-truth")
         finally:
             runner.close()
 
@@ -163,8 +163,8 @@ def test_run_payload_carries_no_credentials_or_private_markers(lab):
     finally:
         runner.close()
     text = json.dumps(run.model_dump(mode="json"))
-    for secret in ("lab-token-alice", "lab-token-bob", *LAB_PASSWORDS.values(),
-                   "targetlab-alice-private-marker", "targetlab-bob-private-marker"):
+    for secret in ("lab-token-mallapa", "lab-token-sakshi", *LAB_PASSWORDS.values(),
+                   "targetlab-mallapa-private-marker", "targetlab-sakshi-private-marker"):
         assert secret not in text
     assert run.constraints.requests_sent <= plan.scope.request_budget
 
@@ -192,9 +192,9 @@ def test_a_second_login_in_one_run_is_refused(lab):
     plan = build_lab_plan(lab.port)
     runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=lab_server.TARGETLAB_CERT)
     try:
-        assert runner.login("alice") is True
+        assert runner.login("mallapa") is True
         with pytest.raises(ValueError):
-            runner.login("alice")
+            runner.login("mallapa")
         stats = runner.stats()
         assert stats["requests_sent"] == 1
         assert stats["blocked_by_guard"] >= 1
@@ -207,7 +207,7 @@ def test_redirects_are_refused_and_never_followed():
         scope = build_lab_scope(server.port)
         transport = TargetLabTransport(scope, ca_file=lab_server.TARGETLAB_CERT)
         with pytest.raises(TargetLabRefused):
-            transport.request("alice", "GET", "/health", token="lab-token-alice")
+            transport.request("mallapa", "GET", "/health", token="lab-token-mallapa")
         assert server.hits == 1          # exactly one attempt: nothing was followed
         assert transport.stats()["redirects_observed"] >= 0
         assert transport.stats()["halted"] is True
@@ -217,7 +217,7 @@ def test_a_server_error_is_returned_once_and_never_retried():
     with lab_server.CountingTlsServer(status=500) as server:
         scope = build_lab_scope(server.port)
         transport = TargetLabTransport(scope, ca_file=lab_server.TARGETLAB_CERT)
-        response = transport.request("alice", "GET", "/health", token="lab-token-alice")
+        response = transport.request("mallapa", "GET", "/health", token="lab-token-mallapa")
         assert response.status_code == 500
         assert server.hits == 1
         assert transport.requests_sent == 1
@@ -244,7 +244,7 @@ def test_a_wrong_ca_fails_closed(lab):
     runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=lab_server.OTHER_CERT)
     try:
         with pytest.raises(TargetLabRefused):
-            runner.login("alice")
+            runner.login("mallapa")
     finally:
         runner.close()
 
@@ -262,7 +262,7 @@ def test_an_unreachable_loopback_port_fails_without_retrying():
     runner = TargetLabRunner(plan.scope, plan.credentials, ca_file=lab_server.TARGETLAB_CERT)
     try:
         with pytest.raises(TargetLabRefused):
-            runner.login("alice")
+            runner.login("mallapa")
         assert runner.stats()["halted"] is True
     finally:
         runner.close()

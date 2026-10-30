@@ -147,9 +147,18 @@ class LabBolaRun(BaseModel):
 
 
 class LabBolaScanRequest(BaseModel):
+    """One read-BOLA run.
+
+    ``actor`` and ``owner`` select the ordered pair of provisioned demo accounts.
+    Omitted, the run uses the documented default pair. No field can name a host, a
+    path, a credential or an expected verdict.
+    """
+
     model_config = ConfigDict(extra="forbid", strict=True)
     port: int = Field(ge=1024, le=65535)
     request_budget: int = Field(default=20, ge=16, le=40)
+    actor: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,31}$")
+    owner: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,31}$")
 
 
 class LabBolaSectionData(BaseModel):

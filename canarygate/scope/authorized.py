@@ -20,17 +20,23 @@ TARGETLAB_HOST = "127.0.0.1"
 # a local_lab scope cannot widen beyond these exact paths. The lab's
 # /lab/ground-truth route is deliberately absent so a scanner can never read the
 # answers it is being scored against.
+# The three demo assets are written out literally, like every other entry: an
+# audit can read the complete set of reachable paths without following a loop, and
+# a test asserts this list matches the lab's own records.
 TARGETLAB_OPERATIONS = {
     ("GET", "/health"): "READ_ONLY",
     ("GET", "/profile"): "READ_ONLY",
     ("GET", "/admin/users"): "READ_ONLY",
     ("GET", "/records"): "READ_ONLY",
-    ("GET", "/records/ra"): "READ_ONLY",
-    ("GET", "/records/rb"): "READ_ONLY",
-    ("GET", "/records/ra/secure"): "READ_ONLY",
-    ("GET", "/records/rb/secure"): "READ_ONLY",
-    ("GET", "/records/ra/guarded"): "READ_ONLY",
-    ("GET", "/records/rb/guarded"): "READ_ONLY",
+    ("GET", "/records/MKT-2026-041"): "READ_ONLY",
+    ("GET", "/records/BRD-2026-018"): "READ_ONLY",
+    ("GET", "/records/ADS-2026-027"): "READ_ONLY",
+    ("GET", "/records/MKT-2026-041/secure"): "READ_ONLY",
+    ("GET", "/records/BRD-2026-018/secure"): "READ_ONLY",
+    ("GET", "/records/ADS-2026-027/secure"): "READ_ONLY",
+    ("GET", "/records/MKT-2026-041/guarded"): "READ_ONLY",
+    ("GET", "/records/BRD-2026-018/guarded"): "READ_ONLY",
+    ("GET", "/records/ADS-2026-027/guarded"): "READ_ONLY",
     ("GET", "/diagnostics/banner"): "READ_ONLY",
     ("GET", "/errors/trace"): "READ_ONLY",
     ("POST", "/login"): "AUTHENTICATION",
