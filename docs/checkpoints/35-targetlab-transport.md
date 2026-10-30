@@ -107,8 +107,11 @@ A live run against the lab produces `allowed 5 · denied 2 · authenticated 2` w
 - Wheel build: `canarygate-0.1.0-py3-none-any.whl`, 192,927 bytes, 116 files —
   contains the scanner's lab transport but **no** certificates, keys, tests or
   `targetlab` package.
-- Local CI parity: Linux run of the full suite above; Windows CI result recorded
-  separately after push.
+- CI for the implementation commit `8ce4e22`: workflow run **41074344558** —
+  `ubuntu-latest` success and `windows-latest` success, including the loopback
+  TLS tests (uvicorn in a thread, real handshakes) on Windows.
+- Delivered in commit `8ce4e22` on `arena/aa67fa1b-hackfusion-30102026`; this note
+  was added in the following documentation commit.
 
 ## What this does and does not prove
 
