@@ -148,7 +148,7 @@ Local full suite: **539 passed**, one third-party Starlette/AnyIO
 `DeprecationWarning`. `git diff --check` clean. Isolated wheel build includes
 the new scenario template (77 files).
 
-CI run `41057738033` on commit `743c59a` (repeat `41058159050` on `974db50`) passed both
+CI run `41057738033` on commit `743c59a` (repeat `41058504145` on `71397bd`) passed both
 `tests (ubuntu-latest, 3.11)` and `tests (windows-latest, 3.11)`. The first two
 CI attempts failed on Windows only: the new test patched `socket.connect`
 before Starlette's `TestClient` started, and Windows asyncio connects a loopback
