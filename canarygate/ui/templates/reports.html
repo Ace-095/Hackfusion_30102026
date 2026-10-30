@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, empty, icon %}
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+{% call page_head("Runs",
+                 "Reports",
+                 "Reports are generated from stored runs, so there is one source of truth.
+                  The in-app report view renders the backend's nine-section projection; the
+                  backend also serves the same data as HTML and JSON.",
+                 trail=[("Dashboard", "/ui/"), ("Reports", None)]) %}
+  <a class="btn btn-sm" href="/ui/findings">Findings</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/matrix">Matrix</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/lab">TargetLab validation</a>
+{% endcall %}
+
+{{ journey("reports") }}
+
+{% if runs %}
+<div class="grid grid-2">
+  {% for run in runs %}
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ verdict_badge(run.verdict) }} <span class="mono">{{ run.endpoint }}</span></h2>
+      <span class="mono xs dim">{{ run.created_at }}</span>
+    </div>
+    <div class="card-body">
+      <p class="small reason">{{ run.reason }}</p>
+      <dl class="kv">
+        <div class="kv-row"><dt>Actor</dt><dd class="mono">{{ run.actor }} ({{ run.account_role }})</dd></div>
+        <div class="kv-row"><dt>Target / owner</dt>
+          <dd><span class="mono">{{ run.target_resource }}</span> → <span class="mono">{{ run.verified_owner }}</span></dd></div>
+        <div class="kv-row"><dt>Run id</dt><dd class="mono">{{ run.id }}</dd></div>
+      </dl>
+    </div>
+    <div class="card-foot">
+      <div class="link-row">
+        <a class="btn btn-sm btn-primary" href="/ui/scans/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
+        <a class="btn btn-sm" href="/api/reports/{{ run.id }}?format=html"
+           download="canarygate-{{ run.id }}.html">{{ icon("download") }} HTML</a>
+        <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}"
+           download="canarygate-{{ run.id }}.json">JSON</a>
+        <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}?include_observations=true"
+           target="_blank" rel="noopener">JSON + observations</a>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    {{ empty("No reports yet",
+             "Reports exist for stored fixture runs. There are none in the database.",
+             "/ui/scans", "Open scans") }}
+  </div>
+</div>
+{% endif %}
+
+<h2 class="section-title">Offline suite reports</h2>
+<p class="section-sub">Every stored suite run, newest first. Each run has an in-app section view,
+  a backend HTML report and a JSON projection; all three are generated from the stored run.</p>
+
+<div class="grid grid-2">
+  {% for family, items in suite_history.items() %}
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("reports") }} {{ families[family].label }}</h2>
+      <span class="hint mono">{{ items|length }} run(s)</span>
+    </div>
+    {% if items %}
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Run</th><th scope="col">Outcome</th><th scope="col">Recorded</th>
+                   <th scope="col">Report</th></tr></thead>
+        <tbody>
+          {% for item in items[:5] %}
+          <tr>
+            <td><a class="mono" href="/ui/suites/{{ family }}/{{ item.id }}">{{ item.get("id")|short_id }}</a></td>
+            <td>
+              {% if item.get("verdict") %}{{ verdict_badge(item.get("verdict")) }}
+              {% else %}{{ status_badge(item.get("status")) }}{% endif %}
+            </td>
+            <td class="mono xs">{{ item.get("created_at") }}</td>
+            <td><a href="/ui/suites/{{ family }}/{{ item.id }}/report">view</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if items|length > 5 %}
+    <div class="card-foot">Showing the 5 newest of {{ items|length }}.
+      <a href="/ui/suites">All suite runs</a></div>
+    {% endif %}
+    {% else %}
+    <div class="card-body">{{ empty("No stored run", "Run a scenario from the Test suites page.") }}</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">TargetLab validation reports</h2>
+<p class="section-sub">Loopback lab runs, with their transport record and ground-truth scoring.
+  These are the only reports that describe real HTTPS requests.</p>
+
+<div class="grid grid-3">
+  {% for family, items in lab_history.items() %}
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("shield") }} {{ lab_families[family].label }}</h2>
+      <span class="hint mono">{{ items|length }} stored</span>
+    </div>
+    {% if items %}
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Run</th><th scope="col">Outcome</th><th scope="col">Report</th></tr></thead>
+        <tbody>
+          {% for item in items[:4] %}
+          <tr>
+            <td><a class="mono" href="/ui/lab/{{ family }}/{{ item.id }}">{{ item.get("id")|short_id }}</a></td>
+            <td>
+              {% if family == "reset" %}{{ status_badge(item.get("status")) }}
+              {% else %}{{ verdict_badge(item.get("verdict")) }}{% endif %}
+            </td>
+            <td>
+              {% if family == "reset" %}<span class="dim xs">checks only</span>
+              {% else %}<a href="/ui/lab/{{ family }}/{{ item.id }}/report">view</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body">{{ empty("No stored run", "Nothing recorded for this workflow.") }}</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("search") }} Open a run report by id</h2></div>
+    <div class="card-body">
+      <p class="note">Every family is listed above, so this box is only for opening a run whose id
+        you already have.</p>
+      <form class="form" method="get" action="/ui/reports/lookup">
+        <div class="field-row-2">
+          <label class="field">
+            <span>Family</span>
+            <select name="family">
+              {% for key, spec in families.items() %}
+              <option value="{{ key }}">{{ spec.label }}</option>
+              {% endfor %}
+              {% for key, spec in lab_families.items() %}
+              <option value="{{ key }}">{{ spec.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Run id</span>
+            <input type="text" name="run_id" placeholder="36-character UUID"
+                   pattern="[0-9a-fA-F-]{36}" required>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Open run</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What the reports contain</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>Report view</b> — the backend's nine-section projection rendered in-app and
+          printable: executive summary, scope and rules, inventory, findings, secured
+          endpoints, skipped/inconclusive, matrix, interventions and constraints.</li>
+        <li><b>Backend HTML</b> — the same data rendered by the backend itself.</li>
+        <li><b>JSON</b> — the stored run, the section projection, or (for fixture runs) a bundle
+          including the minimized observation set.</li>
+        <li>Every report states its mode. Fixture and transcript reports are not live-target
+          evidence; TargetLab reports are loopback-only controlled validation.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+{% endblock %}

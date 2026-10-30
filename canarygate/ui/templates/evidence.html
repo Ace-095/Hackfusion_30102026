@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, tri, kv,
+                              evidence_proof, empty, icon %}
+{% block title %}Evidence · {{ run.id|short_id }}{% endblock %}
+
+{% block content %}
+{% call page_head("Evidence explorer",
+                 "Ownership and disclosure proof",
+                 "The two evidence parts behind the verdict, then the minimized request
+                  records the backend stored for this run.",
+                 trail=[("Dashboard", "/ui/"), ("Findings", "/ui/findings"),
+                        (run.id|short_id, "/ui/scans/" ~ run.id), ("Evidence", None)]) %}
+  <div class="toolbar">
+    {{ verdict_badge(run.verdict, "badge-lg") }}
+    <a class="btn btn-sm" href="/ui/scans/{{ run.id }}">{{ icon("findings") }} Back to finding</a>
+    <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}?include_observations=true"
+       target="_blank" rel="noopener">JSON bundle</a>
+  </div>
+{% endcall %}
+
+{{ journey("evidence", run.id) }}
+
+<section class="grid grid-4" aria-label="Evidence coverage">
+  <div class="stat">
+    <span class="stat-label">Verdict</span>
+    <span class="stat-value sm">{{ run.verdict }}</span>
+    <span class="stat-foot mono">{{ run.endpoint }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Ownership proof</span>
+    <span class="stat-value sm">{{ "captured" if run.evidence.ownership else "missing" }}</span>
+    <span class="stat-foot">resource belongs to the other account</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Disclosure proof</span>
+    <span class="stat-value sm">{{ "captured" if run.evidence.disclosure else "missing" }}</span>
+    <span class="stat-foot">private data crossed the boundary</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Observation set</span>
+    <span class="stat-value sm">{{ observations.coverage }}</span>
+    <span class="stat-foot">{{ observations.observations|length }} minimized record(s)</span>
+  </div>
+</section>
+
+<div class="grid grid-2">
+  {{ evidence_proof(1, "Ownership evidence", "Establishes that the resource genuinely
+     belongs to the other account — here, that the owner's own baseline returns the
+     private field and the cross-account list excludes it.",
+     run.evidence.ownership, "proof-ownership") }}
+  {{ evidence_proof(2, "Disclosure evidence", "Establishes that the acting account actually
+     received that private data, compared against the owner's private baseline.",
+     run.evidence.disclosure, "proof-disclosure") }}
+</div>
+
+{% if observations.coverage == "NOT_RECORDED" %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>No observation set is stored for this run.</b>
+    That is typical of runs stored before observation recording existed. The backend cannot
+    distinguish a legacy run from a deleted set, and this UI does not guess.
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("eye") }} Observation records</h2>
+    <span class="hint mono">GET /api/scan/{{ run.id }}/observations</span>
+  </div>
+  {% if observations.observations %}
+  <div class="card-body">
+    <ol class="timeline">
+      {% for observation in observations.observations %}
+      <li class="{{ 'is-ok' if observation.response.status_code < 400 else 'is-warn' }}">
+        <div class="spread">
+          <div>
+            <div class="t-title">
+              <span class="pill pill-outline">{{ observation.phase }}</span>
+              <span class="mono">{{ observation.request.method }} {{ observation.request.path }}</span>
+              <span class="dim xs">as {{ observation.actor }} ({{ observation.role }})</span>
+            </div>
+            <div class="t-meta">HTTP {{ observation.response.status_code }} ·
+              {{ observation.timestamp }}</div>
+          </div>
+          <span class="badge badge-muted">{{ observation.phase }}</span>
+        </div>
+
+        <div class="grid grid-2 mt-1">
+          <div>
+            <div class="section-sub mb-1">Response summary</div>
+            {% if observation.response.item %}
+              <dl class="kv">
+                <div class="kv-row"><dt>Item id</dt><dd class="mono">{{ observation.response.item.id }}</dd></div>
+                <div class="kv-row"><dt>Owner field</dt><dd class="mono">{{ observation.response.item.owner }}</dd></div>
+                <div class="kv-row"><dt>Private field present</dt><dd>{{ tri(observation.response.item.private_field_present) }}</dd></div>
+              </dl>
+            {% elif observation.response["items"] is not none %}
+              <dl class="kv">
+                <div class="kv-row"><dt>Items returned</dt><dd class="mono">{{ observation.response.item_count }}</dd></div>
+                <div class="kv-row"><dt>Truncated for display</dt><dd>{{ tri(observation.response.items_truncated) }}</dd></div>
+              </dl>
+              <ul class="inline-list">
+                {% for item in observation.response["items"] %}
+                <li class="mono xs">{{ item.id }} · owner {{ item.owner }} · private field {{ tri(item.private_field_present) }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="dim small">No list or item metadata was recorded for this response.</p>
+            {% endif %}
+          </div>
+          <div>
+            <div class="section-sub mb-1">Assertions</div>
+            <div class="check-grid">
+              {% for name, value in observation.assertions.items() %}
+              <div class="check-item">
+                <span class="key">{{ name|humanize }}</span>{{ tri(value) }}
+              </div>
+              {% endfor %}
+            </div>
+            <div class="proof-hash mt-1">
+              <span>SHA-256</span><code>{{ observation.sha256 }}</code>
+              <button type="button" class="copy-btn" data-copy="{{ observation.sha256 }}">copy</button>
+            </div>
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("No observations to show",
+             "The backend reported no stored records for this run.") }}
+  </div>
+  {% endif %}
+  <div class="card-foot">
+    Authorization headers are redacted, lists are capped for display and carry a
+    truncation flag, and assertions are computed on the full response. Hashes are unkeyed
+    and are not signatures.
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("lock") }} What is deliberately absent</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li>Response headers, arbitrary strings, tokens and private values are not stored.</li>
+      <li>Stored evidence is a minimized summary, not complete raw HTTP traffic.</li>
+      <li>Missing evidence never means a check passed; the verdict reason explains what
+        the backend could establish.</li>
+    </ul>
+    <div class="link-row mt-1">
+      <a class="btn btn-sm" href="/ui/scans/{{ run.id }}/report">See the report view</a>
+      <a class="btn btn-sm btn-ghost" href="/ui/matrix">Check matrix coverage</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

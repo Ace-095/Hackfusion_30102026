@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, stat, empty,
+                              verdict_legend, icon, meter %}
+{% block title %}Authorization matrix{% endblock %}
+
+{% block content %}
+{% call page_head("Analysis",
+                 "Authorization matrix",
+                 "Two views of the same partial coverage: the backend's authorization matrix
+                  (GET /api/authorization-matrix) and the actor × endpoint grid built from
+                  fixture runs (GET /api/matrix). A combination with no run is labelled
+                  not assessed — never assumed safe.",
+                 trail=[("Dashboard", "/ui/"), ("Matrix", None)]) %}
+  <a class="btn btn-sm" href="/ui/findings">Open findings</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/reports">Reports</a>
+{% endcall %}
+
+{{ journey("matrix") }}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Coverage is partial by design.</b>
+    The backend records a cell only when it actually executed a test for that endpoint and
+    actor. There is no BFLA cell generation and no fabricated grid: empty cells are missing
+    coverage, not a pass. The complete matrix is P1 in the specification.
+  </div>
+</div>
+
+<section class="grid grid-4" aria-label="Matrix coverage">
+  <div class="stat">
+    <span class="stat-label">Cells assessed</span>
+    <span class="stat-value">{{ grid.assessed }} / {{ grid.total }}</span>
+    <span class="stat-foot">from {{ run_count }} stored run(s)</span>
+  </div>
+  {{ stat("Endpoints", grid.rows|length, "inventory rows") }}
+  <div class="stat">
+    <span class="stat-label">Actors</span>
+    <span class="stat-value">{{ grid.actors|length }}</span>
+    <span class="stat-foot">{% if grid.actors %}{{ grid.actors|join(", ") }}{% else %}none exercised yet{% endif %}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Coverage</span>
+    <span class="stat-value">{{ grid.assessed|pct(grid.total) }}%</span>
+    <span class="stat-foot">assessed of all combinations</span>
+  </div>
+</section>
+
+{% if grid.rows and grid.actors %}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("matrix") }} Access grid</h2>
+    <span class="hint">latest stored run per combination · click a badge to open the finding</span>
+  </div>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <caption class="visually-hidden">
+        Endpoint by actor matrix. Cells show the latest verdict, or “not assessed” when no
+        run exists for that combination.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Endpoint</th>
+          {% for actor in grid.actors %}
+          <th scope="col" class="mono">{{ actor }}</th>
+          {% endfor %}
+          <th scope="col" class="assessment">Assessed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in grid.rows %}
+        <tr>
+          <th scope="row">{{ row.endpoint }}</th>
+          {% for cell in row.cells %}
+          <td>
+            {% if cell.run %}
+              <a href="/ui/scans/{{ cell.run.id }}" title="open finding">{{ verdict_badge(cell.run.verdict) }}</a>
+            {% else %}
+              <span class="badge badge-empty">not assessed</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="assessment">{{ row.assessed }} / {{ row.cells|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body bordered-top">
+    {{ meter(grid.assessed, grid.total, "Overall coverage",
+             ("ok" if grid.assessed == grid.total and grid.total else ("warn" if grid.assessed else None))) }}
+    <p class="note">Rows marked <span class="badge badge-empty">not assessed</span> are a gap
+      in coverage, not evidence of safety or vulnerability.</p>
+  </div>
+  <div class="card-foot">{{ verdict_legend() }}</div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    {{ empty("No grid yet",
+             "The backend has no stored run, so no actor has exercised an endpoint. Run the
+              fixture scan to populate the first cell.",
+             "/ui/scans", "Go to scans") }}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("shield") }} Backend authorization matrix</h2>
+    <span class="hint mono">GET /api/authorization-matrix</span>
+  </div>
+  <div class="card-body">
+    <p class="note">{{ authorization.coverage.statement }}</p>
+    <div class="grid grid-4 gap-1">
+      {{ stat("Rows", authorization.coverage.rows, small=True) }}
+      {{ stat("Cells", authorization.coverage.cells, small=True) }}
+      {{ stat("Tested", authorization.coverage.tested, small=True) }}
+      {{ stat("Untested", authorization.coverage.untested, "hatched, never assumed safe", small=True) }}
+    </div>
+    <div class="legend mt-1">
+      <span class="legend-item"><span class="dot dot-confirmed"></span>red {{ authorization.coverage.by_state.red }}</span>
+      <span class="legend-item"><span class="dot dot-suspected"></span>orange {{ authorization.coverage.by_state.orange }}</span>
+      <span class="legend-item"><span class="dot dot-safe"></span>green {{ authorization.coverage.by_state.green }}</span>
+      <span class="legend-item"><span class="dot dot-inconclusive"></span>grey {{ authorization.coverage.by_state.grey }}</span>
+      <span class="legend-item"><span class="dot dot-unassessed"></span>hatched {{ authorization.coverage.by_state.hatched }}</span>
+    </div>
+    <p class="note">Verdict counts in this matrix:
+      {% for name, count in authorization.verdict_counts.items() %}
+        <span class="mono">{{ name }}={{ count }}</span>{% if not loop.last %} · {% endif %}
+      {% endfor %}.
+      Not contributing: validation runs {{ authorization.coverage.not_contributing.validation_runs }},
+      lab BOLA runs {{ authorization.coverage.not_contributing.lab_bola_runs }},
+      lab SCI runs {{ authorization.coverage.not_contributing.lab_sci_runs }}.</p>
+  </div>
+  {% if authorization.rows %}
+  <div class="table-scroll">
+    <table class="table table-compact" id="backend-matrix">
+      <thead>
+        <tr><th scope="col">Endpoint</th>
+            {% for column in authorization.columns %}<th scope="col">{{ column|humanize }}</th>{% endfor %}
+            <th scope="col">Expected access</th><th scope="col">Provenance</th></tr>
+      </thead>
+      <tbody>
+        {% for row in authorization.rows %}
+        <tr>
+          <th scope="row" class="mono small">{{ row.endpoint }}</th>
+          {% for cell in row.cells %}
+          <td class="matrix-cell matrix-{{ cell.state }}">
+            {% if cell.tested and cell.verdict %}
+              {{ verdict_badge(cell.verdict) }}
+              <div class="mono xs">{{ cell.source_ref }}</div>
+            {% else %}
+              <span class="badge badge-empty">not tested</span>
+              <div class="mono xs">{{ cell.source_ref }}</div>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td><span class="pill">{{ row.expected_access }}</span></td>
+          <td class="mono xs">{{ row.expected_source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">
+    Hatched cells mean the backend never executed a test for that endpoint and column. They are
+    gaps in coverage, not a pass. Every populated cell names its source run.
+  </div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("The backend matrix has no rows",
+             "No offline run has been stored yet, so no cell has been observed.") }}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("database") }} Recorded cells</h2>
+    <span class="hint mono">GET /api/matrix</span>
+  </div>
+  {% if cells %}
+  <div class="table-scroll">
+    <table class="table table-wide" id="matrix-table">
+      <thead>
+        <tr>
+          <th scope="col">Endpoint</th><th scope="col">Actor</th><th scope="col">Target resource</th>
+          <th scope="col">Expected access</th><th scope="col">Expected source</th>
+          <th scope="col">Verdict</th><th scope="col">Run</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cell in cells %}
+        <tr>
+          <td class="mono">{{ cell.endpoint }}</td>
+          <td class="mono">{{ cell.actor }}</td>
+          <td class="mono">{{ cell.target_resource }}</td>
+          <td><span class="pill">{{ cell.expected_access }}</span></td>
+          <td class="mono small">{{ cell.expected_source }}</td>
+          <td>{{ verdict_badge(cell.verdict) }}</td>
+          <td><a href="/ui/scans/{{ cell.id }}">{{ cell.id|short_id }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("The matrix is empty",
+             "No fixture run has been stored, so the backend has no cells to report.") }}
+  </div>
+  {% endif %}
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} Reading a cell</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li><span class="mono">expected_access</span> is a claim with provenance. When it is
+        <span class="mono">unknown</span>, no CONFIRMED verdict is possible.</li>
+      <li><b>SAFE</b> means the behaviour matched the expected access for that actor, and
+        only when the oracle actually ran.</li>
+      <li><b>INCONCLUSIVE</b> and <b>SKIPPED</b> are honest gaps; they appear in the grid
+        rather than being hidden.</li>
+      <li>BFLA cells are P1 and are not produced by this build; the <span class="mono">role</span>
+        column records only what a role probe observed.</li>
+      <li>The backend matrix distinguishes five states (red, orange, green, grey, hatched).
+        Only a tested cell carries a verdict, and <span class="mono">source_ref</span> names the
+        run that produced it.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

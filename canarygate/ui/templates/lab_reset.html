@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, status_badge, tri, kv, stat, icon,
+                              lab_transport_panel %}
+{% block title %}Reset proof {{ run.id|short_id }}{% endblock %}
+
+{% block content %}
+{% call page_head("TargetLab validation",
+                 "Reset proof",
+                 run.reason,
+                 trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                        (run.id|short_id, None)]) %}
+  <div class="toolbar">
+    {{ status_badge(run.status) }}
+    <a class="btn btn-sm btn-ghost" href="/api/lab-sci-resets/{{ run.id }}"
+       target="_blank" rel="noopener">JSON proof</a>
+    <a class="btn btn-sm btn-ghost" href="/ui/lab">All lab runs</a>
+  </div>
+{% endcall %}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>What this proves, exactly.</b> In a separate controlled execution, a successful login
+    cleared the lab's condition: the same guarded read that leaked after a rejected login was
+    denied again afterwards. It does <i>not</i> prove that the primary interaction run resets
+    and repeats — that would consume the run's one-read state.
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("plug") }} Transport recorded by the backend</h2></div>
+  <div class="card-body">{{ lab_transport_panel(run.transport) }}</div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("scans") }} Proof</h2>{{ status_badge(run.status) }}</div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Proof id", run.id, True) }}
+        {{ kv("Recorded", run.created_at, True) }}
+        {{ kv("Mode", run.mode, True) }}
+        {{ kv("Scenario", run.scenario_id, True) }}
+        {{ kv("Port", run.port, True) }}
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("reload") }} Isolation</h2></div>
+    <div class="card-body">
+      <div class="grid grid-3 gap-1">
+        {{ stat("Runners", run.isolation.runners, "separate transports", small=True) }}
+        {{ stat("State", run.isolation.state, small=True) }}
+        {{ stat("Checks", run.checks|length, "all must pass", small=True) }}
+      </div>
+      <p class="note mt-1">{{ run.isolation.why }}</p>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("check") }} The four steps, as executed</h2>
+    <span class="hint">expected status is declared; observed status came from the lab</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table table-wide">
+      <thead>
+        <tr><th scope="col">Check</th><th scope="col">Step</th><th scope="col">Endpoint</th>
+            <th scope="col">Actor</th><th scope="col">Expected</th><th scope="col">Observed</th>
+            <th scope="col">Passed</th><th scope="col">Evidence SHA-256</th></tr>
+      </thead>
+      <tbody>
+        {% for check in run.checks %}
+        <tr>
+          <th scope="row" class="mono nowrap">{{ check.id }}</th>
+          <td class="small">{{ check.title }}</td>
+          <td class="mono small">{{ check.endpoint }}</td>
+          <td class="mono small">{{ check.actor }}</td>
+          <td class="mono">{{ check.expected_status }}</td>
+          <td class="mono">{{ check.status if check.status is not none else "—" }}</td>
+          <td>{{ tri(check.passed) }}</td>
+          <td class="mono xs">{{ check.evidence_sha256|short_id(12) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body bordered-top">
+    <p class="note">Each row's observed status and sentence are the backend's record. The page
+      does not infer pass or fail from the sequence.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("eye") }} Disclosure state after the reset</h2></div>
+  <div class="card-body">
+    <dl class="kv">
+      {{ kv("Actor → owner", run.disclosure.actor ~ " → " ~ run.disclosure.owner, True) }}
+      {{ kv("Owner baseline collected", tri(run.disclosure.owner_baseline_collected)) }}
+      {{ kv("Marker matches owner baseline", tri(run.disclosure.marker_matches_owner_baseline)) }}
+      {{ kv("Marker withheld from storage", tri(run.disclosure.marker_withheld)) }}
+    </dl>
+    <p class="note">A proven reset means the leak is no longer reproducible after a successful
+      login. It does not make the original interaction harmless.</p>
+  </div>
+</section>
+{% endblock %}

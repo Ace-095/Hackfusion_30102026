@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, stat, empty, icon, method_chip %}
+{% block title %}API inventory{% endblock %}
+
+{% block content %}
+{% call page_head("Analysis",
+                 "API inventory",
+                 "Served by GET /api/endpoints from the bundled synthetic fixture
+                  specification. Each row shows the expected access the backend derived
+                  and the provenance of that expectation.",
+                 trail=[("Dashboard", "/ui/"), ("API inventory", None)]) %}
+  <a class="btn" href="/ui/spec">{{ icon("spec") }} Inspect another spec</a>
+{% endcall %}
+
+{{ journey("inventory") }}
+
+<section class="grid grid-4" aria-label="Inventory summary">
+  {{ stat("Endpoints", rows|length, "parsed from the fixture spec") }}
+  {{ stat("Public", access_counts.get("public", 0), "no authentication declared") }}
+  {{ stat("Authenticated", access_counts.get("authenticated", 0), "identity required") }}
+</section>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("inventory") }} Endpoint inventory</h2>
+    <label class="filter">
+      <span>Filter</span>
+      <input type="search" data-table-filter="#endpoints-table" placeholder="path, method, access…"
+             aria-label="Filter endpoints">
+    </label>
+  </div>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table table-wide" id="endpoints-table">
+      <thead>
+        <tr>
+          <th scope="col">Method</th>
+          <th scope="col">Path</th>
+          <th scope="col">Expected access</th>
+          <th scope="col">Provenance</th>
+          <th scope="col">Declared auth requirement</th>
+          <th scope="col">Parameters</th>
+          <th scope="col">Recorded verdicts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-filter-row>
+          <td>{{ method_chip(row.endpoint.method) }}</td>
+          <td class="mono">{{ row.endpoint.path }}</td>
+          <td><span class="pill">{{ row.endpoint.expected_access }}</span></td>
+          <td class="mono small">{{ row.endpoint.expected_source }}</td>
+          <td class="mono small">
+            {% if row.endpoint.security %}
+              {% for requirement in row.endpoint.security %}
+                {% for scheme in requirement.keys() %}{{ scheme }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% endfor %}
+            {% else %}
+              <span class="dim">none declared</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.endpoint.parameters %}
+              <ul class="inline-list">
+                {% for parameter in row.endpoint.parameters %}
+                <li class="mono xs">{{ parameter.name }}
+                  <span class="dim">({{ parameter['in'] }}{% if parameter.required %}, required{% endif %})</span></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="dim">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.runs %}
+              <div class="row gap-0">
+                {% for run in row.runs[:3] %}
+                  <a href="/ui/scans/{{ run.id }}" title="{{ run.actor }} · {{ run.reason }}">
+                    {{ verdict_badge(run.verdict) }}</a>
+                {% endfor %}
+                {% if row.runs|length > 3 %}<span class="dim xs">+{{ row.runs|length - 3 }}</span>{% endif %}
+              </div>
+            {% else %}
+              <span class="badge badge-empty">not assessed</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="card-body">
+      {{ empty("The inventory is empty",
+               "The backend returned no endpoints for the fixture specification.") }}
+    </div>
+  {% endif %}
+</div>
+
+{% if unmatched %}
+<div class="alert alert-info">
+  {{ icon("info") }}
+  <div>
+    <b>{{ unmatched|length }} run(s) target a concrete path that does not match an
+      inventory template</b> (for example <span class="mono">{{ unmatched[0].endpoint }}</span>).
+    They are linked below rather than attached to a row, because the UI does not guess
+    which template they belong to.
+    <div class="link-row mt-1">
+      {% for run in unmatched %}
+      <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ run.id }}">
+        {{ run.endpoint }} · {{ run.id|short_id }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} How to read this table</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>Expected access</b> is the backend's classification:
+          <span class="mono">public</span>, <span class="mono">authenticated</span>,
+          <span class="mono">role:&lt;name&gt;</span>, <span class="mono">owner-only</span> or
+          <span class="mono">unknown</span>. <span class="mono">unknown</span> is a valid
+          answer and can never become a CONFIRMED verdict.</li>
+        <li><b>Provenance</b> is the source of that expectation. OpenAPI
+          <span class="mono">security</span> expresses authentication requirements, not
+          authorization policy, so it is labelled as such. The fixture's
+          <span class="mono">owner-only</span> rule comes from the synthetic fixture policy.</li>
+        <li><b>Recorded verdicts</b> only appear when a stored run targeted that exact
+          endpoint. Empty cells are missing coverage, not safety.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Uploaded specifications stay separate</h2></div>
+    <div class="card-body">
+      <p class="note">A specification you inspect on the <a href="/ui/spec">spec page</a> is
+        parsed in memory and discarded. It never changes this inventory, never selects a
+        target and is never scanned.</p>
+      <p class="note">Connecting an uploaded specification to a scan requires the guarded
+        runner, a written scope and organizer authorization — not implemented.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

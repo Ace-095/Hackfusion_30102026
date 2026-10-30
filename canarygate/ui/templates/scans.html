@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, stat, empty,
+                              verdict_legend, icon %}
+{% block title %}Read-BOLA scans{% endblock %}
+
+{% block content %}
+{% call page_head("Runs",
+                 "Read-BOLA scans",
+                 "Fixture runs stored by POST /api/scan and listed by GET /api/findings.
+                  Each run carries its own setup gates, two-part evidence and constraint
+                  counters.",
+                 trail=[("Dashboard", "/ui/"), ("Scans", None)]) %}
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">{{ icon("play") }} Run fixture scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+  </form>
+{% endcall %}
+
+{{ journey("scans") }}
+
+<section id="scan-panel" aria-live="polite"></section>
+
+<section class="grid grid-4" aria-label="Verdict totals">
+  <div class="stat"><span class="stat-label">Stored runs</span><span class="stat-value">{{ runs|length }}</span>
+    <span class="stat-foot">local SQLite, survives restarts</span></div>
+  <div class="stat"><span class="stat-label">CONFIRMED</span><span class="stat-value">{{ counts.CONFIRMED }}</span>
+    <span class="stat-foot">both evidence parts</span></div>
+  <div class="stat"><span class="stat-label">SAFE</span><span class="stat-value">{{ counts.SAFE }}</span>
+    <span class="stat-foot">oracle ran and matched</span></div>
+  <div class="stat"><span class="stat-label">Not covered</span>
+    <span class="stat-value">{{ counts.INCONCLUSIVE + counts.SKIPPED }}</span>
+    <span class="stat-foot">inconclusive or skipped</span></div>
+</section>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("scans") }} Stored runs</h2>
+    <label class="filter">
+      <span>Filter</span>
+      <input type="search" data-table-filter="#runs-table" placeholder="endpoint, actor, verdict…"
+             aria-label="Filter runs">
+    </label>
+  </div>
+  {% if runs %}
+  <div class="table-scroll">
+    <table class="table table-wide" id="runs-table">
+      <thead>
+        <tr>
+          <th scope="col">Recorded (UTC)</th>
+          <th scope="col">Endpoint</th>
+          <th scope="col">Actor</th>
+          <th scope="col">Target resource</th>
+          <th scope="col">Verified owner</th>
+          <th scope="col">Expected access</th>
+          <th scope="col">Ownership gate</th>
+          <th scope="col">Verdict</th>
+          <th scope="col">Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr data-filter-row>
+          <td class="mono small">{{ run.created_at }}</td>
+          <td class="mono">{{ run.endpoint }}</td>
+          <td class="mono">{{ run.actor }}</td>
+          <td class="mono">{{ run.target_resource }}</td>
+          <td class="mono">{{ run.verified_owner }}</td>
+          <td><span class="pill">{{ run.expected_access }}</span></td>
+          <td>{{ status_badge(run.setup.ownership_verification) }}</td>
+          <td>{{ verdict_badge(run.verdict) }}</td>
+          <td class="nowrap small">
+            <a href="/ui/scans/{{ run.id }}">finding</a>
+            <span class="dim">·</span>
+            <a href="/ui/scans/{{ run.id }}/evidence">evidence</a>
+            <span class="dim">·</span>
+            <a href="/ui/scans/{{ run.id }}/report">report</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-foot">{{ verdict_legend() }}</div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("No fixture run stored yet",
+             "The scan list is empty because the backend has no stored runs. Running the
+              fixture scan creates one; the UI does not prefill this table.",
+             "/ui/setup", "Check readiness first") }}
+  </div>
+  {% endif %}
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} What a run contains</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      <li>Endpoint, actor and role, target resource and <em>verified</em> owner.</li>
+      <li>Expected access plus its provenance, so a disagreement is auditable.</li>
+      <li>Separate ownership and disclosure evidence, each with a redacted summary and
+        SHA-256 of that summary.</li>
+      <li>A decision checklist. A CONFIRMED verdict requires the ownership and disclosure
+        keys; not every key has to be true.</li>
+      <li>Constraint counters: out-of-scope, destructive, external and redirect counts.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

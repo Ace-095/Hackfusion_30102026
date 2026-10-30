@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, tri, kv,
+                              checklist_grid, empty, icon, method_chip, verdict_legend,
+                              render_value %}
+{% block title %}Report · {{ run.id|short_id }}{% endblock %}
+
+
+{% block content %}
+{% call page_head("Report",
+                 "Authorization finding report",
+                 "Rendered from the backend's own nine-section projection for this stored
+                  run. The same data is available as HTML and JSON from the backend.",
+                 trail=[("Dashboard", "/ui/"), ("Findings", "/ui/findings"),
+                        (run.id|short_id, "/ui/scans/" ~ run.id), ("Report", None)]) %}
+  <div class="toolbar">
+    {{ verdict_badge(run.verdict, "badge-lg") }}
+    <button type="button" class="btn btn-sm" data-print>{{ icon("download") }} Print / PDF</button>
+    <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}?format=html"
+       target="_blank" rel="noopener">Backend HTML</a>
+    <a class="btn btn-sm btn-ghost" href="/api/reports/{{ run.id }}?view=sections"
+       target="_blank" rel="noopener">Sections JSON</a>
+  </div>
+{% endcall %}
+
+{{ journey("reports", run.id) }}
+
+<div class="report-shell">
+  <div class="report-cover">
+    <div class="spread">
+      <div>
+        <div class="kicker">CanaryGate · evidence-based authorization report</div>
+        <h2 class="report-title mb-1">{{ run.endpoint }}</h2>
+        <p class="page-sub">
+          {{ run.reason }}
+        </p>
+      </div>
+      <div class="center">
+        {{ verdict_badge(run.verdict, "badge-lg") }}
+        <div class="mono xs dim mt-0">{{ run.created_at }}</div>
+      </div>
+    </div>
+    <div class="grid grid-4 mt-2">
+      <div><div class="stat-label">Actor</div><div class="mono small">{{ run.actor }} ({{ run.account_role }})</div></div>
+      <div><div class="stat-label">Target resource</div><div class="mono small">{{ run.target_resource }}</div></div>
+      <div><div class="stat-label">Verified owner</div><div class="mono small">{{ run.verified_owner }}</div></div>
+      <div><div class="stat-label">Expected access</div><div class="pill">{{ run.expected_access }}</div></div>
+    </div>
+    <div class="row mt-1">
+      <span class="badge badge-warn">fixture mode</span>
+      <span class="badge badge-muted">network transport disabled</span>
+      <span class="badge badge-muted">contracts provisional</span>
+    </div>
+  </div>
+
+  {% set section_titles = {
+    "executive_summary": "Executive summary",
+    "scope_accounts_seeding": "Scope, accounts and seeding",
+    "endpoint_inventory": "Endpoint inventory",
+    "findings": "Findings",
+    "secured_endpoints": "Secured endpoints that passed",
+    "skipped_and_inconclusive": "Skipped and inconclusive",
+    "authorization_matrix": "Authorization matrix",
+    "manual_interventions_and_inferences": "Manual interventions and inferences",
+    "constraint_checklist": "Constraint checklist"
+  } %}
+
+  {% for key, value in sections.items() %}
+  <section class="report-section" id="section-{{ loop.index }}">
+    <h2><span class="idx">{{ loop.index }}</span>{{ section_titles.get(key, key|humanize) }}</h2>
+
+    {% if key == "endpoint_inventory" and value %}
+      <div class="table-scroll">
+        <table class="table table-compact">
+          <thead><tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th><th scope="col">Provenance</th></tr></thead>
+          <tbody>
+            {% for endpoint in value %}
+            <tr>
+              <td>{{ method_chip(endpoint.method) }}</td>
+              <td class="mono">{{ endpoint.path }}</td>
+              <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+              <td class="mono small">{{ endpoint.expected_source }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    {% elif key == "authorization_matrix" and value %}
+      <p class="note">Coverage: <span class="mono">{{ value.coverage }}</span></p>
+      {% if value.cells %}
+      <div class="table-scroll">
+        <table class="table table-compact">
+          <thead><tr><th scope="col">Endpoint</th><th scope="col">Actor</th><th scope="col">Target</th>
+                     <th scope="col">Expected</th><th scope="col">Verdict</th></tr></thead>
+          <tbody>
+            {% for cell in value.cells %}
+            <tr>
+              <td class="mono">{{ cell.endpoint }}</td>
+              <td class="mono">{{ cell.actor }}</td>
+              <td class="mono">{{ cell.target_resource }}</td>
+              <td><span class="pill">{{ cell.expected_access }}</span></td>
+              <td>{{ verdict_badge(cell.verdict) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dim small">No cells recorded.</p>{% endif %}
+
+    {% elif key == "findings" and value %}
+      {% for category, items in value.items() %}
+      <h3 class="section-sub mt-1 mb-1">{{ category }}</h3>
+      {{ render_value(items) }}
+      {% endfor %}
+
+    {% elif key == "constraint_checklist" and value %}
+      <div class="grid grid-2">
+        <dl class="kv">
+          {% for name, item in value.items() if item is not mapping and item is not sequence %}
+          <div class="kv-row"><dt>{{ name|humanize }}</dt>
+            <dd>{% if item is sameas true %}{{ tri(true) }}{% elif item is sameas false %}{{ tri(false) }}{% elif item is none %}<span class="dim">not recorded</span>{% else %}<span class="mono">{{ item }}</span>{% endif %}</dd>
+          </div>
+          {% endfor %}
+        </dl>
+        <div>
+          {% for name, item in value.items() if item is mapping or (item is sequence and item is not string) %}
+          <h3 class="section-sub">{{ name|humanize }}</h3>
+          {{ render_value(item) }}
+          {% endfor %}
+        </div>
+      </div>
+
+    {% else %}
+      {{ render_value(value) }}
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="card mt-2">
+  <div class="card-head">
+    <h2>{{ icon("info") }} Report scope</h2>
+    <span class="hint">fixture projection, not the full frozen P0 report</span>
+  </div>
+  <div class="card-body">
+    <p class="note">
+      This is the backend's fixture section projection for one stored run. It is not the
+      complete nine-section P0 report contract and contains no raw HTTP traffic, credentials
+      or private values. Stored hashes detect accidental change; they are not signatures.
+    </p>
+    <div class="card-foot card-foot-flush">
+      {{ verdict_legend() }}
+    </div>
+  </div>
+</div>
+{% endblock %}

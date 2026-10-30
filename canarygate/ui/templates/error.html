@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, icon %}
+{% block title %}Error {{ status_code }}{% endblock %}
+
+{% block content %}
+{% call page_head("Error",
+                 title,
+                 "The UI rendered this page instead of a JSON error body.",
+                 trail=[("Dashboard", "/ui/"), ("Error " ~ status_code, None)]) %}
+  <span class="badge badge-danger badge-lg">HTTP {{ status_code }}</span>
+{% endcall %}
+
+<div class="alert alert-danger">
+  {{ icon("warning") }}
+  <div>
+    <b>{{ detail }}</b>
+    <div class="note mono mt-0">status {{ status_code }}</div>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What to do next</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>404</b> — the run id does not exist in the local database, or the route is
+          unknown. Check the scan list for ids that do exist.</li>
+        <li><b>422</b> — the submitted value was rejected before any backend action. Nothing
+          was stored.</li>
+        <li><b>413 / 415</b> — the document was too large or the content type was wrong. Send
+          raw UTF-8 YAML or JSON.</li>
+        <li><b>500 with “integrity verification”</b> — a stored record failed its checksum.
+          The backend refuses to use it and this UI does not guess its contents.</li>
+        <li><b>500 with “storage unavailable”</b> — the SQLite file cannot be created or read.
+          Check <span class="mono">CANARYGATE_DB_PATH</span> and permissions.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("arrow") }} Continue</h2></div>
+    <div class="card-body">
+      <div class="link-row">
+        <a class="btn btn-primary" href="/ui/">Dashboard</a>
+        <a class="btn" href="/ui/scans">Scan list</a>
+        <a class="btn btn-ghost" href="/ui/setup">Readiness</a>
+        <a class="btn btn-ghost" href="/api/health" target="_blank" rel="noopener">API health (JSON)</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

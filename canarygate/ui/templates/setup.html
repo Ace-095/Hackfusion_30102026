@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, status_badge, empty, icon, kv, unavailable %}
+{% block title %}Setup &amp; readiness{% endblock %}
+
+{% block content %}
+{% call page_head("Configuration",
+                 "Setup & readiness",
+                 "Served by GET /api/setup/status — the most recent stored fixture setup.
+                  Readiness gates block tests in the backend; this page only reports what
+                  the backend decided.",
+                 trail=[("Dashboard", "/ui/"), ("Setup & readiness", None)]) %}
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">{{ icon("play") }} Re-evaluate with a scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+  </form>
+{% endcall %}
+
+<section id="scan-panel" aria-live="polite"></section>
+
+{% if setup %}
+<div class="grid grid-2-1">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("setup") }} Readiness gates</h2>
+      <span class="hint">{{ setup.strategy }}</span>
+    </div>
+    <div class="card-body">
+      <table class="table">
+        <thead><tr><th scope="col">Gate</th><th scope="col">Reported state</th><th scope="col">Why it blocks tests</th></tr></thead>
+        <tbody>
+          {% for gate in gates %}
+          <tr>
+            <th scope="row">{{ gate.name }}</th>
+            <td>{{ status_badge(gate.value) }}</td>
+            <td class="small dim">{{ gate.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <dl class="kv mt-1">
+        {{ kv("Strategy", setup.strategy, True) }}
+        {{ kv("BOLA coverage", setup.bola_coverage, True) }}
+        {{ kv("Reason", setup.reason if setup.reason else "—") }}
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("key") }} Account authentication</h2>
+      {{ status_badge(setup.authentication) }}
+    </div>
+    <div class="card-body">
+      {% if setup.accounts %}
+      <table class="table table-compact">
+        <thead><tr><th scope="col">Account</th><th scope="col">State</th></tr></thead>
+        <tbody>
+          {% for account, state in setup.accounts.items() %}
+          <tr><th scope="row" class="mono">{{ account }}</th><td>{{ status_badge(state) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        {{ empty("No accounts reported") }}
+      {% endif %}
+      <p class="note">Passwords and tokens are never rendered: the backend stores only
+        account names, roles and redacted evidence summaries.</p>
+    </div>
+  </section>
+</div>
+
+{% if setup.ownership_verification != "SUCCESS" or setup.bola_coverage != "SUCCESS" %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Read-BOLA coverage is not complete.</b>
+    The backend reported ownership verification
+    <span class="mono">{{ setup.ownership_verification }}</span> and BOLA coverage
+    <span class="mono">{{ setup.bola_coverage }}</span>. No BOLA verdict can be CONFIRMED
+    from this setup; the run record explains exactly where it stopped.
+  </div>
+</div>
+{% else %}
+<div class="alert alert-ok">
+  {{ icon("check") }}
+  <div><b>All gates reported SUCCESS.</b> That means the backend could authenticate both
+    supplied accounts, discover a private resource each and verify ownership. It does not
+    mean the target is secure — see <a href="/ui/findings">findings</a>.</div>
+</div>
+{% endif %}
+
+{% else %}
+  {{ empty("Setup has not been evaluated",
+           "Run a fixture scan. Before that, authentication, resource discovery and
+            ownership verification are all unverified.",
+           "/ui/scans", "Open scans") }}
+  <p class="note dim">{{ message }}</p>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} Why readiness is a hard gate</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>Authentication</b> — without two working identities there is no “other
+          account” to test from; checks become SKIPPED, not passed.</li>
+        <li><b>Resource</b> — a private resource per account is needed so a cross-account
+          read has something to target.</li>
+        <li><b>Ownership</b> — the backend must prove who owns the resource before it may
+          claim a cross-user disclosure. An ID alone is not proof.</li>
+        <li>When a gate fails the backend reports PARTIAL, FAILED, SKIPPED or
+          NEEDS_MANUAL_INPUT with a reason. This UI never upgrades those states.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("plug") }} Manual input is not available</h2></div>
+    <div class="card-body">
+      {{ unavailable("No path for NEEDS_MANUAL_INPUT",
+                     "If the backend reports NEEDS_MANUAL_INPUT, this build has no endpoint
+                      to submit the missing decision, so the state is shown as-is and the run
+                      stops there.",
+                     "G6") }}
+      <p class="note mt-1">A submission endpoint would need a strict
+        schema and backend-owner approval before this UI could offer a form.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

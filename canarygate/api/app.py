@@ -260,7 +260,8 @@ def scenario_scan(run_id: str, store: ScenarioStore = Depends(get_scenario_store
     return _find_scenario(store, run_id)
 
 
-@router.get("/api/scenario-scans/{run_id}/report", response_model=ScenarioSectionReport,
+@router.get("/api/scenario-scans/{run_id}/report",
+            response_model=ScenarioRun | ScenarioSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def scenario_report(run_id: str, format: str = "json", view: str = "run",
                     store: ScenarioStore = Depends(get_scenario_store)):
@@ -309,7 +310,8 @@ def authentication_scan(run_id: str, store: AuthenticationStore = Depends(get_au
     return _find_auth_run(store, run_id)
 
 
-@router.get("/api/authentication-scans/{run_id}/report", response_model=AuthenticationSectionReport,
+@router.get("/api/authentication-scans/{run_id}/report",
+            response_model=AuthenticationRun | AuthenticationSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def authentication_report(run_id: str, format: str = "json", view: str = "run",
                           store: AuthenticationStore = Depends(get_auth_store)):
@@ -358,7 +360,8 @@ def validation_scan(run_id: str, store: ValidationStore = Depends(get_validation
     return _find_validation_run(store, run_id)
 
 
-@router.get("/api/validation-scans/{run_id}/report", response_model=ValidationSectionReport,
+@router.get("/api/validation-scans/{run_id}/report",
+            response_model=ValidationRun | ValidationSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def validation_report(run_id: str, format: str = "json", view: str = "run",
                       store: ValidationStore = Depends(get_validation_store)):
@@ -409,7 +412,8 @@ def interaction_scan(run_id: str, store: InteractionStore = Depends(get_interact
     return _find_interaction_run(store, run_id)
 
 
-@router.get("/api/interaction-scans/{run_id}/report", response_model=InteractionSectionReport,
+@router.get("/api/interaction-scans/{run_id}/report",
+            response_model=InteractionRun | InteractionSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def interaction_report(run_id: str, format: str = "json", view: str = "run",
                        store: InteractionStore = Depends(get_interaction_store)):
@@ -475,7 +479,8 @@ def lab_scan(run_id: str, store: LabStore = Depends(get_lab_store)):
     return _find_lab_run(store, run_id)
 
 
-@router.get("/api/lab-scans/{run_id}/report", response_model=LabSectionReport,
+@router.get("/api/lab-scans/{run_id}/report",
+            response_model=LabRun | LabSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_report(run_id: str, format: str = "json", view: str = "run",
                store: LabStore = Depends(get_lab_store)):
@@ -540,7 +545,8 @@ def lab_bola_scan(run_id: str, store: LabBolaStore = Depends(get_lab_bola_store)
     return _find_lab_bola_run(store, run_id)
 
 
-@router.get("/api/lab-bola-scans/{run_id}/report", response_model=LabBolaSectionReport,
+@router.get("/api/lab-bola-scans/{run_id}/report",
+            response_model=LabBolaRun | LabBolaSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_bola_report(run_id: str, format: str = "json", view: str = "run",
                     store: LabBolaStore = Depends(get_lab_bola_store)):
@@ -603,7 +609,8 @@ def lab_sci_scan(run_id: str, store: LabSciStore = Depends(get_lab_sci_store)):
     return run
 
 
-@router.get("/api/lab-sci-scans/{run_id}/report", response_model=LabSciSectionReport,
+@router.get("/api/lab-sci-scans/{run_id}/report",
+            response_model=InteractionRun | LabSciSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def lab_sci_report(run_id: str, format: str = "json", view: str = "run", reset: str = "",
                    store: LabSciStore = Depends(get_lab_sci_store),

@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, verdict_badge, status_badge, tri, method_chip, page_head, journey %}
+{% block title %}Flight recorder · {{ run.get('id')|short_id }}{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="/ui/static/css/replay.css">
+{% endblock %}
+
+{% block scripts %}
+  <script src="/ui/static/js/replay.js" defer></script>
+{% endblock %}
+
+{% block content %}
+{% set run_id = run.get('id') %}
+{% set endpoint = run.get('endpoint') or run.get('scenario_id') or 'run' %}
+{% set is_suite = kind in ('read-bola', 'authentication') %}
+{% set back_href = ("/ui/suites/" ~ family ~ "/" ~ run_id) if is_suite else ("/ui/scans/" ~ run_id) %}
+
+{% call page_head(
+  "Flight recorder",
+  "Replay: " ~ (run.get('title') or endpoint),
+  mode_note,
+  [("Dashboard", "/ui/"), ("Scans", back_href), (run_id|short_id, back_href), ("Replay", None)]
+) %}
+  <a class="btn btn-ghost" href="{{ back_href }}">Back to the run</a>
+  {% if mode != 'unavailable' %}
+  <button type="button" class="btn btn-ghost" data-print>{{ icon("file") }} Print timeline</button>
+  <a class="btn btn-ghost" href="#replay-build">How this is built</a>
+  {% endif %}
+{% endcall %}
+
+{% if mode == 'unavailable' %}
+  <section class="card">
+    <div class="card-body">
+      <div class="empty">
+        {{ icon("warning") }}
+        <h2>No replay is available for this run</h2>
+        <p>{{ mode_note }}</p>
+        <p class="note">
+          The run page still shows the backend's verdict, reason, evidence and constraints:
+          <a href="{{ back_href }}">open the run</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+{% else %}
+
+<section class="replay-summary">
+  <div class="stat">
+    <span class="stat-label">Verdict</span>
+    <span class="stat-value sm">{{ verdict_badge(run.get('verdict')) }}</span>
+    <span class="stat-foot">{{ run.get('reason') or '—' }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Events</span>
+    <span class="stat-value">{{ event_count }}</span>
+    <span class="stat-foot">
+      {% if observation_count %}{{ observation_count }} captured · {% endif %}{{ probe_count }} probe(s)
+    </span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">{% if mode == 'timeline' %}Span{% else %}Ordering{% endif %}</span>
+    <span class="stat-value sm">
+      {% if mode == 'timeline' %}{{ span_label }}{% else %}sequence{% endif %}
+    </span>
+    <span class="stat-foot">
+      {% if mode == 'timeline' %}both ends are backend timestamps{% else %}backend list order, no timestamps{% endif %}
+    </span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Mode</span>
+    <span class="stat-value sm">{% if is_suite %}offline transcript{% else %}fixture{% endif %}</span>
+    <span class="stat-foot">
+      {% if is_suite %}<a href="{{ back_href }}">scenario record</a>{% else %}<a href="{{ back_href }}">run record</a>{% endif %}
+    </span>
+  </div>
+</section>
+
+{% if not is_suite %}{{ journey("scans", run_id) }}{% endif %}
+
+<section class="replay" data-replay data-mode="{{ mode }}"
+         aria-label="Recorded event replay" tabindex="0">
+  <div class="replay-bar">
+    <div class="replay-controls" data-replay-controls hidden>
+      <button type="button" class="btn btn-icon" data-replay-action="restart" title="Restart (Home)">
+        {{ icon("reload") }}<span class="sr-only">Restart</span>
+      </button>
+      <button type="button" class="btn btn-icon" data-replay-action="prev" title="Previous event (Left arrow)">
+        {{ icon("chevron-left") }}<span class="sr-only">Previous event</span>
+      </button>
+      <button type="button" class="btn btn-primary" data-replay-action="toggle" aria-pressed="false">
+        <span data-replay-toggle-label>Play</span>
+      </button>
+      <button type="button" class="btn btn-icon" data-replay-action="next" title="Next event (Right arrow)">
+        {{ icon("chevron-right") }}<span class="sr-only">Next event</span>
+      </button>
+      <label class="replay-speed">Speed
+        <select data-replay-speed>
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+      <span class="replay-counter" data-replay-counter aria-hidden="true">1 / {{ event_count }}</span>
+    </div>
+    <p class="replay-hint" data-replay-hint>
+      All {{ event_count }} recorded events are listed below. Keyboard: <kbd>Home</kbd> first,
+      <kbd>←</kbd>/<kbd>→</kbd> step, <kbd>Space</kbd> play or pause.
+    </p>
+    <p class="replay-announce" aria-live="polite" data-replay-announce></p>
+  </div>
+
+  <ol class="replay-events" data-replay-events>
+    {% for event in events %}
+    <li class="replay-event" data-event data-index="{{ event.n }}"
+        data-offset="{{ event.offset_ms if event.offset_ms is not none else '' }}"
+        {% if loop.first %}aria-current="step"{% endif %}>
+      <div class="replay-marker" aria-hidden="true">
+        <span class="dot dot-{{ event.status_band }}"></span>
+        {% if not loop.last %}<span class="line"></span>{% endif %}
+      </div>
+
+      <article class="replay-card">
+        <header class="replay-card-head">
+          <span class="replay-step">Step {{ event.n }}</span>
+          <span class="source-tag source-{{ event.source }}">
+            {% if event.source == 'observation' %}captured request
+            {% elif event.source == 'probe' %}security probe
+            {% else %}evidence part{% endif %}
+          </span>
+          {% if event.evidence_part %}
+            <span class="part-tag part-{{ event.evidence_part }}{% if event.evidence_ambiguous %} part-ambiguous{% endif %}">
+              {{ icon("check") }} {{ event.evidence_part }} evidence{% if event.evidence_ambiguous %} · unconfirmed{% endif %}
+            </span>
+          {% endif %}
+          <span class="replay-title">{{ event.title }}</span>
+          {% if event.timestamp %}
+            <time class="replay-time" datetime="{{ event.timestamp }}">{{ event.timestamp[11:19] }} UTC</time>
+          {% endif %}
+          {% if event.offset_label %}
+            <span class="replay-offset">+{{ event.offset_label }}</span>
+          {% endif %}
+        </header>
+
+        <div class="replay-request">
+          {{ method_chip(event.method) }}
+          <code class="path">{{ event.path }}</code>
+          <span class="arrow" aria-hidden="true">→</span>
+          {% if event.status is not none %}
+            <span class="status-chip status-{{ event.status_band }}">{{ event.status }}</span>
+          {% else %}
+            <span class="status-chip status-none">no response recorded</span>
+          {% endif %}
+          <span class="actor-chip">
+            {{ icon("account") }} <b>{{ event.actor or 'unknown actor' }}</b>
+            {% if event.role %}<span class="role">({{ event.role }})</span>{% endif %}
+          </span>
+        </div>
+
+        {% if event.why %}<p class="replay-why">{{ event.why }}</p>{% endif %}
+        {% if event.evidence_part %}
+          {% if event.evidence_ambiguous %}
+            <p class="replay-warn" role="note">
+              {{ icon("warning") }}
+              <span><b>Ambiguous association.</b> {{ event.evidence_basis }}. The evidence
+              may describe either request, so this annotation is not proof on its own.</span>
+            </p>
+          {% endif %}
+          <p class="replay-basis">
+            {{ icon("lock") }} Evidence attached here by: <span class="mono">{{ event.evidence_basis }}</span>
+          </p>
+        {% endif %}
+
+        {% if event.check_id %}
+        <div class="replay-check">
+          {{ verdict_badge(event.check_verdict) }}
+          <span class="mono-check">{{ event.check_id }}</span>
+          <span class="check-reason">{{ event.reason }}</span>
+        </div>
+        {% endif %}
+
+        {% if event.assertions or event.checklist %}
+        <div class="replay-facts">
+          {% if event.assertions %}
+          <div>
+            <span class="facts-label">Backend assertions</span>
+            <div class="checklist-inline">
+              {% for item in event.assertions %}
+                <span class="check-item"><span class="key">{{ item.key|humanize }}</span>{{ tri(item.value) }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% if event.checklist %}
+          <div>
+            <span class="facts-label">Evidence checklist</span>
+            <div class="checklist-inline">
+              {% for item in event.checklist %}
+                <span class="check-item"><span class="key">{{ item.key|humanize }}</span>{{ tri(item.value) }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if event.response_summary %}
+        <div class="kv-row replay-response">
+          {% for row in event.response_summary %}
+            <dt>{{ row.label }}</dt>
+            <dd>
+              {% if row.value is sameas true %}yes{% elif row.value is sameas false %}no
+              {% elif row.value is none %}not recorded
+              {% else %}<span class="mono">{{ row.value }}</span>{% endif %}
+            </dd>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <details class="disclosure replay-raw">
+          <summary>Redacted request and response record</summary>
+          <div class="replay-raw-body">
+            <div>
+              <span class="facts-label">Authorization header</span>
+              <p class="mono">{{ event.request_auth }}</p>
+            </div>
+            <div>
+              <span class="facts-label">Digest of the stored record</span>
+              <p class="mono digest">{{ event.sha256 }}</p>
+            </div>
+            <p class="note dim-2">
+              Bodies and credentials are redacted before storage; the digest covers the
+              stored summary, not a signature.
+            </p>
+          </div>
+        </details>
+      </article>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <div class="replay-verdict" data-replay-verdict>
+    <span class="facts-label">Verdict after the last event</span>
+    <div class="verdict-line">
+      {{ verdict_badge(run.get('verdict')) }}
+      <b>{{ run.get('reason') or 'no reason recorded' }}</b>
+    </div>
+    {% if run.get('remediation') %}
+      <p class="note"><b>Remediation:</b> {{ run.get('remediation') }}</p>
+    {% endif %}
+    <p class="note dim-2" data-replay-verdict-note>
+      {% if mode == 'timeline' %}
+        The backend derives this verdict from the whole run, not from the last event alone.
+      {% else %}
+        The backend derives this verdict from the recorded transcript, not from the last
+        event alone.
+      {% endif %}
+    </p>
+  </div>
+</section>
+
+<section class="card" id="replay-build">
+  <div class="card-head">
+    <h2>{{ icon("database") }} How this replay is built</h2>
+    <span class="hint">no reconstruction</span>
+  </div>
+  <div class="card-body">
+    <ul class="tight-list">
+      {% for note in derived_notes %}
+        <li>{{ note }}</li>
+      {% endfor %}
+      {% if is_suite %}
+        <li>Source: <code>GET /api/{{ 'scenario-scans' if family == 'read-bola' else 'authentication-scans' }}/{{ run_id }}</code> — evidence parts and recorded probes.</li>
+      {% else %}
+        <li>Source: <code>GET /api/scan/{{ run_id }}</code> (run + checks) and <code>GET /api/scan/{{ run_id }}/observations</code> ({{ observation_count }} captured requests).</li>
+      {% endif %}
+      <li>Every timestamp, status code, assertion, digest and verdict above is copied from the backend response. This page computes only the ordering, the relative offsets and the labels.</li>
+      <li>Skipped checks appear on the run page, not here: they performed no request, so they have no event.</li>
+    </ul>
+    <p class="note dim-2">
+      Nothing on this page is a live request. The fixture target runs in-process and
+      <code>live_scanning=false</code>.
+    </p>
+  </div>
+</section>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, status_badge, tri, kv, stat,
+                              empty, icon, method_chip, verdict_legend %}
+{% block title %}{{ proof_family }} {{ run.id|short_id }}{% endblock %}
+
+{% macro scenario_evidence(number, title, evidence, purpose, anchor) -%}
+<section class="card proof" id="{{ anchor }}">
+  <div class="proof-head">
+    <div class="proof-title">
+      <span class="proof-index">{{ number }}</span>
+      <h2>{{ title }}</h2>
+    </div>
+    {% if evidence %}<span class="badge badge-ok badge-lg">captured</span>
+    {% else %}<span class="badge badge-muted badge-lg">not recorded</span>{% endif %}
+  </div>
+  {% if evidence %}
+  <div class="proof-body">
+    <p class="note">{{ purpose }}</p>
+    <div class="proof-status">
+      {% if evidence.method %}<span class="chip">{{ evidence.method }}</span>{% endif %}
+      <span class="mono small">{{ evidence.path_template if evidence.path_template else evidence.path }}</span>
+      {% if evidence.status_code %}<span class="badge badge-info">HTTP {{ evidence.status_code }}</span>{% endif %}
+      {% if evidence.actor %}<span class="dim small">as <b class="mono">{{ evidence.actor }}</b>{% if evidence.role %} ({{ evidence.role }}){% endif %}</span>{% endif %}
+    </div>
+    {% if evidence.timestamp %}<dl class="kv">{{ kv("Recorded", evidence.timestamp, True) }}</dl>{% endif %}
+    {% if evidence.sha256 %}
+    <div class="proof-hash">
+      <span>SHA-256</span><code>{{ evidence.sha256 }}</code>
+      <button type="button" class="copy-btn" data-copy="{{ evidence.sha256 }}">copy</button>
+    </div>
+    {% endif %}
+    {% if evidence.checklist %}
+    <div>
+      <h3 class="section-sub mb-1">Conditions established</h3>
+      <div class="check-grid">
+        {% for key, value in evidence.checklist.items() %}
+        <div class="check-item"><span class="key">{{ key|humanize }}</span>{{ tri(value) }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="card-foot">Offline transcript evidence: minimized, hashed, no raw bodies or tokens.</div>
+  {% else %}
+  <div class="proof-body">
+    <p class="note">{{ purpose }}</p>
+    {{ empty("No evidence recorded for this phase",
+             "The verdict above explains what could be established.") }}
+  </div>
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{% block content %}
+{% set is_bola = family == "read-bola" %}
+{% set is_auth = family == "authentication" %}
+{% set is_validation = family == "validation" %}
+{% set is_interaction = family == "interaction" %}
+{% call page_head("Test suite run",
+                 (run.scenario_id if is_bola or is_validation
+                  else (run.title if run.title else run.scenario_id)),
+                 (run.reason if run.reason
+                  else "Per-check verdicts are listed below; this family has no single "
+                       "run-level verdict in the contract."),
+                 trail=[("Dashboard", "/ui/"), ("Test suites", "/ui/suites"),
+                        (run.id|short_id, None)]) %}
+  <div class="toolbar">
+    {% if run.verdict %}{{ verdict_badge(run.verdict, "badge-lg") }}
+    {% else %}{{ status_badge(run.status) }}{% endif %}
+    <a class="btn btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}/replay">{{ icon("play") }} Replay run</a>
+    <a class="btn btn-sm" href="/ui/suites/{{ family }}/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
+    <a class="btn btn-sm btn-ghost" href="{{ family_spec.base }}/{{ run.id }}/report?format=html"
+       target="_blank" rel="noopener">{{ icon("external") }} Backend HTML</a>
+    <a class="btn btn-sm btn-ghost" href="{{ family_spec.base }}/{{ run.id }}"
+       target="_blank" rel="noopener">JSON run</a>
+    <a class="btn btn-sm btn-ghost" href="{{ family_spec.base }}/{{ run.id }}/report?view=sections"
+       target="_blank" rel="noopener">JSON sections</a>
+  </div>
+{% endcall %}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Offline transcript.</b>
+    transport=<span class="mono">{{ run.transport }}</span>,
+    network_transport_enabled=<span class="mono">{{ run.network_transport_enabled|lower }}</span>.
+    These are bundled synthetic recordings, not live-target results.
+  </div>
+</div>
+
+{% if run.remediation %}
+<div class="alert alert-info">
+  {{ icon("info") }}
+  <div><b>Recommended remediation:</b> {{ run.remediation }}</div>
+</div>
+{% endif %}
+{% if run.verdict == "SKIPPED" %}
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div><b>SKIPPED means the test was not performed.</b> It is not a pass.</div>
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("scans") }} Run</h2>{{ status_badge(run.status) }}</div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Run id", run.id, True) }}
+        {{ kv("Recorded", run.created_at, True) }}
+        {{ kv("Family", proof_family) }}
+        {{ kv("Mode", run.mode, True) }}
+        {{ kv("Scenario", run.scenario_id, True) }}
+        {% if run.interaction_kind %}{{ kv("Interaction kind", run.interaction_kind, True) }}{% endif %}
+        {% if run.controls %}{{ kv("Controls", run.controls|join(", "), True) }}{% endif %}
+        {% if run.policy_source %}{{ kv("Policy source", run.policy_source) }}{% endif %}
+        {{ kv("Transcript SHA-256", run.transcript_sha256, True) }}
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Scope used</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        {% if run.scope.origin %}{{ kv("Origin", run.scope.origin, True) }}{% endif %}
+        {{ kv("Host / port", run.scope.hostname ~ ":" ~ run.scope.port, True) }}
+        {% if run.scope.scheme %}{{ kv("Scheme", run.scope.scheme, True) }}{% endif %}
+        {% if run.scope.mode %}{{ kv("Scope mode", run.scope.mode, True) }}{% endif %}
+        {% if run.scope.organizer_ip %}{{ kv("Organizer IP", run.scope.organizer_ip, True) }}{% endif %}
+        {% if run.scope.approved_resolver %}{{ kv("Approved resolver", run.scope.approved_resolver, True) }}{% endif %}
+        {{ kv("Authorization reference", run.scope.written_authorization_reference) }}
+        {{ kv("Request budget", run.scope.request_budget, True) }}
+        {% if run.scope.scope_sha256 %}{{ kv("Scope SHA-256", run.scope.scope_sha256, True) }}{% endif %}
+      </dl>
+      <h3 class="section-sub mt-1">Accounts</h3>
+      <ul class="inline-list">
+        {% for account in run.scope.accounts %}
+        <li class="mono xs">{{ account.account if account is mapping else account }}{% if account is mapping %} ({{ account.role }}){% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+</div>
+
+{% if is_bola %}
+  <div class="grid grid-2">
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("setup") }} Setup</h2></div>
+      <div class="card-body">
+        <table class="table table-compact">
+          <tbody>
+            <tr><th scope="row">Authentication</th><td>{{ status_badge(run.setup.authentication) }}</td></tr>
+            <tr><th scope="row">Ownership verification</th><td>{{ status_badge(run.setup.ownership_verification) }}</td></tr>
+            <tr><th scope="row">BOLA coverage</th><td>{{ status_badge(run.setup.bola_coverage) }}</td></tr>
+          </tbody>
+        </table>
+        {% if run.setup.reason %}<p class="note">{{ run.setup.reason }}</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("config") }} Recipe and policy</h2></div>
+      <div class="card-body">
+        <dl class="kv">
+          {{ kv("Resource type", run.recipe.resource_type, True) }}
+          {{ kv("Discovery", run.recipe.discovery, True) }}
+          {{ kv("Detail", run.recipe.detail, True) }}
+          {{ kv("Id field", run.recipe.id_field, True) }}
+          {{ kv("Ownership field", run.recipe.ownership_field, True) }}
+          {{ kv("Ownership model", run.recipe.ownership_model, True) }}
+          {{ kv("Expected access", run.policy.expected_access, True) }}
+          {{ kv("Expected source", run.policy.expected_source) }}
+        </dl>
+        <p class="note">The private field name is <span class="mono">{{ run.recipe.private_field }}</span>;
+          values are never rendered.</p>
+      </div>
+    </section>
+  </div>
+
+  <h2 class="section-title">Two-part evidence</h2>
+  <p class="section-sub">Ownership first, then disclosure. Both parts are required for a
+    CONFIRMED read-BOLA verdict.</p>
+  <div class="grid grid-2">
+    {{ scenario_evidence(1, "Ownership evidence", run.evidence.ownership,
+       "Establishes that the resource belongs to the other account.", "proof-ownership") }}
+    {{ scenario_evidence(2, "Disclosure evidence", run.evidence.disclosure,
+       "Establishes that the acting account received private data it should not see.",
+       "proof-disclosure") }}
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>
+    <div class="card-body">
+      <div class="check-grid">
+        {% for key, value in run.checklist.items() %}
+        <div class="check-item"><span class="key">{{ key|humanize }}</span>{{ tri(value) }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card-foot">{{ verdict_legend() }}</div>
+  </section>
+
+{% elif is_interaction %}
+  <h2 class="section-title">The declared interaction</h2>
+  <p class="section-sub">Each control is checked on its own first. The weakness, if any, exists
+    only in their combination — which is what the engine decides.</p>
+  <div class="grid grid-2">
+    {% for baseline in run.baselines %}
+    <section class="card proof">
+      <div class="proof-head">
+        <div class="proof-title">
+          <span class="proof-index">{{ baseline.evidence.sequence if baseline.evidence else loop.index }}</span>
+          <h2>{{ baseline.control }} baseline</h2>
+        </div>
+        {{ verdict_badge(baseline.verdict) }}
+      </div>
+      <div class="proof-body">
+        <div class="proof-status">
+          <span class="mono small">{{ baseline.endpoint }}</span>
+          {% if baseline.evidence.status %}<span class="badge badge-info">HTTP {{ baseline.evidence.status }}</span>{% endif %}
+        </div>
+        <p class="small">{{ baseline.reason }}</p>
+        <dl class="kv">
+          {{ kv("Check id", baseline.id, True) }}
+          {{ kv("Action", baseline.action, True) }}
+          {{ kv("Probe", baseline.probe if baseline.probe else "none", True) }}
+          {{ kv("Observable", tri(baseline.observable)) }}
+          {{ kv("Verified", tri(baseline.evidence.verified if baseline.evidence else None)) }}
+        </dl>
+        <div class="proof-hash">
+          <span>SHA-256</span><code>{{ baseline.evidence_sha256 }}</code>
+          <button type="button" class="copy-btn" data-copy="{{ baseline.evidence_sha256 }}">copy</button>
+        </div>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("key") }} Combined action</h2>
+      <span class="hint mono">{{ run.combined.action }}{% if run.combined.probe %} · probe {{ run.combined.probe }}{% endif %}</span>
+    </div>
+    <div class="card-body">
+      <div class="grid grid-4 gap-1">
+        {{ stat("Endpoint", run.combined.endpoint, small=True) }}
+        {{ stat("Executed", "yes" if run.combined.executed else "no", small=True) }}
+        {{ stat("Permitted by scope", "yes" if run.combined.permitted else "no", small=True) }}
+        {{ stat("HTTP", run.combined.status if run.combined.status is not none else "—", small=True) }}
+      </div>
+      <div class="grid grid-2 gap-1 mt-1">
+        {{ stat("Impact", run.combined.impact, "the oracle's classification", small=True) }}
+        {{ stat("Attribute to the interaction", run.attribution, small=True) }}
+      </div>
+      <p class="note mt-1">{{ run.combined.observed }}</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>
+    <div class="card-body">
+      <div class="check-grid">
+        {% for key, value in run.checklist.items() %}
+        <div class="check-item"><span class="key">{{ key|humanize }}</span>{{ tri(value) }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card-foot">{{ verdict_legend() }}</div>
+  </section>
+
+{% else %}
+  <section class="grid grid-4" aria-label="Check summary">
+    {{ stat("Executed", run.summary.executed ~ " / " ~ run.summary.total, small=True) }}
+    {{ stat("CONFIRMED", run.summary.confirmed, small=True) }}
+    {{ stat("SUSPECTED", run.summary.suspected, small=True) }}
+    {{ stat("SAFE", run.summary.safe, small=True) }}
+  </section>
+  <section class="grid grid-4" aria-label="Other outcomes">
+    {{ stat("INCONCLUSIVE", run.summary.inconclusive, small=True) }}
+    {{ stat("SKIPPED", run.summary.skipped, "never a pass", small=True) }}
+    {% if is_auth %}
+      {{ stat("Scheme", run.scheme, small=True) }}
+      {{ stat("Signature verification", run.signature_verification, small=True) }}
+    {% else %}
+      {{ stat("Requests sent", run.requests_sent, small=True) }}
+      {{ stat("Blocked by guard", run.blocked_by_guard, small=True) }}
+    {% endif %}
+  </section>
+
+  {% if is_auth %}
+  <div class="alert alert-info">
+    {{ icon("info") }}
+    <div>Decoded JWT claims are used only to label accounts. They are never proof of
+      identity, privilege or authorization.
+      claims_unverified=<span class="mono">{{ run.claims_unverified|lower }}</span>.</div>
+  </div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("key") }} {{ "Authentication" if is_auth else "Input and disclosure" }} checks</h2></div>
+    <div class="table-scroll">
+      <table class="table table-wide">
+        <thead>
+          <tr><th scope="col">Check</th>{% if is_validation %}<th scope="col">Category</th>{% endif %}
+              <th scope="col">Verdict</th><th scope="col">Reason</th>
+              {% if is_validation %}<th scope="col">Probes</th>{% endif %}
+              <th scope="col">Evidence</th><th scope="col">Remediation</th></tr>
+        </thead>
+        <tbody>
+          {% for check in run.checks %}
+          <tr>
+            <th scope="row" class="mono nowrap">{{ check.id }}</th>
+            {% if is_validation %}<td class="small">{{ check.category }}</td>{% endif %}
+            <td>{{ verdict_badge(check.verdict) }}</td>
+            <td class="small">{{ check.reason }}</td>
+            {% if is_validation %}
+            <td class="mono xs">{{ check.request_probes|join(", ") if check.request_probes else "—" }}</td>
+            {% endif %}
+            <td>
+              {% if check.evidence %}
+              <details class="disclosure">
+                <summary>
+                  {% if check.evidence.probe %}probe {{ check.evidence.probe }} · {% endif %}
+                  {% if check.evidence.status_code %}HTTP {{ check.evidence.status_code }}{% elif check.evidence.status %}HTTP {{ check.evidence.status }}{% else %}evidence summary{% endif %}
+                </summary>
+                <div class="disclosure-body">
+                  <pre class="json">{{ check.evidence|pretty_json }}</pre>
+                </div>
+              </details>
+              {% else %}
+                <span class="dim small">none — not performed</span>
+              {% endif %}
+            </td>
+            <td class="small">{{ check.remediation if check.remediation else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("lock") }} Constraint counters</h2></div>
+  <div class="card-body">
+    {% if run.constraints %}
+      <div class="grid grid-4 gap-1">
+        {{ stat("Requests sent", run.constraints.requests_sent, small=True) }}
+        {{ stat("Blocked by guard", run.constraints.blocked_by_guard, small=True) }}
+        {{ stat("Redirects observed", run.constraints.redirects_observed, "never followed", small=True) }}
+        {{ stat("Network transport", "enabled" if run.constraints.network_transport_enabled else "disabled", small=True) }}
+      </div>
+      <div class="grid grid-3 gap-1 mt-1">
+        {{ stat("Out of scope executed", run.constraints.out_of_scope_requests_executed,
+                "must stay zero", tone=("ok" if run.constraints.out_of_scope_requests_executed == 0 else "danger"), small=True) }}
+        {{ stat("Destructive executed", run.constraints.destructive_requests_executed,
+                "must stay zero", tone=("ok" if run.constraints.destructive_requests_executed == 0 else "danger"), small=True) }}
+        {{ stat("External executed", run.constraints.external_requests_executed,
+                "must stay zero", tone=("ok" if run.constraints.external_requests_executed == 0 else "danger"), small=True) }}
+      </div>
+      {% if run.constraints.halted_reason %}
+      <p class="note note-tight"><b>Halted:</b> {{ run.constraints.halted_reason }}</p>
+      {% endif %}
+      <p class="note">Request budget remaining: <span class="mono">{{ run.constraints.budget_remaining }}</span></p>
+    {% else %}
+      <div class="grid grid-4 gap-1">
+        {{ stat("Requests sent", run.requests_sent, small=True) }}
+        {{ stat("Blocked by guard", run.blocked_by_guard, small=True) }}
+        {{ stat("Budget remaining", run.budget_remaining, small=True) }}
+        {{ stat("Network transport", "enabled" if run.network_transport_enabled else "disabled", small=True) }}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if is_bola and run.inventory %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("inventory") }} Inventory captured with this run</h2></div>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th><th scope="col">Source</th></tr></thead>
+      <tbody>
+        {% for endpoint in run.inventory %}
+        <tr>
+          <td>{{ method_chip(endpoint.method) }}</td>
+          <td class="mono">{{ endpoint.path }}</td>
+          <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+          <td class="mono small">{{ endpoint.expected_source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} Limitations the backend recorded</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      {% for limitation in run.limitations %}<li>{{ limitation }}</li>{% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}

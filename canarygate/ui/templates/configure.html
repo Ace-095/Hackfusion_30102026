@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, empty, icon, unavailable %}
+{% block title %}Scan configuration{% endblock %}
+
+{% block content %}
+{% call page_head("Configuration",
+                 "Scan configuration",
+                 "What the backend is actually configured to do: the bundled scope file,
+                  setup recipe and OpenAPI document it loads, shown read-only. Changing
+                  these requires a backend change and a new authorization decision.",
+                 trail=[("Dashboard", "/ui/"), ("Scan configuration", None)]) %}
+  <a class="btn btn-sm btn-ghost" href="/ui/setup">Readiness</a>
+  <a class="btn btn-sm btn-ghost" href="/ui/spec">Inspect a spec</a>
+{% endcall %}
+
+<div class="alert alert-warn">
+  {{ icon("lock") }}
+  <div>
+    <b>This page is read-only, deliberately.</b>
+    The backend exposes no configuration endpoint: POST /api/scan takes no body, and the
+    fixture scope, recipe and specification are bundled files. The controls below are
+    disabled and labelled with the reason, so the interface never pretends you can
+    configure a target it cannot test.
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("config") }} Effective configuration</h2>
+    <span class="badge badge-muted">read-only</span>
+  </div>
+  <div class="card-body">
+    <form class="form" aria-describedby="config-disabled-note">
+      <div class="field-row">
+        <label class="field">
+          <span>Target host</span>
+          <input type="text" value="fixture.invalid" disabled>
+          <small>Fixed by the bundled scope file.</small>
+        </label>
+        <label class="field">
+          <span>Port</span>
+          <input type="number" value="443" disabled>
+          <small>Fixed by the bundled scope file.</small>
+        </label>
+        <label class="field">
+          <span>Allowed methods</span>
+          <input type="text" value="GET, POST" disabled>
+          <small>Only exact scoped operations pass the guard.</small>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>Request budget</span>
+          <input type="number" value="20" disabled>
+          <small>Per-run cap enforced centrally.</small>
+        </label>
+        <label class="field">
+          <span>Accounts</span>
+          <input type="text" value="alice, bob" disabled>
+          <small>Supplied accounts; passwords come from the environment only.</small>
+        </label>
+        <label class="field">
+          <span>Ownership model</span>
+          <input type="text" value="private" disabled>
+          <small>From the setup recipe.</small>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="btn" type="button" disabled>Save configuration</button>
+        <button class="btn" type="button" disabled>Start configured scan</button>
+        <span class="note" id="config-disabled-note">Unavailable: no backend endpoint accepts
+          this configuration.</span>
+      </div>
+    </form>
+    {{ unavailable("Configuration cannot be submitted",
+                   "The scanner always uses the bundled fixture scope and recipe. A
+                    configurable target needs a validated contract, a scan-job endpoint and
+                    written authorization for each new target.",
+                   "G3 / G4 / G12") }}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("database") }} Recipe the backend loads</h2>
+    <span class="hint mono">canarygate.offline.fixture_recipe()</span>
+  </div>
+  <div class="card-body">
+    <p class="note">Returned by the backend's own recipe function, with canary- and
+      credential-like values redacted for display.</p>
+    <pre class="json">{{ recipe_summary|pretty_json }}</pre>
+  </div>
+</section>
+
+<div class="grid grid-2">
+  {% for file in files %}
+  <section class="card">
+    <div class="card-head">
+      <h2 class="mono">{{ file.name }}</h2>
+      <span class="hint mono">canarygate/offline/</span>
+    </div>
+    <div class="card-body">
+      <p class="note">{{ file.purpose }}</p>
+      <details class="disclosure"{% if loop.first %} open{% endif %}>
+        <summary>Show file content</summary>
+        <div class="disclosure-body"><pre class="text">{{ file.text }}</pre></div>
+      </details>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Enforced for every request</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li>Exact host and port only — no wildcard, no redirects, no external traffic.</li>
+        <li>Only operations listed in the scope file with the exact query string pass.</li>
+        <li>DELETE is always blocked; PUT/PATCH are blocked by default.</li>
+        <li>Request budget and sequential execution are enforced before connection.</li>
+        <li>Requests and responses are size-limited; DNS is validated and pinned.</li>
+        <li>Credentials are read from the environment and redacted everywhere.</li>
+      </ul>
+      <p class="note">Source of truth: the backend scope loader and central guard. This page
+        only describes them.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} To make this page editable</h2></div>
+    <div class="card-body">
+      <ol class="numbered">
+        <li>A validated configuration object in the backend (scope + recipe + spec),
+          rejected if it violates the safety rules.</li>
+        <li>A <span class="mono">POST /api/scan-jobs</span> contract that accepts it and
+          returns a job id.</li>
+        <li>A written authorization decision for every new target — the guard cannot infer
+          permission from a form.</li>
+        <li>Then this form becomes live and the disabled controls are removed.</li>
+      </ol>
+      <p class="note">Requested as gaps G3/G4 in <span class="mono">docs/UI.md</span>;
+        awaiting backend-owner approval.</p>
+    </div>
+  </section>
+</div>
+
+{% if not files %}
+  {{ empty("No bundled configuration found",
+           "The backend package did not expose the expected fixture files.") }}
+{% endif %}
+{% endblock %}

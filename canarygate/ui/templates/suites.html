@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, empty, icon, verdict_badge, status_badge %}
+{% block title %}Test suites{% endblock %}
+
+{% block content %}
+{% call page_head("Runs",
+                 "Test suites",
+                 "Bundled, deterministic offline transcripts. They exercise the guarded
+                  pipeline without any network transport: scope, accounts and responses are
+                  synthetic recordings bundled with the backend.",
+                 trail=[("Dashboard", "/ui/"), ("Test suites", None)]) %}
+  <a class="btn btn-sm btn-ghost" href="/ui/reports">Suite reports</a>
+  <a class="btn btn-sm" href="/ui/lab">TargetLab validation</a>
+{% endcall %}
+
+{{ journey("scans") }}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Recorded scenarios, not live tests.</b>
+    Each run reports <span class="mono">transport=offline_transcript</span> and
+    <span class="mono">network_transport_enabled=false</span>. They demonstrate the decision
+    logic; they do not prove anything about a real API. The only workflow that opens a socket is
+    <a href="/ui/lab">TargetLab validation</a>, and it is loopback-only.
+  </div>
+</div>
+
+<section id="suite-panel" aria-live="polite"></section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("shield") }} Read-BOLA scenarios</h2>
+      <span class="hint mono">POST /api/scenario-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Runs the full read-BOLA decision path for one transcript: ownership
+        evidence, disclosure evidence, the decision checklist and a verdict.</p>
+      <form class="form" method="post" action="/ui/actions/scenario-scan"
+            hx-post="/ui/actions/scenario-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#scenario-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario id</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.read_bola %}
+            <option value="{{ scenario.id }}">{{ scenario.id }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run read-BOLA scenario</button>
+          <span id="scenario-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+        <p class="note dim-2">Scenario ids come from the backend registry; this page does not
+          invent or rename them.</p>
+      </form>
+    </div>
+    <div class="card-foot">
+      <details class="disclosure">
+        <summary>Bundled ids ({{ catalog.read_bola|length }})</summary>
+        <div class="disclosure-body">
+          <ul class="inline-list">
+            {% for scenario in catalog.read_bola %}
+            <li class="mono xs">{{ scenario.id }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("key") }} Authentication scenarios</h2>
+      <span class="hint mono">POST /api/authentication-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Runs the eight P0 authentication checks (AUTHN-01 … AUTHN-08) for one
+        token transcript. Inapplicable checks are reported as SKIPPED with a reason.</p>
+      <form class="form" method="post" action="/ui/actions/authentication-scan"
+            hx-post="/ui/actions/authentication-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#auth-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.authentication %}
+            <option value="{{ scenario.id }}">
+              {{ scenario.id }}{% if scenario.title %} — {{ scenario.title }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run authentication scenario</button>
+          <span id="auth-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      Titles are the backend's own scenario titles, not predicted outcomes.
+    </div>
+  </section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("search") }} Input and disclosure scenarios</h2>
+      <span class="hint mono">POST /api/validation-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Runs the INPUT and DISC checks over recorded request/response
+        transcripts. Signature-based disclosure detection is described as partial by the
+        backend's own audit, and the run says so.</p>
+      <form class="form" method="post" action="/ui/actions/validation-scan"
+            hx-post="/ui/actions/validation-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#validation-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.validation %}
+            <option value="{{ scenario.id }}">
+              {{ scenario.id }}{% if scenario.title %} — {{ scenario.title }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run input/disclosure scenario</button>
+          <span id="validation-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      There is no run-level verdict in this family; per-check verdicts are the record.
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("matrix") }} Control-interaction scenarios</h2>
+      <span class="hint mono">POST /api/interaction-scans</span>
+    </div>
+    <div class="card-body">
+      <p class="note">Two controls that each pass alone, then the combined action. The engine
+        decides whether the weakness is interaction-induced, and can return SKIPPED or
+        INCONCLUSIVE without pretending the test passed.</p>
+      <form class="form" method="post" action="/ui/actions/interaction-scan"
+            hx-post="/ui/actions/interaction-scan" hx-target="#suite-panel" hx-swap="innerHTML"
+            hx-indicator="#interaction-spinner" hx-disabled-elt="find button">
+        <label class="field">
+          <span>Bundled scenario</span>
+          <select name="scenario_id" required>
+            {% for scenario in catalog.interaction %}
+            <option value="{{ scenario.id }}">
+              {{ scenario.id }}{% if scenario.title %} — {{ scenario.title }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon("play") }} Run interaction scenario</button>
+          <span id="interaction-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+        </div>
+      </form>
+    </div>
+    <div class="card-foot">
+      {{ catalog.interaction|length }} bundled scenarios, including failure and partial-baseline cases.
+    </div>
+  </section>
+</div>
+
+<h2 class="section-title">Stored suite runs</h2>
+<p class="section-sub">Read directly from the local SQLite stores the backend writes. The JSON API
+  exposes these runs by id but not as a list, so this page enumerates them server-side instead of
+  claiming an endpoint that does not exist.</p>
+
+<div class="grid grid-2">
+  {% for family, items in history.items() %}
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("database") }} {{ families[family].label }}</h2>
+      <span class="hint mono">{{ items|length }} stored</span>
+    </div>
+    {% if items %}
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead>
+          <tr><th scope="col">Run</th><th scope="col">Scenario</th>
+              <th scope="col">Outcome</th><th scope="col">Recorded</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td><a class="mono" href="/ui/suites/{{ family }}/{{ item.id }}">{{ item.get("id")|short_id }}</a></td>
+            <td class="mono xs">{{ item.get("scenario_id") }}</td>
+            <td>
+              {% if item.get("verdict") %}{{ verdict_badge(item.get("verdict")) }}
+              {% else %}{{ status_badge(item.get("status")) }}{% endif %}
+            </td>
+            <td class="mono xs">{{ item.get("created_at") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+      {{ empty("No stored run", "Run a scenario above to create the first one.") }}
+    </div>
+    {% endif %}
+    <div class="card-foot">
+      Report route: <span class="mono">{{ families[family].base }}/&lt;run_id&gt;/report</span>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("search") }} Open a suite run by id</h2></div>
+    <div class="card-body">
+      <form class="form" method="get" action="/ui/reports/lookup">
+        <div class="field-row-2">
+          <label class="field">
+            <span>Family</span>
+            <select name="family">
+              {% for key, spec in families.items() %}
+              <option value="{{ key }}">{{ spec.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Run id</span>
+            <input type="text" name="run_id" required placeholder="36-character UUID">
+          </label>
+        </div>
+        <div class="form-actions"><button class="btn" type="submit">Open run</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What these suites demonstrate</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        <li><b>Read-BOLA</b> — the decision path that turns ownership proof and private-data
+          disclosure into a verdict, including honest non-CONFIRMED outcomes.</li>
+        <li><b>Authentication</b> — missing, malformed, wrong-scheme, crafted-JWT and API-key
+          probes, with the effective-identity change required before a probe can be CONFIRMED.</li>
+        <li><b>Input / disclosure</b> — validation probes and signature-based disclosure checks,
+          with their limits stated in the run.</li>
+        <li><b>Interaction</b> — a weakness that exists only in the combination of two
+          individually correct controls.</li>
+        <li>Every run records request counters and limits the backend applied.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+{% if not catalog.read_bola and not catalog.authentication and not catalog.validation and not catalog.interaction %}
+  {{ empty("No bundled scenarios", "The backend registry returned no scenario ids.") }}
+{% endif %}
+{% endblock %}

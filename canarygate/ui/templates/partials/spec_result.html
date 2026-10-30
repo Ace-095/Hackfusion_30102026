@@ -1,0 +1,68 @@
+{% from "_macros.html" import empty, icon, method_chip %}
+<section class="card" id="spec-result">
+  <div class="card-head">
+    <h2>{{ icon("spec") }} Inspection result</h2>
+    <span class="badge badge-info mono">mode={{ result.mode }}</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-3">
+      <div class="stat stat-compact">
+        <span class="stat-label">Endpoints parsed</span>
+        <span class="stat-value">{{ result.endpoint_count }}</span>
+      </div>
+      <div class="stat stat-compact">
+        <span class="stat-label">Live scanning</span>
+        <span class="stat-value sm mono">{{ result.live_scanning|lower }}</span>
+      </div>
+      <div class="stat stat-compact">
+        <span class="stat-label">Document SHA-256</span>
+        <span class="stat-value sm mono wrap">{{ result.sha256 }}</span>
+      </div>
+    </div>
+    <p class="note">{{ result.message }}</p>
+  </div>
+
+  {% if result.endpoints %}
+  <div class="table-scroll">
+    <table class="table table-wide">
+      <thead>
+        <tr><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Expected access</th>
+            <th scope="col">Provenance</th><th scope="col">Declared auth</th><th scope="col">Parameters</th></tr>
+      </thead>
+      <tbody>
+        {% for endpoint in result.endpoints %}
+        <tr>
+          <td>{{ method_chip(endpoint.method) }}</td>
+          <td class="mono">{{ endpoint.path }}</td>
+          <td><span class="pill">{{ endpoint.expected_access }}</span></td>
+          <td class="mono small">{{ endpoint.expected_source }}</td>
+          <td class="mono small">
+            {% if endpoint.security %}
+              {% for requirement in endpoint.security %}
+                {% for scheme in requirement.keys() %}{{ scheme }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% endfor %}
+            {% else %}<span class="dim">none declared</span>{% endif %}
+          </td>
+          <td>
+            {% if endpoint.parameters %}
+              <ul class="inline-list">
+                {% for parameter in endpoint.parameters %}
+                <li class="mono xs">{{ parameter.name }}
+                  <span class="dim">({{ parameter['in'] }}{% if parameter.required %}, required{% endif %})</span></li>
+                {% endfor %}
+              </ul>
+            {% else %}<span class="dim">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="card-body">{{ empty("The document declared no endpoints") }}</div>
+  {% endif %}
+  <div class="card-foot">
+    Nothing was saved and no scan was started. The fixture scanner is not connected to this
+    document.
+  </div>
+</section>

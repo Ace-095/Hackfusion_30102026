@@ -1,0 +1,26 @@
+{% from "_macros.html" import verdict_badge, status_badge, icon, kv %}
+{#- HTMX fragment for a finished lab run. It links to the stored evidence and
+    repeats the run's own verdict; it never states one of its own. -#}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon("check") }} {{ family_spec.label }} finished</h2>
+    {% if family == "reset" %}{{ status_badge(run.status) }}
+    {% else %}{{ verdict_badge(run.verdict) }}{% endif %}
+  </div>
+  <div class="card-body">
+    <dl class="kv">
+      {{ kv("Run id", run.id, True) }}
+      {{ kv("Recorded", run.created_at, True) }}
+      {{ kv("Reason", run.reason) }}
+    </dl>
+    <div class="link-row mt-1">
+      <a class="btn btn-sm btn-primary" href="/ui/lab/{{ family }}/{{ run.id }}">
+        {{ icon("eye") }} Open the stored evidence</a>
+      {% if family != "reset" %}
+      <a class="btn btn-sm" href="/ui/lab/{{ family }}/{{ run.id }}/report">
+        {{ icon("reports") }} Report view</a>
+      {% endif %}
+      <a class="btn btn-sm btn-ghost" href="/ui/lab">All lab runs</a>
+    </div>
+  </div>
+</div>

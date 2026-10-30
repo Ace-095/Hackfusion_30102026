@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, verdict_badge, status_badge, tri, kv, stat,
+                              empty, icon, checklist_grid, lab_transport_panel, verdict_legend %}
+{% block title %}Control interaction {{ run.id|short_id }}{% endblock %}
+
+{% block content %}
+{% call page_head("TargetLab validation",
+                 "Control interaction on the lab",
+                 run.reason,
+                 trail=[("Dashboard", "/ui/"), ("TargetLab validation", "/ui/lab"),
+                        (run.id|short_id, None)]) %}
+  <div class="toolbar">
+    {{ verdict_badge(run.verdict, "badge-lg") }}
+    <span class="badge badge-info">{{ run.attribution }}</span>
+    <a class="btn btn-sm" href="/ui/lab/sci/{{ run.id }}/report">{{ icon("reports") }} Report view</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-sci-scans/{{ run.id }}/report?format=html"
+       target="_blank" rel="noopener">{{ icon("external") }} Backend HTML</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-sci-scans/{{ run.id }}"
+       target="_blank" rel="noopener">JSON run</a>
+    <a class="btn btn-sm btn-ghost" href="/api/lab-sci-scans/{{ run.id }}/report?view=sections"
+       target="_blank" rel="noopener">JSON sections</a>
+  </div>
+{% endcall %}
+
+<div class="alert alert-warn">
+  {{ icon("warning") }}
+  <div>
+    <b>Real HTTPS, loopback only.</b> The sequence below was executed against
+    <span class="mono">{{ run.transport.destination }}:{{ run.transport.port }}</span>; the page
+    renders the responses the backend recorded. It does not simulate the sequence. Each control
+    passes on its own, and the weakness exists only in their interaction.
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("plug") }} Transport recorded by the backend</h2></div>
+  <div class="card-body">{{ lab_transport_panel(run.transport) }}</div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("scans") }} Run</h2>{{ status_badge(run.status) }}</div>
+    <div class="card-body">
+      <dl class="kv">
+        {{ kv("Run id", run.id, True) }}
+        {{ kv("Recorded", run.created_at, True) }}
+        {{ kv("Mode", run.mode, True) }}
+        {{ kv("Scenario", run.scenario_id, True) }}
+        {{ kv("Interaction kind", run.interaction_kind, True) }}
+        {{ kv("Controls", run.controls|join(", "), True) }}
+        {{ kv("Policy source", run.policy_source) }}
+        {{ kv("Transcript SHA-256", run.transcript_sha256, True) }}
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("lock") }} Request accounting</h2></div>
+    <div class="card-body">
+      <div class="grid grid-2 gap-1">
+        {{ stat("Requests sent", run.requests_sent, small=True) }}
+        {{ stat("Blocked by guard", run.blocked_by_guard, small=True) }}
+        {{ stat("Budget remaining", run.budget_remaining, small=True) }}
+        {{ stat("Network transport", "enabled" if run.network_transport_enabled else "disabled",
+                "loopback only", small=True) }}
+      </div>
+      <p class="note">Integration origin: <span class="mono">{{ run.integration_origin }}</span>.
+        Budget is decremented after every other guard check passes, so a refused request does
+        not consume it.</p>
+    </div>
+  </section>
+</div>
+
+<h2 class="section-title">The declared interaction</h2>
+<p class="section-sub">Two baselines, then the combined action. All three entries below are the
+  backend's own records; the sequence is not reconstructed by this page.</p>
+
+<div class="grid grid-2">
+  {% for baseline in run.baselines %}
+  <section class="card proof">
+    <div class="proof-head">
+      <div class="proof-title">
+        <span class="proof-index">{{ baseline.evidence.sequence if baseline.evidence else loop.index }}</span>
+        <h2>{{ baseline.control }} baseline</h2>
+      </div>
+      {{ verdict_badge(baseline.verdict) }}
+    </div>
+    <div class="proof-body">
+      <div class="proof-status">
+        <span class="mono small">{{ baseline.endpoint }}</span>
+        <span class="badge badge-info">HTTP {{ baseline.evidence.status if baseline.evidence else "—" }}</span>
+        <span class="dim small">as <b class="mono">{{ baseline.evidence.actor if baseline.evidence else "—" }}</b></span>
+      </div>
+      <p class="small">{{ baseline.reason }}</p>
+      <dl class="kv">
+        {{ kv("Check id", baseline.id, True) }}
+        {{ kv("Action", baseline.action, True) }}
+        {{ kv("Probe", baseline.probe if baseline.probe else "none", True) }}
+        {{ kv("Observable", tri(baseline.observable)) }}
+        {{ kv("Verified", tri(baseline.evidence.verified if baseline.evidence else None)) }}
+        {{ kv("Checked denial", tri(baseline.evidence.checked_denial if baseline.evidence else None)) }}
+      </dl>
+      <div class="proof-hash">
+        <span>SHA-256</span><code>{{ baseline.evidence_sha256 }}</code>
+        <button type="button" class="copy-btn" data-copy="{{ baseline.evidence_sha256 }}">copy</button>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("key") }} Combined action</h2>
+    <span class="hint mono">{{ run.combined.action }} · probe {{ run.combined.probe }}</span>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-4 gap-1">
+      {{ stat("Endpoint", run.combined.endpoint, small=True) }}
+      {{ stat("Executed", "yes" if run.combined.executed else "no", small=True) }}
+      {{ stat("Permitted by scope", "yes" if run.combined.permitted else "no", small=True) }}
+      {{ stat("HTTP", run.combined.status if run.combined.status is not none else "—", small=True) }}
+    </div>
+    <div class="grid grid-2 gap-1 mt-1">
+      {{ stat("Impact", run.combined.impact, "the oracle's classification", small=True) }}
+      {{ stat("Response verified", "yes" if run.combined.verified else "no",
+              "the transport confirms it produced this response", small=True) }}
+    </div>
+    <p class="note mt-1">{{ run.combined.observed }}</p>
+  </div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("check") }} Decision checklist</h2></div>
+    <div class="card-body">{{ checklist_grid(run.checklist) }}</div>
+    <div class="card-foot">All eight conditions must hold before CONFIRMED. A single missing
+      baseline is INCONCLUSIVE, not a guess.</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("eye") }} Ownership and disclosure evidence</h2></div>
+    <div class="card-body">
+      <h3 class="section-sub">Ownership</h3>
+      <dl class="kv">
+        {{ kv("Status", run.ownership.status, True) }}
+        {{ kv("Identities verified", run.ownership.identities_verified|join(", "), True) }}
+        {{ kv("Cross-list isolated", tri(run.ownership.cross_list_isolated)) }}
+        {{ kv("Resource ids withheld", tri(run.ownership.resource_ids_withheld)) }}
+      </dl>
+      {% if run.ownership.baselines_verified is mapping %}
+        {{ checklist_grid(run.ownership.baselines_verified) }}
+      {% endif %}
+      <h3 class="section-sub mt-1">Disclosure</h3>
+      <dl class="kv">
+        {{ kv("Actor → owner", run.disclosure.actor ~ " → " ~ run.disclosure.owner, True) }}
+        {{ kv("Owner baseline collected", tri(run.disclosure.owner_baseline_collected)) }}
+        {{ kv("Owner baseline verified", tri(run.disclosure.owner_baseline_verified)) }}
+        {{ kv("Marker matches owner baseline", tri(run.disclosure.marker_matches_owner_baseline)) }}
+        {{ kv("Marker withheld from storage", tri(run.disclosure.marker_withheld)) }}
+        {{ kv("Identifiers withheld", tri(run.disclosure.identifiers_withheld)) }}
+      </dl>
+      <p class="note">The private field is <span class="mono">{{ run.disclosure.private_field }}</span>;
+        its value is never rendered.</p>
+    </div>
+  </section>
+</div>
+
+{% if run.remediation %}
+<div class="alert alert-info">
+  {{ icon("info") }}
+  <div><b>Remediation key:</b> <span class="mono">{{ run.remediation_key }}</span> — {{ run.remediation }}</div>
+</div>
+{% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("reload") }} Reset proofs on this port</h2>
+    <span class="hint">separate two-runner scenario</span>
+  </div>
+  {% if resets %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead><tr><th scope="col">Proof</th><th scope="col">Status</th><th scope="col">Recorded</th>
+                 <th scope="col">Reason</th></tr></thead>
+      <tbody>
+        {% for proof in resets %}
+        <tr>
+          <td><a class="mono" href="/ui/lab/reset/{{ proof.id }}">{{ proof.id|short_id }}</a></td>
+          <td>{{ status_badge(proof.status) }}</td>
+          <td class="mono xs">{{ proof.created_at }}</td>
+          <td class="small">{{ proof.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body bordered-top">
+    <p class="note">A reset proof is stored separately because it must not consume this run's
+      one-read state. Its presence here only means the ports match.</p>
+  </div>
+  {% else %}
+  <div class="card-body">
+    {{ empty("No reset proof recorded on this port",
+             "Run the reset proof from the TargetLab page to prove the lab condition clears.",
+             "/ui/lab", "Open TargetLab validation") }}
+  </div>
+  {% endif %}
+  <div class="card-foot">
+    <a class="btn btn-sm" href="/ui/lab/sci/{{ run.id }}/report">Open the section report</a>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("info") }} Limitations the backend recorded</h2></div>
+  <div class="card-body">
+    <ul class="bullets">
+      {% for limitation in run.limitations %}<li>{{ limitation }}</li>{% endfor %}
+    </ul>
+    <div class="card-foot card-foot-flush">{{ verdict_legend() }}</div>
+  </div>
+</section>
+{% endblock %}

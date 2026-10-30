@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, journey, verdict_badge, status_badge, tri, stat,
+                              meter, empty, verdict_legend, icon %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+{% call page_head("Overview",
+                 "Security posture",
+                 "The state of the local backend, unedited. Where the backend cannot prove
+                  something, this page says so instead of showing a placeholder.",
+                 trail=[("Dashboard", None)]) %}
+  <form class="toolbar" method="post" action="/ui/actions/fixture-scan"
+        hx-post="/ui/actions/fixture-scan" hx-target="#scan-panel" hx-swap="innerHTML"
+        hx-indicator="#scan-spinner" hx-disabled-elt="find button">
+    <button class="btn btn-primary" type="submit">{{ icon("play") }} Run fixture scan</button>
+    <span id="scan-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
+  </form>
+{% endcall %}
+
+{{ journey("dashboard") }}
+
+<section id="scan-panel" aria-live="polite"></section>
+
+{% if setup is none %}
+  <div class="alert alert-warn">
+    {{ icon("warning") }}
+    <div>
+      <b>No fixture scan has been recorded yet.</b>
+      Authentication, resource discovery and ownership verification are all unverified
+      until the first run. Nothing on this page is a finding.
+    </div>
+  </div>
+{% endif %}
+
+<section class="grid grid-4" aria-label="Backend state">
+  {{ stat("API health", health.status, health.mode ~ " · live_scanning=" ~ health.live_scanning|lower) }}
+  {{ stat("Open findings", counts.CONFIRMED + counts.SUSPECTED,
+          "confirmed " ~ counts.CONFIRMED ~ " · suspected " ~ counts.SUSPECTED ~ " (fixture runs)",
+          href="/ui/findings") }}
+  {{ stat("Fixture endpoints", endpoints|length,
+          (run_count ~ " stored run(s) · " ~ suite_count ~ " bundled suites"), href="/ui/endpoints") }}
+  {{ stat("Coverage assessed", ((counts.CONFIRMED + counts.SUSPECTED + counts.SAFE + counts.INCONCLUSIVE + counts.SKIPPED) if run_count else 0),
+          "verdicts recorded, from " ~ run_count ~ " run(s)", href="/ui/matrix") }}
+</section>
+
+<div class="grid grid-2-1">
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("shield") }} Verdict distribution</h2>
+      <span class="hint">{{ run_count }} stored run(s)</span>
+    </div>
+    <div class="card-body">
+      {% if run_count %}
+        {{ meter(counts.CONFIRMED, run_count, "CONFIRMED", "danger") }}
+        {{ meter(counts.SUSPECTED, run_count, "SUSPECTED", "warn") }}
+        {{ meter(counts.SAFE, run_count, "SAFE", "ok") }}
+        {{ meter(counts.INCONCLUSIVE, run_count, "INCONCLUSIVE", "info") }}
+        {{ meter(counts.SKIPPED, run_count, "SKIPPED") }}
+      {% else %}
+        {{ empty("No verdicts yet",
+                 "A verdict exists only after a stored run. This build never shows a
+                  sample verdict, so these meters stay empty until you run the scan.",
+                 "/ui/scans", "Open scan list") }}
+      {% endif %}
+    </div>
+    <div class="card-foot">{{ verdict_legend() }}</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("shield") }} TargetLab validation</h2>
+      <a class="card-link" href="/ui/lab">open</a>
+    </div>
+    <div class="card-body">
+      {% if lab_run_count %}
+        <table class="table table-compact">
+          <thead><tr><th scope="col">Workflow</th><th scope="col">Latest</th>
+                     <th scope="col">Stored</th></tr></thead>
+          <tbody>
+            {% for family, history in lab_history.items() %}
+            {% set latest_run = lab_latest[family] %}
+            <tr>
+              <th scope="row">{{ lab_families[family].label }}</th>
+              <td>
+                {% if latest_run %}
+                  {% if family == "reset" %}{{ status_badge(latest_run.status) }}
+                  {% else %}{{ verdict_badge(latest_run.verdict) }}{% endif %}
+                  <a class="mono xs" href="/ui/lab/{{ family }}/{{ latest_run.id }}">{{ latest_run.id|short_id }}</a>
+                {% else %}<span class="dim small">no run</span>{% endif %}
+              </td>
+              <td class="mono">{{ history|length }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="note">Real HTTPS, loopback only, pinned test CA. Ground truth is scored after
+          the verdicts. These are not live-target results.</p>
+      {% else %}
+        {{ empty("No TargetLab run yet",
+                 "The lab workflows make real requests to 127.0.0.1. Nothing has been recorded.",
+                 "/ui/lab", "Open TargetLab validation") }}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ icon("setup") }} Readiness gates</h2>
+      <a class="card-link" href="/ui/setup">full view</a>
+    </div>
+    <div class="card-body">
+      {% if gates %}
+        <table class="table table-compact">
+          <thead><tr><th scope="col">Gate</th><th scope="col">State</th></tr></thead>
+          <tbody>
+            {% for gate in gates %}
+            <tr>
+              <th scope="row">{{ gate.name }}</th>
+              <td>{{ status_badge(gate.value) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if setup.reason %}<p class="note"><b>Backend reason:</b> {{ setup.reason }}</p>{% endif %}
+        <p class="note dim-2">{{ setup_message }}</p>
+      {% else %}
+        {{ empty("Setup not evaluated yet",
+                 "These gates are produced by a fixture scan.") }}
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("findings") }} Latest verdict</h2>
+    {% if latest %}<a class="card-link" href="/ui/findings">all findings</a>{% endif %}
+  </div>
+  <div class="card-body">
+    {% if latest %}
+      <div class="finding-headline mb-1">
+        {{ verdict_badge(latest.verdict) }}
+        <span class="mono">{{ latest.endpoint }}</span>
+        <span class="dim">·</span>
+        <span class="small">{{ latest.reason }}</span>
+      </div>
+      <div class="grid grid-2">
+        <dl class="kv">
+          <div class="kv-row"><dt>Actor</dt><dd class="mono">{{ latest.actor }} ({{ latest.account_role }})</dd></div>
+          <div class="kv-row"><dt>Target resource</dt><dd class="mono">{{ latest.target_resource }}</dd></div>
+          <div class="kv-row"><dt>Verified owner</dt><dd class="mono">{{ latest.verified_owner }}</dd></div>
+          <div class="kv-row"><dt>Expected access</dt><dd><span class="pill">{{ latest.expected_access }}</span></dd></div>
+        </dl>
+        <div>
+          <h3 class="section-sub mb-1">Two-part evidence</h3>
+          <ul class="list-plain">
+            <li>Ownership proof {{ tri(true if latest.evidence.ownership else none) }}
+              <span class="dim xs">— resource belongs to the other account</span></li>
+            <li>Disclosure proof {{ tri(true if latest.evidence.disclosure else none) }}
+              <span class="dim xs">— private data actually crossed the boundary</span></li>
+          </ul>
+          <div class="link-row mt-1">
+            <a class="btn btn-primary btn-sm" href="/ui/scans/{{ latest.id }}">Open finding</a>
+            <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ latest.id }}/replay">Replay run</a>
+            <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ latest.id }}/evidence">Evidence explorer</a>
+            <a class="btn btn-sm btn-ghost" href="/ui/scans/{{ latest.id }}/report">Report view</a>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      {{ empty("No verdict yet",
+               "A verdict only exists after a fixture run is stored. This build never
+                shows a sample verdict.") }}
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("scans") }} Recent fixture runs</h2>
+    <a class="card-link" href="/ui/scans">open scan list</a>
+  </div>
+  {% if runs %}
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Recorded</th><th scope="col">Endpoint</th><th scope="col">Actor</th>
+          <th scope="col">Target</th><th scope="col">Verdict</th><th scope="col">Run</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td class="mono small">{{ run.created_at }}</td>
+          <td class="mono">{{ run.endpoint }}</td>
+          <td class="mono">{{ run.actor }}</td>
+          <td class="mono">{{ run.target_resource }}</td>
+          <td>{{ verdict_badge(run.verdict) }}</td>
+          <td><a href="/ui/scans/{{ run.id }}">{{ run.id|short_id }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="card-body">
+      {{ empty("No stored runs",
+               "Run the bundled fixture scan to produce the first read-BOLA result.") }}
+    </div>
+  {% endif %}
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("info") }} What this build does not do</h2></div>
+    <div class="card-body">
+      <ul class="bullets">
+        {% for fact in build_facts %}
+        <li>{{ fact }}</li>
+        {% endfor %}
+        <li>No live network execution: the guarded HTTPX component is not connected to
+          the scanner, and the fixture target is in-process, not a network service.</li>
+        <li>No authenticated UI, no multi-user access, no background job queue.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("arrow") }} Follow the evidence</h2></div>
+    <div class="card-body">
+      <ol class="numbered">
+        <li><a href="/ui/endpoints">API inventory</a> — what the spec declares and what
+          access the backend expects for each endpoint.</li>
+        <li><a href="/ui/scans">Scan result</a> — who read what, and the verdict.</li>
+        <li><a href="/ui/findings">Finding detail</a> — why the verdict was reached.</li>
+        <li>
+          {% if latest %}
+            <a href="/ui/scans/{{ latest.id }}/evidence">Ownership and disclosure proof</a>
+          {% else %}
+            Ownership and disclosure proof
+          {% endif %}
+          — the two evidence parts, side by side.</li>
+        <li><a href="/ui/matrix">Authorization matrix</a> — actor × endpoint coverage.</li>
+        <li><a href="/ui/reports">Report</a> — the same data as a printable document.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+{% endblock %}
