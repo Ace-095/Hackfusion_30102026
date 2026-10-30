@@ -159,9 +159,11 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_tex
                                  remediation="Validate input against the declared schema on the server." if verdict == "SUSPECTED" else None)
 
     for offset, (check_id, signature) in enumerate(DISC_CASES, start=len(INPUT_CASES)):
-        matched = next(((response, label) for response, label, signals in observed if signature in signals), None)
+        matched = next(((response, label, "debug_header" if signature == "version_header" and "debug_header" in signals else signature)
+                        for response, label, signals in observed
+                        if signature in signals or (signature == "version_header" and "debug_header" in signals)), None)
         if matched:
-            response, label = matched
+            response, label, signature = matched
             checks[offset].update(verdict="CONFIRMED", reason=f"Disclosure signature observed in fixture response: {signature}",
                                   evidence=summary(actor, role, response, False, input_case=label,
                                                    disclosure_signature=signature),

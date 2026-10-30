@@ -26,8 +26,8 @@ def is_supported_jwt(token: str) -> bool:
 
 def auth_verdict(status_code: int, response_body, *, private_field: str, baseline: str) -> tuple[str, str]:
     """A 200 alone is never proof that private access was granted."""
-    if status_code in (401, 403):
-        return "SAFE", "The fixture rejected the authentication probe"
+    if status_code in (401, 403) and response_body == {}:
+        return "SAFE", "The fixture rejected the authentication probe with a checked empty body"
     if (status_code == 200 and isinstance(response_body, dict)
             and private_field.lower() not in {"id", "status", "owner", "user_id"}
             and isinstance(baseline, str) and baseline

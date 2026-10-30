@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from .runner import FixtureRunner, GuardRejected
 from .target import FixtureTarget
-from .auth_checks import pending_checks, run_auth_checks
+from .auth_checks import pending_checks, run_auth_checks, run_public_check
 from .enumeration import run_enumeration_check
 from .input_checks import pending_input_checks, run_input_checks
 from canarygate.evidence.observations import capture as capture_observation, seal as seal_observation
@@ -196,6 +196,9 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
                                                 path=actor_path, token=tokens[account_a.username],
                                                 private_field=resource.private_field, baseline=actor_private,
                                                 summary=_summary, observations=auth_observations) + pending_input_checks())
+        public_check = run_public_check(runner, actor=account_a.username, role=account_a.role,
+                                        endpoints=fixture_inventory, summary=_summary)
+        result["checks"] = [public_check if check["id"] == "AUTHN-07" else check for check in result["checks"]]
         # These bounded validation inputs are fixture-specific, read-only, and
         # separately allow-listed by the exact scoped path and query.
         auth_checks = result["checks"][:len(pending_checks())]

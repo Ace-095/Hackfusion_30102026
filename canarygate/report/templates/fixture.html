@@ -9,6 +9,7 @@
 <p><strong>Timestamp:</strong> {{ run.created_at }}</p>
 <p><strong>Category:</strong> Read-BOLA</p>
 <p><strong>Verdict:</strong> {{ run.verdict }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
 <p><strong>Severity:</strong> {{ 'High (fixture BOLA)' if run.verdict == 'CONFIRMED' else 'Not assigned' }}</p>
 <p><strong>Reason:</strong> {{ run.reason }}</p>
 <p><strong>Actor / role:</strong> {{ run.actor }} / {{ run.account_role }}</p>
@@ -16,7 +17,9 @@
 <p><strong>Verified owner:</strong> {{ run.verified_owner or 'Not established' }}</p>
 <p><strong>Expected access / source:</strong> {{ run.expected_access }} / {{ run.expected_source }}</p>
 <p><strong>Remediation:</strong> {{ run.remediation or 'No finding-specific remediation' }}</p>
+<h2>Scope and rules of engagement, accounts and seeding</h2><pre>{{ json_block(sections.scope_accounts_seeding) }}</pre>
 <h2>Endpoint inventory (OpenAPI authentication requirements only)</h2><pre>{{ json_block(run.inventory) }}</pre>
+<h2>Findings and remediation</h2><pre>{{ json_block(sections.findings) }}</pre>
 <h2>Three setup gates and BOLA coverage</h2><pre>{{ json_block(run.setup) }}</pre>
 <h2>Read-BOLA evidence checklist</h2>
 {% if run.bola_checklist %}<pre>{{ json_block(run.bola_checklist) }}</pre>{% else %}<p>Not recorded for this earlier fixture run.</p>{% endif %}
@@ -35,7 +38,10 @@
 <pre>{{ new_scan }}</pre>
 <p>To retrieve this stored fixture report and its observation set from the local backend:</p><pre>{{ retrieve }}</pre>
 {% for category, results in checks.items() %}<h2>{{ category }} checks</h2><pre>{{ json_block(results) }}</pre>{% endfor %}
-<h2>Secured endpoints that passed</h2><pre>{{ json_block(secured) }}</pre>
+<h2>Secured endpoints that passed</h2><pre>{{ json_block(sections.secured_endpoints) }}</pre>
+<h2>Skipped and inconclusive tests</h2><pre>{{ json_block(sections.skipped_and_inconclusive) }}</pre>
+<h2>Authorization matrix (partial fixture coverage)</h2><pre>{{ json_block(sections.authorization_matrix) }}</pre>
+<h2>Manual interventions and inferred items</h2><pre>{{ json_block(sections.manual_interventions_and_inferences) }}</pre>
 <h2>Not yet executed</h2>
 <p>JWT tampering, remaining validation and disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Individual skipped checks are listed above.</p>
 <h2>Fixture constraint checklist</h2><pre>{{ json_block(run.constraints) }}</pre>

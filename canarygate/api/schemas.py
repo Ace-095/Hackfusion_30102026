@@ -203,3 +203,24 @@ class ObservationSet(BaseModel):
 class FixtureReportBundle(BaseModel):
     run: FixtureRun
     observation_set: ObservationSet
+
+
+class FixtureSectionData(BaseModel):
+    """Fixture-only nine-section projection, not the complete P0 report contract."""
+    model_config = ConfigDict(extra="forbid")
+    executive_summary: dict
+    scope_accounts_seeding: dict
+    endpoint_inventory: list[dict]
+    findings: dict
+    secured_endpoints: list[dict]
+    skipped_and_inconclusive: list[dict]
+    authorization_matrix: dict
+    manual_interventions_and_inferences: dict
+    constraint_checklist: dict
+
+
+class FixtureSectionReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["fixture"]
+    run_id: str
+    sections: FixtureSectionData

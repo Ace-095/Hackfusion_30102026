@@ -100,10 +100,10 @@ def prepare_for_storage(report):
         evidence["response"] = {"body": body}
         # Only known fixture checklist keys and narrowly typed values survive.
         allowed_bools = {"both_owner_baselines", "cross_list_isolation", "matches_owner_private_baseline",
-                         "valid_control_observed", "responses_differ"}
+                         "valid_control_observed", "responses_differ", "denial_body_checked"}
         allowed_values = {"authentication_probe": {"missing", "malformed", "wrong_scheme"},
                           "input_case": {"valid_control", "missing_required_limit", "wrong_type", "out_of_range", "invalid_enum_limit"},
-                          "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header", "sensitive_field", "unexpected_top_level_field"}}
+                          "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header", "debug_header", "sensitive_field", "unexpected_top_level_field"}}
         source = evidence.get("checklist", {})
         if not isinstance(source, dict):
             raise ValueError("invalid fixture evidence checklist")

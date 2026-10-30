@@ -17,6 +17,10 @@ def disclosure_signals(response) -> set[str]:
         value = response.headers.get(header, "")
         if re.search(r"(?:/|\s)v?\d+\.\d+(?:\.\d+)?\b", value, re.IGNORECASE):
             signals.add("version_header")
+    for header in ("x-debug", "x-debug-token", "x-debug-mode", "x-debug-info"):
+        value = response.headers.get(header, "").strip()
+        if value:
+            signals.add("debug_header")
     return signals
 
 # Fixed signatures and bounded JSON traversal, for the synthetic search fixture.

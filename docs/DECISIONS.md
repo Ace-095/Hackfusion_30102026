@@ -705,3 +705,17 @@ one third-party warning. See [judge demo](checkpoints/25-fixture-detection-pipel
 - [ ] Implement P1 BFLA/matrix per spec after P0.
 - [ ] Run full offline integration and section 15 adversarial acceptance suite.
 - [ ] Integrate collaborator's frontend after contract agreement.
+
+### Checkpoint 26: honest P0 audit and shared fixture report projection
+
+A fixture authentication denial is SAFE only for its checked empty denial
+contract, never a malformed, unexpected or private-marker-containing body.
+AUTHN-07 has a deliberately narrow optional public health fixture check: only
+the exact declared and scoped synthetic operation and exact expected 200 body
+can pass; the bundled fixture has no such operation and remains SKIPPED. Debug
+header signatures are retained as names only, not header values. Both report
+formats project the same nine fixture sections; unknown manual/inference data
+is NOT_RECORDED, historical BOLA and authentication SAFE without the necessary checklist is not promoted
+to a secured endpoint, and the one-cell matrix is marked partial. No generic
+scanner, arbitrary-target redactor or live execution is enabled. Full P0 remains
+blocked; see `docs/P0_ACCEPTANCE_MATRIX.md`.

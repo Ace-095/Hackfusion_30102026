@@ -11,10 +11,10 @@ from starlette.concurrency import run_in_threadpool
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
-from canarygate.report.fixture import render_fixture_report
+from canarygate.report.fixture import build_fixture_sections, render_fixture_report
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
-                      ObservationSet, FixtureReportBundle, SpecInspection)
+                      ObservationSet, FixtureReportBundle, FixtureSectionReport, SpecInspection)
 
 router = APIRouter()
 
@@ -125,11 +125,18 @@ def matrix(store: FixtureStore = Depends(get_store)):
     return {"mode": "fixture", "cells": cells}
 
 
-@router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle,
+@router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle | FixtureSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
-def report(run_id: str, format: str = "json", include_observations: bool = False,
+def report(run_id: str, format: str = "json", include_observations: bool = False, view: str = "run",
            store: FixtureStore = Depends(get_store)):
     run = _find(store, run_id)
+    if view not in {"run", "sections"}:
+        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if view == "sections" and include_observations:
+        raise HTTPException(status_code=400, detail="Section view does not include observation sets; fetch observations separately")
+    if view == "sections" and format == "json":
+        report = FixtureSectionReport(mode="fixture", run_id=run_id, sections=build_fixture_sections(run))
+        return JSONResponse(content=report.model_dump(mode="json"))
     if format == "json" and not include_observations:
         return run  # Existing JSON contract is unchanged.
     if format not in {"json", "html"}:

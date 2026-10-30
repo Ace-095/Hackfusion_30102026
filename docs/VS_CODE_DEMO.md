@@ -159,3 +159,7 @@ For the two-part fixture Read-BOLA oracle, see [checkpoint 23](checkpoints/23-re
 For independent validation planning, see [checkpoint 24](checkpoints/24-independent-validation-plan.md).
 
 For the bounded nested fixture detection pipeline, see [checkpoint 25](checkpoints/25-fixture-detection-pipeline.md).
+
+Checkpoint 26 adds the fixture-only nine-section JSON view and the honest P0
+audit; see `docs/checkpoints/26-p0-audit.md` and `docs/P0_ACCEPTANCE_MATRIX.md`.
+These do not indicate P0 or production acceptance.

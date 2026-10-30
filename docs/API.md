@@ -132,3 +132,17 @@ database migration system. There is no scan configured from an uploaded spec, re
 asynchronous progress, live scan, general evidence viewer or complete report yet.
 Handle 501, 404, 500 and null states rather than presenting placeholder data as completed
 scans. The fixture redactor is not approved for live credentials or real data.
+
+### Fixture nine-section projection (checkpoint 26)
+
+`GET /api/reports/{id}?view=sections` returns `{mode, run_id, sections}`;
+`sections` contains `executive_summary`, `scope_accounts_seeding`,
+`endpoint_inventory`, `findings`, `secured_endpoints`,
+`skipped_and_inconclusive`, `authorization_matrix`,
+`manual_interventions_and_inferences`, and `constraint_checklist`. HTML uses the
+same projection. The default JSON and `?include_observations=true` bundle are
+unchanged. The section view and observation bundle cannot be combined; fetch
+observations separately. The one-cell matrix is labeled `partial_fixture` and
+manual interventions/inferences are `NOT_RECORDED`, not an empty claim. Existing
+BOLA and authentication records without the relevant denial checklist are not promoted to secured endpoints.
+This is fixture-only, not a complete v3.2 report or live-evidence contract.
