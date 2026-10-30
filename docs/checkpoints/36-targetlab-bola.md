@@ -115,8 +115,10 @@ not to any organizer or internet target.
   `implemented=37 / partial=9 / missing=2`, `real_networking=0`,
   `loopback_tls=4`.
 - Wheel: 122 files, no certificates, keys, tests or `targetlab` package.
-- Delivered in commit `PENDING` on `arena/aa67fa1b-hackfusion-30102026`; CI
-  results are recorded in the follow-up documentation commit.
+- Delivered in commit `16b50cd` on `arena/aa67fa1b-hackfusion-30102026`.
+- CI: workflow run **41081121279** — `ubuntu-latest` success and
+  `windows-latest` success, including the real loopback TLS servers (uvicorn in a
+  thread plus TLS handshakes) on Windows.
 
 ## Remaining gaps (unchanged, stated honestly)
 
