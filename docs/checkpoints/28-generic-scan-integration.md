@@ -146,8 +146,17 @@ New tests:
 
 Local full suite: **539 passed**, one third-party Starlette/AnyIO
 `DeprecationWarning`. `git diff --check` clean. Isolated wheel build includes
-the new scenario template (77 files). Ubuntu/Windows CI results are recorded in
-the hand-off message for the pushed commit.
+the new scenario template (77 files).
+
+CI run `41057738033` on commit `743c59a` passed both
+`tests (ubuntu-latest, 3.11)` and `tests (windows-latest, 3.11)`. The first two
+CI attempts failed on Windows only: the new test patched `socket.connect`
+before Starlette's `TestClient` started, and Windows asyncio connects a loopback
+socketpair while creating its event loop. The guard is now installed after
+client startup and scoped to each client block, matching the existing offline
+tests. CI also now uploads pytest output as an artifact and emits failing test
+names as check annotations, because job logs are not retrievable from this
+environment.
 
 ## Remaining gaps
 
