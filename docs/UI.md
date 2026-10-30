@@ -617,7 +617,7 @@ browser. Everything above is the strongest verification this environment allows.
 `GET /` serves `templates/intro.html` (shell: `intro_base.html`); `GET /ui/intro`
 replays it, and the interface sidebar links there.
 
-The page is two things at once: a **21-second title sequence** and the **pitch**.
+The page is two things at once: an **18-second title sequence** and the **pitch**.
 Every line is copy that already exists in the product — no invented claim, no
 sample verdict.
 
@@ -625,14 +625,18 @@ sample verdict.
 
 | Scene | Window | Content |
 | --- | --- | --- |
-| — | 0.0 s | `CanaryGate` wordmark, tagline, `local · fixture-only · no live scanning`, **Enter the interface** |
-| 1 | 0.2 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
-| 2 | 3.2 s | "A 200 response alone is never enough." |
-| 3 | 6.1 s | "Two-part evidence. One verdict." ownership / disclosure cards |
-| 4 | 9.2 s | The five verdicts cascade, then four dim and CONFIRMED keeps focus |
-| 5 | 12.0 s | Flight-recorder rows building up, ending on CONFIRMED |
-| 6 | 15.0 s | Matrix cells filling in, with `not assessed` left visible |
-| 7 | 17.5 s | The wordmark again, with the gate bars parting |
+| 1 | 0.1 s | **The canary**, singing on the gate rail: "A canary goes quiet before you feel the gas." |
+| 2 | 2.4 s | Kinetic type: REQUEST → RESPONSE → BOUNDARY → **PROOF**, slammed in and out |
+| 3 | 4.5 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
+| 4 | 6.6 s | "A 200 response alone is never enough." |
+| 5 | 8.7 s | "Two-part evidence. One verdict." ownership / disclosure cards |
+| 6 | 10.7 s | The five verdicts blast in behind a 24-ray burst; four dim, CONFIRMED keeps focus |
+| 7 | 12.7 s | Flight-recorder rows building up, ending on CONFIRMED |
+| 8 | 14.6 s | Matrix cells filling in, with `not assessed` left visible |
+| 9 | 16.3 s | The wordmark, gate bars parting, and the canary landing on it |
+
+The wordmark scene is **first in the DOM** and last on screen, because reading
+order should start at the product name.
 
 The h1 is the wordmark and it sits **first in the DOM**, so a screen reader meets
 the page title before the scene captions, and the primary CTA is first in tab
@@ -733,3 +737,50 @@ motion never navigating. The full automatic hand-off was timed separately:
 **Still not done:** a real-browser visual pass. There is no browser binary in
 this environment (§12.6 explains why), so pacing, type rendering and the feel of
 the transitions are verified structurally and behaviourally, not visually.
+
+
+### 14.7 The canary
+
+The product is named after the bird in the coal mine: it reacts to gas long
+before a person can, and *its silence is itself the signal*. That metaphor is the
+opening scene of the sequence.
+
+* **Hand-drawn SVG** (`templates/_canary.html`), no image file, no icon library.
+  Body, head, crest, beak (two halves), wing, tail, eye, legs and perch are
+  separate groups, so each can animate on its own.
+* **Motion**: it floats, breathes, opens its beak on a 0.62 s cycle, flicks its
+  wing and tail, blinks irregularly, and three song arcs leave the beak in
+  sequence. A red alarm ring pulses behind it.
+* **Twice per page**: singing in scene 1, perched on the wordmark in scene 9.
+  The macro takes a `uid` so the two gradient definitions cannot collide —
+  duplicate SVG ids would silently make the second bird borrow the first's
+  gradient (there is a test for this).
+* **Decorative by contract**: `role="presentation" aria-hidden="true"`. The
+  meaning is in the sentence beside it, so a screen reader hears the argument
+  rather than a description of a drawing.
+
+### 14.8 "Blast" — what makes it move
+
+Built for the showreel brief, within the no-dependency rule:
+
+| Technique | Where |
+| --- | --- |
+| Kinetic typography | Scene 2: four words slam in at `scale(1.5) → blur(16px) → settle`, then punch out in sequence |
+| Horizontal slam cut | Scene 2's whole window uses a faster, louder keyframe than the rest |
+| Verdict burst | 24 SVG rays + expanding ring + core, behind the five verdicts |
+| Component choreography | Recorder rows and matrix cells animate individually; nothing is a screenshot |
+| Beat sync | While the synthesized soundtrack is on, each downbeat toggles `html.beat` for 170 ms, pulsing the canary and the wordmark |
+| Gate motif | A single vertical line in scene 1, two parting bars around the wordmark in scene 9 |
+| Ambient canvas | Slow request lines with ripples where they cross the gate |
+
+Runtime is **18 s** with ~0.35 s overlaps, so the cuts land quicker than the
+previous 21 s cut. Both constants (`--run`, `RUN_MS`) are asserted equal by a
+test, and the `<noscript>` hand-off fires at 20 s.
+
+### 14.9 Sound still leads the picture
+
+The soundtrack remains synthesized in the browser (no audio file): kick on every
+beat, off-beat tick, bar marker, master gain 0.07, **off by default**. The new
+part is that the picture listens to it — `flashBeat()` fires on downbeats and
+the stylesheet answers with a short scale pulse. Muting clears the class, so the
+motion never outlives the music.

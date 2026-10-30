@@ -683,8 +683,9 @@ def test_landing_page_is_the_front_door_and_hands_off_to_the_interface(tmp_path)
         assert re.search(r'<h1 class="wordmark">\s*<span class="wordmark-a">Canary</span>'
                          r'<span class="wordmark-b">Gate</span>', body)
 
-        # Seven scenes, and the copy is the project's own phrasing.
-        assert body.count('data-scene="') == 7
+        # Nine scenes (eight numbered beats plus the final wordmark), and the
+        # copy is the project's own phrasing.
+        assert body.count('data-scene="') == 9
         assert "is never enough" in body
         assert "Ownership proof" in body and "Disclosure proof" in body
         assert "Every request recorded" in body
@@ -753,11 +754,13 @@ def test_landing_assets_are_local_and_agree_on_the_runtime(tmp_path):
 
         # One runtime, declared in both files; the countdown cannot drift from
         # the animation if these stay equal.
-        assert "--run: 21s" in css
-        assert "RUN_MS = 21000" in script
+        assert "--run: 18s" in css
+        assert "RUN_MS = 18000" in script
         # Every scene delay lives in the stylesheet, not inline.
         assert body_has_no_inline_style(client.get("/").text)
-        assert ".scene-1 { --sd:" in css
+        assert ".scene-1     { --sd:" in css
+        # Every scene is timed from the stylesheet, never from the markup.
+        assert css.count("--sd:") >= 9
 
         # Accessibility and honesty behaviour that a redesign must not remove.
         assert "prefers-reduced-motion: reduce" in css
@@ -835,3 +838,83 @@ def test_landing_page_explains_a_static_storyboard_and_offers_to_play_it(tmp_pat
         script = client.get("/ui/static/js/intro.js").text
         assert 'classList.add("force-motion")' in script
         assert "intro:force-motion" in script
+
+
+def test_the_canary_is_drawn_in_svg_and_stays_decorative(tmp_path):
+    """The namesake bird is real vector art, not an image file, and it is not
+    read out to a screen reader."""
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+
+        # Two birds: the singing one in the opening scene, the perched one on
+        # the wordmark.
+        assert body.count('class="canary canary-lg canary-singing"') == 1
+        assert body.count('class="canary canary-sm canary-perched"') == 1
+
+        # It is SVG with separate animatable parts, and no bitmap anywhere.
+        assert "<svg" in body and 'viewBox="0 0 160 160"' in body
+        for part in ("canary-beak", "canary-wing", "canary-tail", "canary-eye", "canary-song"):
+            assert part in body, part
+        assert "<img" not in body
+        assert not re.search(r"\.(png|jpe?g|webp|gif)\b", body)
+
+        # Decorative: hidden from assistive technology, no stray <title>.
+        assert 'role="presentation" aria-hidden="true"' in body
+
+        # The meaning is carried by text, not by the drawing.
+        assert "A canary goes quiet" in body
+        assert "before you feel the gas" in body
+        assert "the warning arrives" in body
+
+
+def test_the_sequence_uses_kinetic_type_and_a_verdict_burst(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+
+        # The four words slam in as type, not as an image.
+        assert 'class="word-slam"' in body
+        for word in ("REQUEST", "RESPONSE", "BOUNDARY", "PROOF"):
+            assert f">{word}</span>" in body, word
+        assert "boundary being crossed" in body
+
+        # The verdict reveal celebrates itself, in SVG.
+        assert 'class="burst"' in body
+        assert body.count('class="burst-ray"') == 24      # +1 for the <g> wrapper
+        assert "burst-ring" in body and "burst-core" in body
+
+        css = client.get("/ui/static/css/intro.css").text
+        assert "@keyframes slam-in" in css
+        assert "@keyframes burst-pop" in css
+        assert "@keyframes canary-sing" in css
+        # Motion is still opt-out, including the new pieces.
+        assert "html:not(.force-motion) .canary-beak" in css
+        assert "html:not(.force-motion) .burst" in css
+
+
+def test_the_soundtrack_drives_the_motion_not_the_other_way_round(tmp_path):
+    """The visual pulse is triggered by the synthesised beat, and stops with it."""
+    with _client(tmp_path) as client:
+        script = client.get("/ui/static/js/intro.js").text
+        css = client.get("/ui/static/css/intro.css").text
+
+        # One short pulse per downbeat, cleared again immediately.
+        assert "function flashBeat()" in script
+        assert 'classList.add("beat")' in script
+        assert 'classList.remove("beat")' in script
+        assert "isDownbeat" in script
+        # Stopping the sound stops the pulse.
+        assert 'document.documentElement.classList.remove("beat");' in script
+        # The stylesheet answers that class.
+        assert "html.beat .canary" in css and "html.beat .wordmark" in css
+
+
+def test_two_birds_on_one_page_do_not_collide_in_the_svg(tmp_path):
+    """SVG gradient ids are document-global: the macro must keep them unique."""
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+        ids = re.findall(r'id="(canary-[^"]+)"', body)
+        assert len(ids) == 4
+        assert len(set(ids)) == len(ids), ids
+        # Every reference resolves to an id that exists on this page.
+        for ref in set(re.findall(r'url\(#(canary-[^)]+)\)', body)):
+            assert ref in ids, ref

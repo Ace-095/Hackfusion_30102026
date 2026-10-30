@@ -14,7 +14,7 @@
 (function () {
   "use strict";
 
-  var RUN_MS = 21000;              /* keep in sync with --run in intro.css */
+  var RUN_MS = 18000;              /* keep in sync with --run in intro.css */
   var DESTINATION = "/ui/";
   var BPM = 100;
 
@@ -182,10 +182,23 @@
     osc.stop(time + 0.2);
   }
 
+  var beatTimer = null;
+  function flashBeat() {
+    /* One short class toggle per beat: the CSS pulse is cheap, and it stops
+       the moment the soundtrack does. */
+    var el = document.documentElement;
+    el.classList.add("beat");
+    if (beatTimer) window.clearTimeout(beatTimer);
+    beatTimer = window.setTimeout(function () { el.classList.remove("beat"); }, 170);
+  }
+
   function schedule() {
     if (!audioCtx) return;
     var beat = 60 / BPM;
     while (nextBeat < audioCtx.currentTime + 0.25) {
+      var lead = Math.max(0, (nextBeat - audioCtx.currentTime) * 1000);
+      var isDownbeat = beatIndex % 4 === 0;
+      if (isDownbeat) window.setTimeout(flashBeat, lead);
       if (beatIndex % 4 === 0) kick(nextBeat);
       if (beatIndex % 4 === 2) blip(nextBeat, 1568, 0.05);       /* off-beat tick */
       if (beatIndex % 8 === 6) blip(nextBeat, 523.25, 0.045);    /* bar marker */
@@ -217,6 +230,8 @@
 
   function stopSound() {
     if (scheduler) { window.clearInterval(scheduler); scheduler = null; }
+    if (beatTimer) { window.clearTimeout(beatTimer); beatTimer = null; }
+    document.documentElement.classList.remove("beat");
     if (audioCtx && audioCtx.state === "running") audioCtx.suspend();
   }
 
