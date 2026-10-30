@@ -139,3 +139,5 @@ For the guarded HTTPX boundary tests, see [checkpoint 13](checkpoints/13-guarded
 For shared run-guard verification, see [checkpoint 14](checkpoints/14-run-guard.md).
 
 For network-deadline verification, see [checkpoint 15](checkpoints/15-network-deadline.md).
+
+For guarded authentication verification, see [checkpoint 16](checkpoints/16-guarded-login.md).

@@ -43,8 +43,8 @@ class FakeResponse:
 class FakeHTTP:
     def __init__(self, events, responses):
         self.events, self.responses, self.sock = events, responses, None
-    def request(self, method, path, *, headers):
-        self.events.append(('request', method, path, headers.copy()))
+    def request(self, method, path, *, headers, body=None):
+        self.events.append(('request', method, path, headers.copy(), body))
     def getresponse(self): return self.responses.popleft()
     def close(self):
         if self.sock: self.sock.close()
@@ -523,3 +523,222 @@ def test_absolute_network_deadline_interrupts_slow_peer(monkeypatch, stall):
         server_sock.close()
         worker.join(timeout=2)
     assert not worker.is_alive()
+
+
+def test_guarded_login_binds_exact_operation_and_keeps_secrets_out_of_result(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password-123')
+    config = LoginConfig(method='POST', path='/login', username_field='username',
+                         password_field='password', token_field='access_token',
+                         password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"access_token":"signed-token-alice"}'))
+    client = GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=config)
+    result = client.login('alice')
+    assert result.status_code == 200 and result.json() == {'token_obtained': True, 'identity_verified': False}
+    assert b'signed-token-alice' not in result.content
+    assert 'synthetic-password-123' not in repr(result) and 'signed-token-alice' not in repr(result)
+    request = next(e for e in mocked_wire[0] if e[0] == 'request')
+    assert request[1:3] == ('POST', '/login')
+    assert request[3]['Content-Type'] == 'application/json'
+    assert 'Authorization' not in request[3]
+    assert __import__('json').loads(request[4]) == {'username': 'alice', 'password': 'synthetic-password-123'}
+    assert client.get('alice', '/items').status_code == 200
+    reads = [e for e in mocked_wire[0] if e[0] == 'request' and e[1] == 'GET']
+    assert reads[0][3]['Authorization'] == 'Bearer signed-token-alice'
+
+
+@pytest.mark.parametrize('body', [b'{}', b'{"access_token":""}', b'{"access_token":"bad\\r\\nX: x"}',
+                                  b'{"access_token":"first","access_token":"second"}', b'{'])
+def test_invalid_login_response_never_establishes_identity(mocked_wire, monkeypatch, body):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    config = LoginConfig(method='POST', path='/login', username_field='username',
+                         password_field='password', token_field='access_token',
+                         password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    mocked_wire[1].appendleft(FakeResponse(200, body))
+    client = GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=config)
+    response = client.login('alice')
+    assert response.json() == {'token_obtained': False, 'identity_verified': False}
+    with pytest.raises(ValueError): client.get('alice', '/items')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+def test_login_cannot_retry_or_use_unapproved_user_or_path(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    from canarygate.guard.run_guard import RunSafetyGuard
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    cfg = LoginConfig(method='POST', path='/login', username_field='username',
+                      password_field='password', token_field='token',
+                      password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    scope = load_authorized_scope(SCOPE)
+    guard = RunSafetyGuard(scope)
+    first = GuardedHTTPXRunner(scope, {}, login_config=cfg, run_guard=guard)
+    second = GuardedHTTPXRunner(scope, {}, login_config=cfg, run_guard=guard)
+    mocked_wire[1].appendleft(FakeResponse(401, b'{"token":"not-for-client"}'))
+    assert first.login('alice').json() == {'token_obtained': False, 'identity_verified': False}
+    with pytest.raises(ValueError): second.login('alice')
+    with pytest.raises(ValueError): first.login('bob')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+@pytest.mark.parametrize('change', [
+    {'path': '/other'}, {'method': 'GET'}, {'username_field': 'password'},
+    {'password_env': {'alice': 'PATH'}}, {'password_env': {'eve': 'CANARY_EVE_PASSWORD'}},
+])
+def test_invalid_login_config_fails_before_socket(mocked_wire, change):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    data = {'method': 'POST', 'path': '/login', 'username_field': 'username', 'password_field': 'password',
+            'token_field': 'token', 'password_env': {'alice': 'CANARY_ALICE_PASSWORD'}}
+    data.update(change)
+    with pytest.raises(ValueError): GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=LoginConfig(**data))
+    assert not mocked_wire[0]
+
+
+def test_missing_password_blocks_without_connection_and_can_be_retried_after_setup(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.delenv('CANARY_ALICE_PASSWORD', raising=False)
+    cfg = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                      token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    client = GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=cfg)
+    with pytest.raises(ValueError): client.login('alice')
+    assert not mocked_wire[0]
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"token":"valid-token"}'))
+    assert client.login('alice').json() == {'token_obtained': True, 'identity_verified': False}
+
+
+def test_rejected_login_retry_does_not_consume_additional_budget(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    from canarygate.guard.run_guard import RunSafetyGuard
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    cfg = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                      token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    scope = load_authorized_scope(SCOPE); guard = RunSafetyGuard(scope)
+    client = GuardedHTTPXRunner(scope, {}, login_config=cfg, run_guard=guard)
+    mocked_wire[1].appendleft(FakeResponse(401, b''))
+    client.login('alice')
+    assert guard.remaining == 2
+    with pytest.raises(ValueError): client.login('alice')
+    assert guard.remaining == 2
+
+
+def test_direct_login_requests_cannot_override_payload_or_scope(mocked_wire, monkeypatch):
+    import httpx
+    from canarygate.network.guarded_httpx import GuardedHTTPXTransport
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    cfg = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                      token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    transport = GuardedHTTPXTransport(load_authorized_scope(SCOPE), {}, login_config=cfg)
+    for request in [
+        httpx.Request('POST', 'https://api.organizer.example/login', content=b'{"username":"evil"}', extensions={'canary_actor': 'alice'}),
+        httpx.Request('POST', 'https://api.organizer.example/login?next=evil', extensions={'canary_actor': 'alice'}),
+        httpx.Request('POST', 'https://evil.invalid/login', extensions={'canary_actor': 'alice'}),
+        httpx.Request('POST', 'https://api.organizer.example/login', extensions={'canary_actor': 'bob'}),
+    ]:
+        with pytest.raises(ValueError): transport.handle_request(request)
+    assert not mocked_wire[0]
+
+
+def test_login_config_cannot_include_passwords_or_recipe_target():
+    from canarygate.accounts.login_config import LoginConfig
+    data = {'method': 'POST', 'path': '/login', 'username_field': 'username', 'password_field': 'password',
+            'token_field': 'token', 'password_env': {'alice': 'CANARY_ALICE_PASSWORD'}}
+    for extra in ({'base_url': 'https://other.invalid'}, {'password': 'synthetic-secret'}):
+        with pytest.raises(ValueError): LoginConfig(**data, **extra)
+
+
+def test_password_echo_is_not_accepted_as_a_bearer_token(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    config = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                         token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"token":"synthetic-password"}'))
+    client = GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=config)
+    result = client.login('alice')
+    assert result.json() == {'token_obtained': False, 'identity_verified': False}
+    with pytest.raises(ValueError): client.get('alice', '/items')
+
+
+def test_login_redirect_halts_all_other_accounts_without_returning_response_body(mocked_wire, monkeypatch):
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    from canarygate.accounts.login_config import LoginConfig
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    monkeypatch.setenv('CANARY_BOB_PASSWORD', 'another-password')
+    config = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                         token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD', 'bob': 'CANARY_BOB_PASSWORD'})
+    mocked_wire[1].appendleft(FakeResponse(302, b'secret-body'))
+    client = GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=config)
+    result = client.login('alice')
+    assert result.status_code == 302 and result.json() == {'token_obtained': False, 'identity_verified': False}
+    assert b'secret-body' not in result.content
+    with pytest.raises(ValueError, match='halted'): client.login('bob')
+    assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+def test_guarded_login_actual_tls_and_http_framing_over_socketpair(monkeypatch):
+    import ssl
+    import threading
+    from pathlib import Path
+    from canarygate.network import guarded_httpx
+    from canarygate.accounts.login_config import LoginConfig
+    fixtures = Path(__file__).parents[1] / 'fixtures' / 'tls'
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_context.load_cert_chain(fixtures / 'test-cert.pem', fixtures / 'test-key.pem')
+    client_context = ssl.create_default_context(cafile=str(fixtures / 'test-cert.pem'))
+    client_sock, server_sock = socket.socketpair()
+    observed = []
+    def server():
+        try:
+            with server_context.wrap_socket(server_sock, server_side=True) as peer:
+                data = b''
+                while b'\r\n\r\n' not in data:
+                    chunk = peer.recv(4096)
+                    if not chunk: return
+                    data += chunk
+                head, body = data.split(b'\r\n\r\n', 1)
+                lengths = [line.split(b':', 1)[1].strip() for line in head.split(b'\r\n')
+                           if line.lower().startswith(b'content-length:')]
+                assert len(lengths) == 1
+                length = int(lengths[0])
+                while len(body) < length:
+                    chunk = peer.recv(4096)
+                    if not chunk: return
+                    body += chunk
+                observed.append((head, body))
+                payload = b'{"token":"synthetic-valid-token"}'
+                peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: ' + str(len(payload)).encode() +
+                             b'\r\nConnection: close\r\n\r\n' + payload)
+        except (OSError, ssl.SSLError):
+            pass
+    worker = threading.Thread(target=server, daemon=True); worker.start()
+    class FakeConnect:
+        def __getattr__(self, name): return getattr(client_sock, name)
+        def connect(self, address): assert address == ('203.0.113.12', 443)
+    monkeypatch.setattr(socket, 'socket', lambda *args: FakeConnect())
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *args, **kwargs: pytest.fail('DNS invoked'))
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: client_context)
+    monkeypatch.setenv('CANARY_ALICE_PASSWORD', 'synthetic-password')
+    config = LoginConfig(method='POST', path='/login', username_field='username', password_field='password',
+                         token_field='token', password_env={'alice': 'CANARY_ALICE_PASSWORD'})
+    try:
+        client = guarded_httpx.GuardedHTTPXRunner(load_authorized_scope(SCOPE), {}, login_config=config)
+        response = client.login('alice')
+        assert response.json() == {'token_obtained': True, 'identity_verified': False}
+        assert b'synthetic-valid-token' not in response.content
+    finally:
+        worker.join(timeout=3)
+        client_sock.close(); server_sock.close()
+    assert not worker.is_alive() and len(observed) == 1
+    headers, body = observed[0]
+    assert headers.startswith(b'POST /login HTTP/1.1\r\n')
+    assert b'Host: api.organizer.example:443\r\n' in headers + b'\r\n'
+    assert b'Authorization:' not in headers
+    assert __import__('json').loads(body) == {'username': 'alice', 'password': 'synthetic-password'}

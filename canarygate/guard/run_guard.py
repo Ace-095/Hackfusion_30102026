@@ -19,6 +19,7 @@ class RunSafetyGuard:
         self._lock = RLock()
         self._halted = False
         self._server_error_streak = 0
+        self._authentication_attempts = set()
 
     @property
     def scope(self):
@@ -38,6 +39,15 @@ class RunSafetyGuard:
 
     def authorize(self, actor, method, url):
         return self._policy.check(actor, method, url)
+
+    def authorize_authentication(self, actor, url):
+        with self._lock:
+            if actor in self._authentication_attempts:
+                raise ValueError("authentication already attempted in this run")
+            classification = self._policy.check(actor, "POST", url)
+            if classification != "AUTHENTICATION":
+                raise ValueError("not an authentication operation")
+            self._authentication_attempts.add(actor)
 
     def halt(self):
         with self._lock:

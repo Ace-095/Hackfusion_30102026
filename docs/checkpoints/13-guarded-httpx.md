@@ -25,9 +25,10 @@ response limits, halt conditions and no redirect following. They also verify the
 old reader module raises an import error and cannot execute network traffic.
 
 The HTTPX transport uses Python's HTTP/1.1 implementation only over its pinned
-socket. It currently supports **GET only**, an organizer-supplied literal IP and
-supplied bearer tokens. It neither verifies token identity nor logs in, resolves
-DNS, supports query operations or exposes response headers. A run guard can be explicitly shared across instances (checkpoint 14); independent
+socket. At this checkpoint it supported **GET only**, a supplied literal IP and bearer
+tokens. Checkpoint 16 subsequently adds a narrow scope-classified login. It does
+not verify token identity, resolve DNS-only scopes, support query operations or
+expose response headers. A run guard can be explicitly shared across instances (checkpoint 14); independent
 guards have independent budgets. Checkpoint 15 adds a total network deadline,
 not a general hard bound on all process work. These restrictions and
 other incomplete production safety/evidence integration mean this is not a

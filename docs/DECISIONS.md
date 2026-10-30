@@ -466,9 +466,9 @@ Ubuntu and Windows for `9b91345`. See [judge demo](checkpoints/14-run-guard.md).
 This does not yet integrate a real scanner. A caller must explicitly share the
 same guard; creating a new guard creates a new independent run. An eventual scan
 orchestrator must create exactly one guard per scan and pass it through all
-outbound paths, including login and discovery. The current HTTPX boundary remains
-GET-only, cannot do login, does not support resolver-only scopes and is not exposed through the API.
-Checkpoint 15 subsequently adds a bounded network deadline. No external target or
+outbound paths, including login and discovery. At checkpoint 14 the HTTPX boundary was GET-only. Checkpoint 15 subsequently
+adds a bounded network deadline and checkpoint 16 adds a narrow guarded login.
+Resolver-only scopes and scanner/API integration remain unsupported. No external target or
 DNS service was contacted in testing. The independently validated live-target
 safety requirements remain outstanding.
 
@@ -487,8 +487,39 @@ run `41045822373` passed Ubuntu and Windows for `0b3a326`.
 The timer addresses network waits, not an independently verified hard execution
 time bound for arbitrary Python computation, thread starvation or local system
 calls. Live safety review and real-target validation remain outstanding. The
-component remains GET-only and is not connected to the scanner or API. See the
+component was GET-only at this checkpoint; checkpoint 16 later adds a narrow
+guarded login. It is not connected to the scanner or API. See the
 [checkpoint 15 demo](checkpoints/15-network-deadline.md).
+
+## Checkpoint 16 — scope-classified JSON login boundary
+
+A test-first implementation adds a narrowly configured JSON POST login through
+the same guarded HTTPX transport and shared run guard used for reads. Its
+configuration names the exact scope-classified authentication path, two JSON
+field names, one top-level token field and account-to-environment references;
+embedded passwords and target URLs are forbidden. Environment names must begin
+`CANARY_`. Passwords are read at request time, are bounded and never stored in
+scope, recipe, logs or returned response. The account must be in the scope;
+the transport constructs the JSON body and ignores caller-supplied headers and
+bodies. POST login is attempted at most once per account in a shared run, and
+a blocked retry does not consume an additional request budget. No other write
+is enabled. Returned login bodies are replaced by `token_obtained` and
+`identity_verified: false`; 200 or a token is not proof of account identity.
+
+Initial login tests failed because the capability was absent; further tests
+caught a rejected retry consuming budget and a password echo being accepted as a
+token. Both were fixed. Tests cover direct HTTPX bypass attempts, malformed or
+duplicate-key token responses, scope mismatch, missing credentials, redirects,
+redaction and real TLS/HTTP framing via an in-process socketpair. No external
+target was contacted. Full local suite: 293 passed, one third-party warning.
+See [judge demo](checkpoints/16-guarded-login.md).
+
+This is not a full recipe/account workflow, identity verification, cookie/API
+key support, discovery or a complete live scanner. It is not integrated into
+the fixture scan or API. The `LoginConfig` and response are provisional internal
+contracts; the v3.2 recipe and readiness gates still need integration and review.
+Direct Python calls can send authorized POST login and GET requests: do not use
+against a target without written approval and independent end-to-end review.
 
 ## Outstanding checkpoints
 

@@ -22,8 +22,9 @@ response body and a slow-drip response; each must time out and halt the run.
 The full suite includes the other scope, pinning, redirect and shared-budget
 regressions. The test certificate is synthetic and must not be used in production.
 
-The component remains GET-only and unconnected to the scanner/API. The scanner
-still needs authentication, discovery, approved resolver-only support, live-data
+At this checkpoint the component was GET-only; checkpoint 16 adds a narrow
+guarded login. It remains unconnected to the scanner/API. The scanner still
+needs full authentication integration, discovery, approved resolver-only support, live-data
 redaction and independent end-to-end safety review. A direct call to the
 experimental transport can make real requests; never use it without written
 authorization. The [main demo](../VS_CODE_DEMO.md) is fixture-only.

@@ -23,7 +23,7 @@ and guard/scope mismatches fail before socket creation.
 
 The guard must be passed explicitly to each runner in the same scan; separate
 guards are separate runs. The future scanner must enforce that invariant. It
-still needs safe authentication and discovery, approved DNS-only resolution,
+still needs complete authentication integration and discovery, approved DNS-only resolution,
 live-data evidence handling, and independently
 reviewed end-to-end safety. Checkpoint 15 adds a network deadline; it is not
 a guarantee for arbitrary local computation or system calls. The experimental GET component can make real HTTPS
