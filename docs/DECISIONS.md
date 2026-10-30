@@ -128,6 +128,32 @@ GitHub Actions subsequently passed on both Windows and Linux for commit `dff0db5
 (run 41023826401). CI now publishes pytest failures as annotations and preserves
 pytest's actual exit code.
 
+## 2026-10-30 — input validation and disclosure checkpoint
+
+The fixture scope now lists four **exact** read-only path/query combinations;
+other values, encodings and extra parameters are rejected before transport.
+A successful valid `limit=1` control precedes three fixed, bounded invalid
+inputs (INPUT-01/02/04). A field-specific 400/422 is SAFE; an accepted invalid
+input is SUSPECTED, while generic errors and redirects remain INCONCLUSIVE.
+This is a fixture-specific subset, not generic OpenAPI-driven fuzzing.
+
+DISC-01/02/05 examine these bounded responses for narrowly defined stack-trace,
+internal-error and version-header signatures. Evidence contains the signal and
+a hash of the redacted summary, not raw stack traces or version strings. A
+negative result is limited to the sampled responses and requires all four to be
+inspected; incomplete coverage is INCONCLUSIVE. Other validation/disclosure
+checks are explicitly SKIPPED. Execution stops after two consecutive 5xx or a
+423/429; unsent requests remain SKIPPED. Live DNS, pinning, live execution,
+SQLite and other P0 checks remain unimplemented.
+
+`docs/checkpoints/03-input-disclosure.md` gives the VS Code demo procedure and
+expected fixture behavior. 78 tests passed locally on Linux/Python 3.11 with one
+third-party deprecation warning; tests cover different observed fixture outcomes,
+exact scope enforcement, network/DNS isolation, stop behavior and redaction.
+The local CLI and HTML report were also exercised against a running local
+backend, and a wheel was checked for the new modules and scope fixture. These
+results are not the full v3.2 acceptance suite or evidence of live-target safety.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

@@ -14,6 +14,16 @@ paths:
     get:
       responses:
         '200': {description: Own resources}
+  /search:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 10}
+      responses:
+        '200': {description: Bounded fixture search}
+        '400': {description: Invalid limit}
   /items/{id}:
     get:
       parameters:

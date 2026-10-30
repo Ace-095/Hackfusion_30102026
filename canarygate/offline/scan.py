@@ -9,6 +9,7 @@ from uuid import uuid4
 from .runner import FixtureRunner, GuardRejected
 from .target import FixtureTarget
 from .auth_checks import pending_checks, run_auth_checks
+from .input_checks import pending_input_checks, run_input_checks
 from canarygate.seed.recipe import validate_fixture_recipe
 from canarygate.spec.parser import parse_inventory
 
@@ -83,7 +84,8 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
               "actor": account_a.username if account_a else "", "account_role": account_a.role if account_a else "",
               "target_resource": "", "verified_owner": "", "expected_access": policy.expected_access,
               "expected_source": policy.expected_source, "setup": setup_status,
-              "evidence": {"ownership": None, "disclosure": None}, "checks": pending_checks(),
+              "evidence": {"ownership": None, "disclosure": None},
+              "checks": pending_checks() + pending_input_checks(),
               "verdict": "SKIPPED", "reason": "Setup incomplete", "remediation": None,
               "scope_hash": hashlib.sha256(scope_bytes).hexdigest(), "constraints": {}}
 
@@ -112,7 +114,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             tokens[account.username] = token
             setup_status["accounts"][account.username] = "SUCCESS"
         setup_status["authentication"] = "SUCCESS"
-        result["checks"] = pending_checks(token=tokens[account_a.username])
+        result["checks"] = pending_checks(token=tokens[account_a.username]) + pending_input_checks()
         if resource.ownership_model != "private":
             return skip("Resource is not private; read-BOLA check not applicable")
         if resource.private_field in {resource.id_field, resource.ownership_field, "id", "status", "owner"}:
@@ -186,10 +188,16 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
                 and not any(value in actor_private for value in (ids[account_a.username], ids[account_b.username]))
                 and actor_private not in {account_a.username, account_b.username}):
             actor_path = resource.detail.path.replace("{id}", ids[account_a.username])
-            result["checks"] = run_auth_checks(runner, actor=account_a.username, role=account_a.role,
-                                               path=actor_path, token=tokens[account_a.username],
-                                               private_field=resource.private_field, baseline=actor_private,
-                                               summary=_summary)
+            result["checks"] = (run_auth_checks(runner, actor=account_a.username, role=account_a.role,
+                                                path=actor_path, token=tokens[account_a.username],
+                                                private_field=resource.private_field, baseline=actor_private,
+                                                summary=_summary) + pending_input_checks())
+        # These bounded validation inputs are fixture-specific, read-only, and
+        # separately allow-listed by the exact scoped path and query.
+        auth_checks = result["checks"][:len(pending_checks())]
+        result["checks"] = auth_checks + run_input_checks(
+            runner, actor=account_a.username, role=account_a.role,
+            token=tokens[account_a.username], endpoints=inventory(), summary=_summary)
         return result
     except (GuardRejected, ValueError, KeyError, TypeError):
         result["status"] = "failed"
@@ -207,5 +215,6 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
                                  "out_of_scope_requests_executed": 0,
                                  "destructive_requests_executed": 0,
                                  "external_requests_executed": 0,
-                                 "network_transport_enabled": False}
+                                 "network_transport_enabled": False,
+                                 "halted_reason": runner.halted_reason}
         runner.close()

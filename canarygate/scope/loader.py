@@ -21,6 +21,8 @@ class ScopedOperation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     method: str
     path: str
+    # Empty means no query string. Non-empty values are exact, not patterns.
+    query: str = ""
     classification: OperationClass
     auth_probes: tuple[Literal["missing", "malformed", "wrong_scheme"], ...] = ()
 
@@ -39,6 +41,15 @@ class ScopedOperation(BaseModel):
             raise ValueError("method must be uppercase")
         return value
 
+    @field_validator("query")
+    @classmethod
+    def exact_query(cls, value):
+        # The fixture supports one bounded, literal parameter only; no encodings,
+        # wildcards, multiple parameters, or externally supplied query strings.
+        if value and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}=[A-Za-z0-9_-]{1,32}", value):
+            raise ValueError("query must be a bounded exact fixture parameter")
+        return value
+
     @field_validator("path")
     @classmethod
     def exact_path(cls, value):
@@ -55,7 +66,7 @@ class FixtureScope(ScopeConfig):
 
     @model_validator(mode="after")
     def unique_operations(self):
-        keys = [(o.method, o.path) for o in self.operations]
+        keys = [(o.method, o.path, o.query) for o in self.operations]
         if len(set(keys)) != len(keys):
             raise ValueError("duplicate scoped operation")
         if len(set(self.accounts)) != len(self.accounts):

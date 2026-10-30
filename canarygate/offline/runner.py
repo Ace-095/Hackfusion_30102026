@@ -22,12 +22,16 @@ class FixtureRunner:
         self.requests_sent = 0
         self.authentication_requests = 0
         self.redirects_observed = 0
+        self._server_error_streak = 0
+        self.halted_reason: str | None = None
         self._client = httpx.Client(transport=httpx.MockTransport(handler),
                                     follow_redirects=False, trust_env=False)
 
     def request(self, actor: str, method: str, url: str, *, token: str | None = None,
                 json_body: dict | None = None, auth_probe: str | None = None) -> httpx.Response:
         with self._lock:
+            if self.halted_reason:
+                raise GuardRejected("fixture execution halted: " + self.halted_reason)
             # These are fixed synthetic probe values, never supplied credentials.
             probe_headers = {"missing": {}, "malformed": {"Authorization": "Bearer malformed-fixture"},
                              "wrong_scheme": {"Authorization": "Basic synthetic-fixture"}}
@@ -50,6 +54,13 @@ class FixtureRunner:
             response = self._client.request(method, target, json=json_body, headers=headers)
             if 300 <= response.status_code < 400:
                 self.redirects_observed += 1
+            # Stop rather than retry on repeated server errors, account lockout,
+            # or rate limiting. Normal auth probes may intentionally yield 401/403.
+            self._server_error_streak = self._server_error_streak + 1 if response.status_code >= 500 else 0
+            if self._server_error_streak >= 2:
+                self.halted_reason = "repeated server errors"
+            elif response.status_code in (423, 429):
+                self.halted_reason = "account lockout or rate limit"
             if len(response.content) > 64 * 1024:
                 raise FixtureResponseTooLarge("fixture response too large")
             return response

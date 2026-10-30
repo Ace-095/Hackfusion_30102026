@@ -60,22 +60,24 @@ fixture tests, not proof of full v3.2 acceptance.
 
    This calls the local backend, prints the fixture endpoint inventory, runs one
    synthetic scan, prints the setup gates, ownership/disclosure evidence, BOLA
-   verdict and scoped authentication checks, then prints JSON and HTML links. The fixture HTTP
+   verdict, scoped authentication checks and bounded input/disclosure checks,
+   then prints JSON and HTML links. The fixture HTTP
    requests are handled in-process; they do not reach any external service.
 3. Copy the printed **HTML fixture report** URL into your local browser. Show
    the fixture label, endpoint inventory, both owner/list checks, two evidence
    summaries, verdict, remediation, authentication results and fixture constraint
-   checklist. AUTHN-01/02/03 use real fixture responses; JWT-specific checks
-   say SKIPPED for opaque tokens. The report identifies unfinished checks.
+   checklist. AUTHN-01/02/03 and INPUT-01/02/04 use real fixture responses;
+   DISC-01/02/05 inspect only those bounded responses. JWT-specific checks say
+   SKIPPED for opaque tokens. The report identifies unfinished checks.
 4. Optional: in another terminal run the focused safety tests:
 
    ```sh
-   python -m pytest -v tests/security tests/integration/test_offline_scan.py tests/integration/test_auth_checks.py tests/unit/test_authentication.py
+   python -m pytest -v tests/security tests/integration/test_offline_scan.py tests/integration/test_auth_checks.py tests/integration/test_input_disclosure.py
    ```
 
    These test scope, dangerous/unknown operations, DNS isolation, no redirects,
    missing identity, ownership failure, shared/public resources, invalid-token
-   probes, opaque-token skips and secure behavior.
+   probes, opaque-token skips, validation/disclosure responses and secure behavior.
 5. Stop the backend with **Ctrl+C** in the first terminal. Data is in memory and
    disappears when the process stops. Restart it and rerun the demo to reproduce.
 
@@ -97,5 +99,8 @@ process first; the demo command deliberately connects only to port 8000.
 - “Missing, malformed and wrong-scheme credentials are checked only against an
   explicitly authorized fixture operation. A 200 alone is not a confirmed bypass.
   JWT-specific probes are skipped because the fixture tokens are opaque.”
+- “Three bounded invalid inputs are compared to a valid control; disclosure
+  signatures are inspected in those fixture responses. An ambiguous 200 or 400
+  is not automatically SAFE, and unimplemented checks are SKIPPED.”
 - “Live DNS pinning, real accounts, remaining security checks and persistence
   are pending; the report does not claim they passed.”

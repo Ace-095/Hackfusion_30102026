@@ -19,7 +19,8 @@ class SafetyGuard:
             raise ValueError("budget must be positive and cannot exceed scope")
         self.remaining = scope.request_budget if budget is None else budget
         self.blocked = 0
-        self._operations = {(op.method, op.path): (op.classification, frozenset(op.auth_probes)) for op in scope.operations}
+        self._operations = {(op.method, op.path, op.query): (op.classification, frozenset(op.auth_probes))
+                            for op in scope.operations}
 
     def _reject(self, reason):
         self.blocked += 1
@@ -34,18 +35,23 @@ class SafetyGuard:
         default_port = 443 if self._scheme == "https" else 80
         if (target.scheme != self._scheme or target.host != self._hostname
                 or (target.port or default_port) != self._port or target.userinfo
-                or target.query or target.fragment):
+                or target.fragment):
             self._reject("outside fixture scope")
         if actor not in self._accounts:
             self._reject("unauthorized actor")
         if method == "DELETE" or method not in self._methods:
             self._reject("method blocked")
-        # Compare raw path, not decoded path: encodings cannot change operation identity.
+        # Compare raw path and the exact raw query: no URL-decoding, parameter
+        # rewriting, arbitrary query values, or bare '?' can widen the scope.
         try:
-            path = target.raw_path.decode("ascii")
+            raw_path, separator, raw_query = target.raw_path.partition(b"?")
+            path = raw_path.decode("ascii")
+            query = raw_query.decode("ascii")
         except UnicodeError:
-            self._reject("invalid operation path")
-        operation = self._operations.get((method, path))
+            self._reject("invalid operation path or query")
+        if separator and not query:
+            self._reject("empty query is not authorized")
+        operation = self._operations.get((method, path, query))
         if operation is None:
             self._reject("operation not classified or authorized")
         classification, auth_probes = operation

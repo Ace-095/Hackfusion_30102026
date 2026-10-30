@@ -106,13 +106,16 @@ def report(run_id: str, format: str = "json"):
     for kind, evidence in run["evidence"].items():
         html += "<h3>" + escape(kind.title()) + "</h3>" + block(evidence)
     html += "<p>Evidence bodies and credentials are minimized/redacted. Hashes cover the displayed redacted summaries, not raw traffic or signatures.</p>"
-    html += "<h2>Authentication checks</h2>" + block(run["checks"])
+    for category in ("Authentication", "Input validation", "Disclosure"):
+        html += "<h2>" + escape(category) + " checks</h2>" + block(
+            [check for check in run["checks"] if check["category"] == category])
     html += "<h2>Secured endpoints that passed</h2>"
     secured = []
     if run["verdict"] == "SAFE":
         secured.append(run["endpoint"] + " — cross-user denial observed")
-    secured.extend(check["id"] + " — probe rejected" for check in run["checks"] if check["verdict"] == "SAFE")
+    secured.extend(check["id"] + " — " + check["reason"] for check in run["checks"]
+                   if check["verdict"] == "SAFE" and check["category"] != "Disclosure")
     html += block(secured if secured else ["None observed in this fixture run"])
-    html += "<h2>Not yet executed</h2><p>JWT tampering, input validation, disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Other skipped authentication checks are listed above.</p>"
+    html += "<h2>Not yet executed</h2><p>JWT tampering, remaining validation and disclosure checks, BFLA and live-target scans are not implemented in this checkpoint; none are reported as SAFE. Individual skipped checks are listed above.</p>"
     html += "<h2>Fixture constraint checklist</h2>" + block(run["constraints"]) + field("Scope file SHA-256", run["scope_hash"])
     return HTMLResponse(html + "</body></html>")

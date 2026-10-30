@@ -135,3 +135,50 @@ def test_authentication_probes_require_explicit_scope_and_never_bypass_guard():
         assert len(calls) == 1
     finally:
         runner.close()
+
+
+def test_only_exact_query_strings_in_fixture_scope_reach_transport():
+    calls = []
+    runner = FixtureRunner(lambda req: calls.append(req) or httpx.Response(200))
+    try:
+        for path in ("/search", "/search?limit=1", "/search?limit=notanumber", "/search?limit=999"):
+            runner.request("alice", "GET", runner.scope.origin + path, token="fixture-token-alice")
+        assert len(calls) == 4
+        for path in ("/search?limit=2", "/search?limit=%31", "/search?limit=1&extra=1",
+                     "/search?", "/search?limit=1#fragment", "/items/bob-item?limit=1"):
+            with pytest.raises(GuardRejected):
+                runner.request("alice", "GET", runner.scope.origin + path, token="fixture-token-alice")
+        assert len(calls) == 4
+    finally:
+        runner.close()
+
+
+def test_repeated_5xx_and_lockout_stop_future_fixture_requests():
+    for status, expected_reason, allowed_count in ((500, "repeated server errors", 2),
+                                                    (423, "account lockout or rate limit", 1),
+                                                    (429, "account lockout or rate limit", 1)):
+        calls = []
+        runner = FixtureRunner(lambda req: calls.append(req) or httpx.Response(status))
+        try:
+            for _ in range(allowed_count):
+                assert runner.request("alice", "GET", runner.scope.origin + "/items/alice-item", token="fixture-token-alice").status_code == status
+            with pytest.raises(GuardRejected, match="halted"):
+                runner.request("alice", "GET", runner.scope.origin + "/items/alice-item", token="fixture-token-alice")
+            assert len(calls) == allowed_count
+            assert runner.halted_reason == expected_reason
+        finally:
+            runner.close()
+
+
+def test_appending_query_scope_after_guard_creation_cannot_widen_permissions():
+    from canarygate.scope.loader import ScopedOperation
+    scope = fixture_scope()
+    calls = []
+    runner = FixtureRunner(lambda req: calls.append(req) or httpx.Response(200), scope=scope)
+    try:
+        scope.operations.append(ScopedOperation(method="GET", path="/search", query="limit=2", classification="READ_ONLY"))
+        with pytest.raises(GuardRejected):
+            runner.request("alice", "GET", scope.origin + "/search?limit=2", token="fixture-token-alice")
+        assert calls == []
+    finally:
+        runner.close()

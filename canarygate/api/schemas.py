@@ -62,9 +62,9 @@ class FixtureEvidence(BaseModel):
     disclosure: EvidenceSummary | None
 
 
-class AuthenticationCheck(BaseModel):
+class SecurityCheck(BaseModel):
     id: str
-    category: Literal["Authentication"]
+    category: Literal["Authentication", "Input validation", "Disclosure"]
     verdict: Verdict
     reason: str
     evidence: EvidenceSummary | None
@@ -83,6 +83,7 @@ class FixtureConstraints(BaseModel):
     destructive_requests_executed: int
     external_requests_executed: int
     network_transport_enabled: Literal[False]
+    halted_reason: str | None
 
 
 class FixtureRun(BaseModel):
@@ -99,7 +100,7 @@ class FixtureRun(BaseModel):
     expected_source: str
     setup: FixtureSetup
     evidence: FixtureEvidence
-    checks: list[AuthenticationCheck]
+    checks: list[SecurityCheck]
     verdict: Verdict
     reason: str
     remediation: str | None

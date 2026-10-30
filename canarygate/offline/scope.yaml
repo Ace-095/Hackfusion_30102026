@@ -10,3 +10,8 @@ operations:
   - {method: GET, path: /items, classification: READ_ONLY}
   - {method: GET, path: /items/alice-item, classification: READ_ONLY, auth_probes: [missing, malformed, wrong_scheme]}
   - {method: GET, path: /items/bob-item, classification: READ_ONLY}
+  # Each safe query is a separate exact scope entry, not a general query allow-list.
+  - {method: GET, path: /search, classification: READ_ONLY}
+  - {method: GET, path: /search, query: limit=1, classification: READ_ONLY}
+  - {method: GET, path: /search, query: limit=notanumber, classification: READ_ONLY}
+  - {method: GET, path: /search, query: limit=999, classification: READ_ONLY}

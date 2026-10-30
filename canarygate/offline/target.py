@@ -16,6 +16,8 @@ class FixtureTarget:
     cross_list_leak: bool = False
     alice_item_missing: bool = False
     auth_behavior: str = "reject"  # reject, bypass, empty, redirect
+    validation_behavior: str = "strict"  # strict, accept, empty_error, server_error, lockout, redirect
+    disclosure_behavior: str = "generic"  # generic, traceback, verbose, version
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/login":
@@ -28,6 +30,27 @@ class FixtureTarget:
             return httpx.Response(401)
         token = request.headers.get("Authorization", "")
         actor = {"Bearer fixture-token-alice": "alice", "Bearer fixture-token-bob": "bob"}.get(token)
+        if request.method == "GET" and request.url.path == "/search":
+            if actor is None:
+                return httpx.Response(401)
+            headers = {"X-Powered-By": "FixtureFramework/1.2.3"} if self.disclosure_behavior == "version" else {}
+            if request.url.query == b"limit=1":
+                return httpx.Response(200, json={"results": []}, headers=headers)
+            if self.validation_behavior == "accept":
+                return httpx.Response(200, json={"results": []}, headers=headers)
+            if self.validation_behavior == "empty_error":
+                return httpx.Response(400, json={}, headers=headers)
+            if self.validation_behavior == "lockout":
+                return httpx.Response(423, json={"error": "account locked"}, headers=headers)
+            if self.validation_behavior == "redirect":
+                return httpx.Response(302, headers={"Location": "https://elsewhere.invalid"})
+            message = "Invalid limit"
+            if self.disclosure_behavior == "traceback":
+                message = 'Traceback (most recent call last):\\n  File "/srv/fixture/search.py", line 12\\nValueError: invalid limit'
+            elif self.disclosure_behavior == "verbose":
+                message = "Database error SQLSTATE 42P01 in /srv/fixture/search.py"
+            status = 500 if self.validation_behavior == "server_error" else 400
+            return httpx.Response(status, json={"error": message}, headers=headers)
         if request.method == "GET" and request.url.path == "/items":
             if actor is None:
                 return httpx.Response(401)
