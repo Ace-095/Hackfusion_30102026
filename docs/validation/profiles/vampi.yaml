@@ -1,0 +1,37 @@
+# PLANNING DATA ONLY — not a CanaryGate recipe or authorized scope.
+# Do not pass this file to a runner; it cannot enable or authorize execution.
+name: VAmPI
+status: planning_only
+authorization: not_recorded
+execution_enabled: false
+scope_authority: separate_organizer_authorized_scope
+target: null
+source_revision: f16052dce83f05847133ec98f01c5193a41de7d8
+account_a_password_env: CANARY_USER_A_PASSWORD
+account_b_password_env: CANARY_USER_B_PASSWORD
+candidate_login:
+  method: POST
+  path: /users/v1/login
+  classification: AUTHENTICATION
+  username_field: username
+  password_field: password
+  token_field: auth_token
+candidate_discovery:
+  method: GET
+  path: /books/v1
+  classification: READ_ONLY
+  collection_field: Books
+  id_field: book_title
+  owner_field: user
+candidate_detail:
+  method: GET
+  path: /books/v1/{book_title}
+  classification: READ_ONLY
+  id_field: book_title
+  owner_field: owner
+  private_field: secret
+policy:
+  expected_access: owner-only
+  source: upstream_documentation_candidate_not_approved_policy
+never_execute:
+  - {method: GET, path: /createdb, classification: DESTRUCTIVE}

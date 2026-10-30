@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate P0 report — not live testing</title>
+<style>
+body{font:16px system-ui;max-width:1120px;margin:2rem auto;padding:0 1rem;color:#18212d}
+pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;margin:.6rem 0}
+th,td{border:1px solid #cfd6de;padding:.45rem;text-align:left;vertical-align:top;font-size:14px}
+h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}
+.verdict{padding:.1rem .4rem;border-radius:4px;font-weight:700}
+.CONFIRMED{background:#f8d7da;color:#7a1114}.SUSPECTED{background:#ffe6b3;color:#6b4300}
+.SAFE{background:#d9f0df;color:#14532d}.INCONCLUSIVE{background:#e3e4f7;color:#2f3163}
+.SKIPPED{background:#eceff2;color:#4b5563}
+.green{background:#d9f0df}.red{background:#f8d7da}.orange{background:#ffe6b3}
+.grey{background:#eceff2}.hatched{background:repeating-linear-gradient(45deg,#eceff2,#eceff2 4px,#dfe3e8 4px,#dfe3e8 8px)}
+</style>
+</head><body>
+<h1>CanaryGate P0 report — frozen nine sections (offline synthetic evidence)</h1>
+<p class="warning">No live target was contacted. Every response in this report is recorded synthetic data; the report is not organizer authorization and not a production security assessment. SKIPPED and INCONCLUSIVE are not clean results.</p>
+<p><strong>Run:</strong> {{ report.run_kind }} · {{ report.run_id }} · mode {{ report.mode }}</p>
+<p><strong>Verdict legend:</strong>
+<span class="verdict CONFIRMED">CONFIRMED</span> observed weakness with evidence ·
+<span class="verdict SUSPECTED">SUSPECTED</span> behaviour worth review, not proven ·
+<span class="verdict SAFE">SAFE</span> correct handling observed ·
+<span class="verdict INCONCLUSIVE">INCONCLUSIVE</span> executed but not decisive ·
+<span class="verdict SKIPPED">SKIPPED</span> not performed, reason recorded.</p>
+
+<h2>1. Executive summary</h2>
+<p>Counts by verdict: {% for name, count in sections.executive_summary.verdict_counts.items() %}<span class="verdict {{ name }}">{{ name }} {{ count }}</span> {% endfor %}</p>
+<p>Severities: {{ sections.executive_summary.severity_counts }} · findings: {{ sections.executive_summary.finding_count }} · network transport enabled: {{ sections.executive_summary.network_transport_enabled }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+
+<h2>2. Scope and rules of engagement</h2>
+<pre>{{ json_block(sections.scope_and_rules) }}</pre>
+
+<h2>3. Endpoint inventory</h2>
+<table><tr><th>Method</th><th>Path</th><th>Expected access</th><th>Expected source</th><th>Security</th></tr>
+{% for endpoint in sections.endpoint_inventory %}
+<tr><td>{{ endpoint.method }}</td><td>{{ endpoint.path }}</td><td>{{ endpoint.expected_access }}</td><td>{{ endpoint.expected_source }}</td><td>{{ endpoint.security }}</td></tr>
+{% endfor %}</table>
+
+<h2>4. Findings by category</h2>
+{% for category, items in sections.findings.items() %}
+<h3>{{ category }}</h3>
+{% if items %}
+<table><tr><th>ID</th><th>Verdict</th><th>Severity</th><th>Endpoint</th><th>Account / role</th><th>Exact reason</th><th>Expected vs observed</th><th>Remediation</th><th>Evidence SHA-256</th><th>Curl</th></tr>
+{% for item in items %}
+<tr><td>{{ item.id }}</td><td><span class="verdict {{ item.verdict }}">{{ item.verdict }}</span></td><td>{{ item.severity or "—" }}</td><td>{{ item.endpoint }}</td><td>{{ item.account }} / {{ item.role }}</td><td>{{ item.reason }}</td><td>expected: {{ item.expected }}<br>observed: {{ item.observed }}<br>source: {{ item.expectation_source }}</td><td>{{ item.remediation or "—" }}</td><td><code>{{ item.evidence_sha256 }}</code></td><td><code>{{ item.curl }}</code></td></tr>
+{% endfor %}</table>
+{% else %}<p>No findings in this category.</p>{% endif %}
+{% endfor %}
+
+<h2>5. Secured endpoints that passed</h2>
+{% if sections.secured_endpoints %}
+<table><tr><th>ID</th><th>Endpoint</th><th>Observed handling</th></tr>
+{% for item in sections.secured_endpoints %}<tr><td>{{ item.id }}</td><td>{{ item.endpoint }}</td><td>{{ item.reason }}</td></tr>{% endfor %}</table>
+{% else %}<p>No endpoint was verified as secured in this run.</p>{% endif %}
+
+<h2>6. Skipped and inconclusive tests</h2>
+{% if sections.skipped_and_inconclusive %}
+<table><tr><th>ID</th><th>Category</th><th>Verdict</th><th>Reason</th></tr>
+{% for item in sections.skipped_and_inconclusive %}<tr><td>{{ item.id }}</td><td>{{ item.category }}</td><td><span class="verdict {{ item.verdict }}">{{ item.verdict }}</span></td><td>{{ item.reason }}</td></tr>{% endfor %}</table>
+{% else %}<p>None: every check produced a deciding verdict.</p>{% endif %}
+
+<h2>7. Authorization matrix</h2>
+<p>{{ sections.authorization_matrix.coverage.statement }}</p>
+<table><tr><th>Endpoint</th>{% for column in sections.authorization_matrix.columns %}<th>{{ column }}</th>{% endfor %}</tr>
+{% for row in sections.authorization_matrix.rows %}
+<tr><td>{{ row.endpoint }}</td>{% for cell in row.cells %}<td class="{{ cell.state }}">{% if cell.verdict %}<span class="verdict {{ cell.verdict }}">{{ cell.verdict }}</span><br>{{ cell.reason }}{% else %}untested<br>{{ cell.reason }}{% endif %}</td>{% endfor %}</tr>
+{% endfor %}</table>
+<p>Tested cells: {{ sections.authorization_matrix.coverage.tested }} · untested: {{ sections.authorization_matrix.coverage.untested }} · rows: {{ sections.authorization_matrix.coverage.rows }}</p>
+<pre>{{ json_block(sections.authorization_matrix) }}</pre>
+
+<h2>8. Manual interventions and inferred items</h2>
+<p>{{ sections.manual_interventions_and_inferences.statement }}</p>
+<pre>{{ json_block(sections.manual_interventions_and_inferences) }}</pre>
+
+<h2>9. Constraint checklist</h2>
+<table><tr><th>Constraint</th><th>Value</th><th>Source</th></tr>
+{% for item in sections.constraint_checklist["items"] %}
+<tr><td>{{ item.item }}</td><td>{{ item.value }}</td><td>{{ item.source }}</td></tr>
+{% endfor %}</table>
+<pre>{{ json_block(sections.constraint_checklist) }}</pre>
+
+<p>Machine-readable sections: <code>{{ report_url }}</code></p>
+</body></html>

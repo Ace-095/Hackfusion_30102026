@@ -1,0 +1,39 @@
+# PLANNING DATA ONLY — not a CanaryGate recipe or authorized scope.
+# Do not pass this file to a runner; it cannot enable or authorize execution.
+name: OWASP crAPI
+status: planning_only
+authorization: not_recorded
+execution_enabled: false
+scope_authority: separate_organizer_authorized_scope
+target: null
+source_revision: b5fc307f3e5f875809b095b771108ef342a33724
+account_a_password_env: CANARY_USER_A_PASSWORD
+account_b_password_env: CANARY_USER_B_PASSWORD
+candidate_login:
+  method: POST
+  path: /identity/api/auth/login
+  classification: AUTHENTICATION
+  username_field: email
+  password_field: password
+  token_field: token
+candidate_identity:
+  method: GET
+  path: /identity/api/v2/user/dashboard
+  classification: READ_ONLY
+  identity_field: email
+candidate_discovery:
+  method: GET
+  path: /identity/api/v2/vehicle/vehicles
+  classification: READ_ONLY
+  id_field: uuid
+  owner_field_candidate: owner.email
+candidate_detail:
+  method: GET
+  path: /identity/api/v2/vehicle/{vehicleId}/location
+  classification: READ_ONLY
+  id_field_candidate: carId
+  private_field_candidate: vehicleLocation
+policy:
+  expected_access: unknown
+  source: not_provided
+never_execute: []

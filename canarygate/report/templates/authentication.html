@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate offline authentication report</title>
+<style>body{font:16px system-ui;max-width:1040px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{border:1px solid #cfd6de;padding:.45rem;text-align:left;vertical-align:top}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}.safe{color:#1d6b35}.confirmed{color:#a11b1b;font-weight:700}.skipped{color:#5b6572}</style>
+</head><body>
+<h1>CanaryGate offline authentication report — not live testing</h1>
+<p class="warning">Synthetic recorded responses only. No live target, socket or DNS request was made; production networking remains disabled. This is not an organizer authorization or production security assessment.</p>
+<h2>Executive summary</h2>
+<p><strong>Scenario:</strong> {{ run.scenario_id }} — {{ run.title }}</p>
+<p><strong>Transport:</strong> {{ run.transport }} (network transport enabled: {{ run.network_transport_enabled }})</p>
+<p><strong>Authentication scheme:</strong> {{ run.scheme }} · <strong>Status:</strong> {{ run.status }} · <strong>Scan ID:</strong> {{ run.id }}</p>
+<p><strong>Results:</strong> {{ sections.executive_summary.summary }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+<h2>Scope and accounts</h2>
+<pre>{{ json_block(sections.scope_and_accounts) }}</pre>
+<h2>Authentication checks</h2>
+<table>
+<tr><th>Check</th><th>Verdict</th><th>Reason</th><th>Observed effect</th></tr>
+{% for check in run.checks %}
+<tr><td>{{ check.id }}</td><td class="{{ check.verdict|lower }}">{{ check.verdict }}</td><td>{{ check.reason }}</td>
+<td>{% if check.evidence %}status {{ check.evidence.status_code }}, probe {{ check.evidence.probe }}, identity {{ check.evidence.identity_effect }}{% if check.evidence.capability %}, capability {{ check.evidence.capability }}{% endif %}{% if check.evidence.alternate_status_code %}, second status {{ check.evidence.alternate_status_code }}{% endif %}{% else %}not executed{% endif %}</td></tr>
+{% endfor %}
+</table>
+<pre>{{ json_block(sections.authentication_checks) }}</pre>
+<h2>Outcome</h2>
+<pre>{{ json_block(sections.outcome) }}</pre>
+<h2>Claims policy</h2>
+<p>{{ sections.claims_policy.statement }} claims are not verified; signature verification: {{ sections.claims_policy.signature_verification }}.</p>
+<pre>{{ json_block(sections.claims_policy) }}</pre>
+<h2>Constraints and prohibited traffic</h2>
+<pre>{{ json_block(sections.constraints) }}</pre>
+<h2>Known limitations</h2>
+<pre>{{ json_block(sections.limitations) }}</pre>
+<h2>Reproduce this offline scenario</h2>
+<p>The recorded target is local and cannot be reached over a network. This command starts a new offline authentication scenario; it does not replay a live target.</p>
+<pre>{{ reproduce }}</pre>
+<p>Machine-readable sections: <code>{{ report_url }}</code></p>
+</body></html>

@@ -25,3 +25,7 @@ include = ["canarygate*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.setuptools.package-data]
+"canarygate.offline" = ["*.yaml", "*.json"]
+"canarygate.report" = ["templates/*.html"]

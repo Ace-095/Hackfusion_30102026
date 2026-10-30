@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate TargetLab report</title>
+<style>body{font:16px system-ui;max-width:1040px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{border:1px solid #cfd6de;padding:.45rem;text-align:left;vertical-align:top}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}.denied{color:#1d6b35;font-weight:700}.allowed_owner{color:#1d6b35}.allowed_other{color:#a11b1b;font-weight:700}.unexpected_status{color:#8a5b00;font-weight:700}.unverified{color:#4a4f8a}.tag{background:#e8eef5;padding:.1rem .4rem;border-radius:4px;font-weight:700}</style>
+</head><body>
+<h1>CanaryGate TargetLab report — loopback HTTPS evidence</h1>
+<p class="warning"><strong>Controlled validation, not live validation.</strong> Requests were sent to the loopback TargetLab at <code>https://127.0.0.1:{{ run.transport.port }}</code> only. TLS was verified against a test-only CA with hostname checking on, redirects were refused, nothing was retried, no external DNS was used, and production networking remains disabled. The lab is written by the same team as the scanner, so this cannot measure real-world detection quality.</p>
+<h2>Executive summary</h2>
+<p><strong>Scenario:</strong> {{ run.scenario_id }} — {{ run.title }}</p>
+<p><strong>Status:</strong> {{ run.status }} · <strong>Transport:</strong> <span class="tag">{{ run.transport.mode }}</span> · destination {{ run.transport.destination }}:{{ run.transport.port }} · <strong>Run ID:</strong> {{ run.id }}</p>
+<p><strong>Checks:</strong> authenticated {{ run.summary.authenticated }} · denied {{ run.summary.denied }} · allowed {{ run.summary.allowed }} · unverified {{ run.summary.unverified }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+<h2>Scope and transport</h2>
+<pre>{{ json_block(sections.scope_and_transport) }}</pre>
+<h2>Evidence collected</h2>
+<table>
+<tr><th>Check</th><th>Observation</th><th>Endpoint</th><th>Actor</th><th>Status</th><th>Verified</th><th>Evidence digest</th></tr>
+{% for item in run.checks %}
+<tr><td>{{ item.id }}</td><td class="{{ item.observation }}">{{ item.observation }}</td><td>{{ item.endpoint }}</td><td>{{ item.actor }}</td><td>{{ item.status }}</td><td>{{ item.verified }}</td><td><code>{{ item.evidence_sha256[:16] }}…</code></td></tr>
+{% endfor %}
+</table>
+<h3>Bounded evidence per check</h3>
+<pre>{{ json_block(sections.checks) }}</pre>
+<h2>Accounting and constraints</h2>
+<pre>{{ json_block(sections.constraints) }}</pre>
+<h2>Known limitations</h2>
+<pre>{{ json_block(sections.limitations) }}</pre>
+<h2>Reproduce</h2>
+<p>Start the lab with TLS: <code>.venv/bin/python -m targetlab --port {{ run.transport.port }} --tls-cert tests/fixtures/tls/targetlab-cert.pem --tls-key tests/fixtures/tls/targetlab-key.pem</code>, then set <code>CANARYGATE_TARGETLAB_CA</code> to the cert path and run:</p>
+<pre>{{ reproduce }}</pre>
+<p>Lab documentation: <code>{{ lab_url }}</code><br>Machine-readable sections: <code>{{ report_url }}</code></p>
+</body></html>

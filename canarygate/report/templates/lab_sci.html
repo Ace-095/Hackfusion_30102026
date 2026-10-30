@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate TargetLab interaction report</title>
+<style>body{font:16px system-ui;max-width:1080px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{border:1px solid #cfd6de;padding:.45rem;text-align:left;vertical-align:top}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}.confirmed{color:#a11b1b;font-weight:700}.safe{color:#1d6b35;font-weight:700}.suspected{color:#8a5b00;font-weight:700}.inconclusive{color:#4a4f8a}.skipped{color:#5b6572}.match{color:#1d6b35}.mismatch{color:#a11b1b;font-weight:700}</style>
+</head><body>
+<h1>CanaryGate TargetLab report — control interaction (SCI)</h1>
+<p class="warning"><strong>Controlled validation, not live validation.</strong> Real HTTPS requests were sent to the loopback TargetLab at <code>https://{{ run.transport.destination }}:{{ run.transport.port }}</code> only, with a pinned test CA and hostname checking, no redirects, no retries and no external DNS. The lab is written by the same team as the scanner, so this does not measure real-world detection quality. <strong>/lab/ground-truth was never requested</strong>: the declared table is scored below, after the verdict.</p>
+
+<h2>Executive summary</h2>
+<p><strong>Scenario:</strong> {{ run.scenario_id }} — {{ run.title }} ({{ run.interaction_kind }})</p>
+<p><strong>Verdict:</strong> <span class="{{ run.verdict|lower }}">{{ run.verdict }}</span> · <strong>Attribution:</strong> {{ run.attribution }} · <strong>Status:</strong> {{ run.status }} · <strong>Run ID:</strong> {{ run.id }}</p>
+<p><strong>Controls:</strong> {{ run.controls|join(' and ') }}.</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+
+<h2>The sequence</h2>
+<table>
+<tr><th>#</th><th>Leg</th><th>Endpoint</th><th>Result</th><th>Verdict</th></tr>
+{% for item in run.baselines %}
+<tr><td>{{ item.evidence.sequence }}</td><td>{{ item.control }} baseline</td><td>{{ item.endpoint }}</td><td>status {{ item.evidence.status }}</td><td class="{{ item.verdict|lower }}">{{ item.verdict }}</td></tr>
+{% endfor %}
+<tr><td>{{ 3 }}</td><td>Combined read after the rejected login</td><td>{{ run.combined.endpoint }}</td><td>status {{ run.combined.status }}</td><td class="{{ run.verdict|lower }}">{{ run.combined.impact }}</td></tr>
+</table>
+<pre>{{ json_block(sections.baselines) }}</pre>
+<pre>{{ json_block(sections.combined) }}</pre>
+
+<h2>Decision</h2>
+<pre>{{ json_block(sections.decision) }}</pre>
+
+<h2>Disclosure verified against the owner baseline</h2>
+<p>The owner read their own record first; the combined response had to carry that same private marker with the owner's record identity. No marker is stored or rendered.</p>
+<pre>{{ json_block(sections.disclosure) }}</pre>
+
+<h2>Ownership evidence</h2>
+<pre>{{ json_block(sections.ownership) }}</pre>
+
+<h2>Ground truth (scored after the verdict)</h2>
+<table>
+<tr><th>Check</th><th>Expected</th><th>Observed</th><th>Matched</th></tr>
+{% for row in sections.evaluation.rows %}
+<tr><td>{{ row.check_id }}</td><td>{{ row.expected }}</td><td>{{ row.observed }}</td><td class="{{ 'match' if row.matched else 'mismatch' }}">{{ row.matched }}</td></tr>
+{% endfor %}
+</table>
+<p>{{ sections.evaluation.statement }}</p>
+
+{% if sections.reset_verification %}
+<h2>Reset verification (separate scenario)</h2>
+<table>
+<tr><th>ID</th><th>Check</th><th>Status</th><th>Expected</th><th>Passed</th></tr>
+{% for item in sections.reset_verification.checks %}
+<tr><td>{{ item.id }}</td><td>{{ item.title }}</td><td>{{ item.status }}</td><td>{{ item.expected_status }}</td><td>{{ item.passed }}</td></tr>
+{% endfor %}
+</table>
+<p>{{ sections.reset_verification.reason }}</p>
+<pre>{{ json_block(sections.reset_verification) }}</pre>
+{% else %}
+<h2>Reset verification</h2>
+<p>Not attached to this report. It is a separate controlled scenario, recorded apart from this verdict: <code>{{ reset_url }}</code>.</p>
+{% endif %}
+
+<h2>Limitations</h2>
+<pre>{{ json_block(sections.limitations) }}</pre>
+
+<h2>Reproduce</h2>
+<pre>{{ reproduce }}</pre>
+<p>Machine-readable sections: <code>{{ report_url }}</code><br>Frozen nine-section report: <code>{{ p0_url }}</code></p>
+</body></html>

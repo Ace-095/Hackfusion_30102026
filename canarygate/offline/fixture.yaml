@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info:
+  title: Synthetic fixture API
+  version: '1.0'
+security:
+  - bearerAuth: []
+paths:
+  /login:
+    post:
+      security: []
+      responses:
+        '200': {description: Synthetic login}
+  /items:
+    get:
+      responses:
+        '200': {description: Own resources}
+  /search:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 10, enum: [1, 2, 3]}
+      responses:
+        '200':
+          description: Bounded fixture search
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  results: {type: array, items: {type: object}}
+        '400':
+          description: Invalid limit
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  error: {type: string}
+  /items/{id}:
+    get:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Synthetic resource}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

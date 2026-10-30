@@ -21,3 +21,12 @@ scan-output/
 .vscode/
 .idea/
 .DS_Store
+
+# Local fixture database and SQLite sidecars
+.canarygate/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
