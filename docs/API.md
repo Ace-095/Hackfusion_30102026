@@ -40,6 +40,10 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/validation-scans/{id}` | `ValidationRun`, or 404 |
 | `GET /api/validation-scans/{id}/report?view=sections` | Validation section JSON for the same stored run |
 | `GET /api/validation-scans/{id}/report?format=html` | HTML validation report from the same sections |
+| `GET /api/scenario-scans/{id}/report?view=p0` | Frozen nine-section P0 report for the stored run |
+| `GET /api/authentication-scans/{id}/report?view=p0` | Frozen nine-section P0 report for the stored run |
+| `GET /api/validation-scans/{id}/report?view=p0` | Frozen nine-section P0 report for the stored run |
+| `GET /api/authorization-matrix` | Aggregated §13 matrix over all stored runs with untested cells and coverage counts |
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
@@ -264,3 +268,42 @@ generic 500 and a stored payload that is not already redacted is rejected.
 report renders the same projection. This is a validation-specific report, not
 the frozen nine-section contract. The API remains local-only and
 unauthenticated: do not expose it.
+
+## Frozen P0 report and authorization matrix (checkpoint 31)
+
+`?view=p0` on any of the three scan report endpoints returns the frozen nine
+sections in order: `executive_summary`, `scope_and_rules`,
+`endpoint_inventory`, `findings`, `secured_endpoints`,
+`skipped_and_inconclusive`, `authorization_matrix`,
+`manual_interventions_and_inferences` and `constraint_checklist`. Findings are
+grouped into `Authentication`, `Authorization`, `Input validation` and
+`Disclosure`. Each finding carries its id, category, timestamp, endpoint,
+severity (fixed mapping, no CVSS), verdict, exact reason, account and role,
+target resource and verified owner, expected vs observed with the expectation's
+source, evidence checklist, a curl reproduction using `$TOKEN_A`/`$TOKEN_B`
+placeholders, a catalog remediation for CONFIRMED results and an evidence
+SHA-256. Request and response bodies were never stored, so those fields state
+that they were not retained instead of inventing content.
+`?view=p0&format=html` renders the same projection with a five-verdict legend.
+Section values come from stored runs only; building a report performs no
+request.
+
+`GET /api/authorization-matrix` aggregates every stored scenario,
+authentication and validation run into the §13 grid: rows are endpoints,
+columns are `anonymous`, `own_resource`, `other_account_resource` and `role`,
+cells are `green` (SAFE), `red` (CONFIRMED), `orange` (SUSPECTED), `grey`
+(observed only, no expectation) or `hatched` (SKIPPED/INCONCLUSIVE/not tested).
+Untested cells are always present with `tested: false`, no verdict and a reason,
+and `coverage` reports tested/untested counts, per-state counts, the non-
+contributing run counts and a statement that coverage is partial and offline.
+When stored runs disagree, the worse observation wins and both reasons and both
+sources are shown. A clean run stored after a vulnerable run cannot turn a red
+cell green.
+
+Manual interventions are recorded rather than decorated: offline runs state
+`status: RECORDED`, `manual_intervention_required: false`, an intervention list
+(setup status and guard-block entries when present) and explicit inferences with
+their sources. The constraint checklist carries all thirteen §21 items with a
+source per item. The report is deliberately conservative: read-BOLA findings
+report `NOT_RECORDED` for target resource and verified owner because identifiers
+are minimised, and that limitation is also listed in section 8.

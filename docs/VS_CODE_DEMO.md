@@ -172,7 +172,10 @@ remaining P0 authentication checks (AUTHN-04a/04b/05/06/08) over the same
 recorded transport; see `docs/checkpoints/29-authentication-checks.md`.
 Checkpoint 30 adds the remaining P0 input-validation and disclosure checks
 (INPUT-05/06/07, DISC-01–06) as scope-declared recorded probes; see
-`docs/checkpoints/30-input-disclosure.md`.
+`docs/checkpoints/30-input-disclosure.md`. Checkpoint 31 adds the frozen
+nine-section P0 report for every offline workflow and an aggregated authorization
+matrix that keeps untested cells visible; see
+`docs/checkpoints/31-report-and-matrix.md`.
 Production networking remains disabled and none of these documents indicates P0
 or production acceptance.
 
@@ -227,3 +230,22 @@ comparison). Each check lists `request_probes` and bounded `evidence`, so a
 judge can see that the probe executed and what the recorded answer was. The run
 contains no request or response body, no credential and no token; the report
 states that no live target was contacted.
+
+
+### Checkpoint 31 nine-section report and matrix demo
+
+With the local API running as above:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/validation-scans \
+  -H "content-type: application/json" -d '{"scenario_id": "synthetic-validation-weak"}'
+curl -sS "http://127.0.0.1:8000/api/validation-scans/<id>/report?view=p0"
+curl -sS "http://127.0.0.1:8000/api/validation-scans/<id>/report?view=p0&format=html"
+curl -sS "http://127.0.0.1:8000/api/authorization-matrix"
+```
+
+Walk the nine headings in the HTML page, then show the matrix endpoint: hatched
+cells are coverage gaps, each row names the stored run that produced it, and two
+runs that disagree keep the worse observation with both reasons. Repeat
+`view=p0` for a scenario run and an authentication run to show the same contract
+over a different workflow.

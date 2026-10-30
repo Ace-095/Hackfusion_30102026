@@ -787,6 +787,36 @@ rejects a payload that is not already redacted. The API exposes bundled scenario
 ids only. This remains offline synthetic evidence, not live validation or P0
 acceptance.
 
+### Checkpoint 31: the report is a projection over stored runs, and the matrix shows gaps
+
+The frozen nine-section report is a pure projection of stored runs. No report
+renderer can issue a request, and `P0ReportSections` rejects a missing, extra or
+reordered section, so the contract cannot drift silently. The three offline
+workflows are normalised into one finding shape; where a workflow stores no plan
+inventory, section 3 is derived from the validated scope operations and labelled
+with that source rather than inventing an inventory.
+
+Severity is the frozen fixed mapping, not a scoring engine. Every CONFIRMED
+finding must reference one of the eight catalog remediation entries. Because the
+evidence model minimises identifiers and never stores bodies, section 4 reports
+`NOT_RECORDED` for target resource, verified owner and raw request/response and
+records the corresponding assumption in section 8. Rendering a fabricated value
+was rejected.
+
+The authorization matrix is deliberately incomplete and says so. Rows are the
+union of stored inventories and observed cells, so endpoints that were never
+authorization-tested still appear fully hatched. Untested cells carry no verdict,
+`own_resource` is grey because only the owner baseline is observed, and role
+coverage is limited to the role-escalation probe. When two runs disagree, the
+worse state wins with both reasons and both source runs, so a later clean run
+cannot erase an earlier finding. A dense grid that implied full coverage was
+rejected.
+
+Manual interventions are recorded as structure: offline runs need none, so the
+section states that explicitly, lists setup and guard-block entries when they
+exist, and records inferences (expected-access source, identity mapping, denial
+contract, identifier minimisation) with their sources.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

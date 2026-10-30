@@ -17,6 +17,8 @@ from canarygate.offline.scan import inventory, run_fixture
 from canarygate.report.fixture import build_fixture_sections, render_fixture_report
 from canarygate.report.authentication import (build_authentication_sections,
                                               render_authentication_report)
+from canarygate.report.matrix import AuthorizationMatrix, build_authorization_matrix
+from canarygate.report.p0 import build_p0_report, render_p0_report
 from canarygate.report.scenario import build_scenario_sections, render_scenario_report
 from canarygate.report.validation import build_validation_sections, render_validation_report
 from canarygate.scan.auth_generic import run_authentication_scan
@@ -209,10 +211,14 @@ def scenario_scan(run_id: str, store: ScenarioStore = Depends(get_scenario_store
 def scenario_report(run_id: str, format: str = "json", view: str = "run",
                     store: ScenarioStore = Depends(get_scenario_store)):
     run = _find_scenario(store, run_id)
-    if view not in {"run", "sections"}:
-        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
     if format not in {"json", "html"}:
         raise HTTPException(status_code=400, detail="Format must be json or html")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("scenario", run))
+        return JSONResponse(content=build_p0_report("scenario", run).model_dump(mode="json"))
     if format == "html":
         return HTMLResponse(render_scenario_report(run))
     if view == "sections":
@@ -254,10 +260,14 @@ def authentication_scan(run_id: str, store: AuthenticationStore = Depends(get_au
 def authentication_report(run_id: str, format: str = "json", view: str = "run",
                           store: AuthenticationStore = Depends(get_auth_store)):
     run = _find_auth_run(store, run_id)
-    if view not in {"run", "sections"}:
-        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
     if format not in {"json", "html"}:
         raise HTTPException(status_code=400, detail="Format must be json or html")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("authentication", run))
+        return JSONResponse(content=build_p0_report("authentication", run).model_dump(mode="json"))
     if format == "html":
         return HTMLResponse(render_authentication_report(run))
     if view == "sections":
@@ -299,16 +309,37 @@ def validation_scan(run_id: str, store: ValidationStore = Depends(get_validation
 def validation_report(run_id: str, format: str = "json", view: str = "run",
                       store: ValidationStore = Depends(get_validation_store)):
     run = _find_validation_run(store, run_id)
-    if view not in {"run", "sections"}:
-        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if view not in {"run", "sections", "p0"}:
+        raise HTTPException(status_code=400, detail="View must be run, sections or p0")
     if format not in {"json", "html"}:
         raise HTTPException(status_code=400, detail="Format must be json or html")
+    if view == "p0":
+        if format == "html":
+            return HTMLResponse(render_p0_report("validation", run))
+        return JSONResponse(content=build_p0_report("validation", run).model_dump(mode="json"))
     if format == "html":
         return HTMLResponse(render_validation_report(run))
     if view == "sections":
         return ValidationSectionReport(mode="offline_validation", id=run_id, run_id=run_id,
                                        sections=build_validation_sections(run))
     return run
+
+
+@router.get("/api/authorization-matrix", response_model=AuthorizationMatrix)
+def authorization_matrix(scenario_store: ScenarioStore = Depends(get_scenario_store),
+                         auth_store: AuthenticationStore = Depends(get_auth_store),
+                         validation_store: ValidationStore = Depends(get_validation_store)):
+    """Partial authorization coverage over stored offline runs; gaps stay visible."""
+    try:
+        scenarios = _scenario_call(scenario_store.list)
+        authentications = _auth_call(auth_store.list)
+        validations = _validation_call(validation_store.list)
+    except HTTPException:
+        raise
+    try:
+        return build_authorization_matrix(scenarios, authentications, validations)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=500, detail="Authorization matrix could not be built") from None
 
 
 @router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle | FixtureSectionReport,

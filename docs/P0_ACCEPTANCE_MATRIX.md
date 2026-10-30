@@ -1,4 +1,4 @@
-# CanaryGate v3.2 — P0 acceptance audit (checkpoint 29)
+# CanaryGate v3.2 — P0 acceptance audit (checkpoint 31)
 
 **Gate: NOT ACCEPTED.** This is an implementation/test audit, not a claim of
 production readiness or live validation. Tests below use synthetic fixtures,
@@ -11,7 +11,11 @@ fixture/mocked-HTTPX ownership registry and oracle; checkpoint 28 connects that
 generic path to the application through a bounded recorded transport, SQLite
 persistence, API access and consistent JSON/HTML scenario reports. Checkpoint 29
 adds AUTHN-04a/04b/05/06/08 as guarded probes over the same recorded transport,
-with explicit SKIPPED/INCONCLUSIVE outcomes. The recorded transport is still
+with explicit SKIPPED/INCONCLUSIVE outcomes. Checkpoint 30 adds INPUT-05/06/07
+and DISC-01–06 on the same transport. Checkpoint 31 adds the frozen nine-section
+P0 report for the scenario, authentication and validation workflows, plus an
+aggregated authorization matrix that keeps untested cells visible and records
+manual interventions and inferences honestly. The recorded transport is still
 synthetic data, not live validation, and no live target has been contacted.
 The user-directed `docs/SAFETY_ADDENDUM.md` overrides the recipe target and
 classification/DNS details in the frozen document.
@@ -27,6 +31,8 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | Mocked HTTP | Disabled `GuardedHTTPXTransport` with fake HTTP/TLS/socket objects; DNS functions fail the test if called. Used by R3/R5/C1–C3/recipe/adversarial-17–21 and the transport-reuse test. |
 | Recorded offline | `OfflineGuardedRunner` releases bounded synthetic transcript responses after `RunSafetyGuard`; no sockets exist. Used by the scenario API/persistence/report tests. |
 | Recorded offline authentication | `OfflineAuthRunner` releases probe responses only where the validated scope declares that probe, after the same `RunSafetyGuard`; no sockets exist. Used by the authentication API/persistence/report tests. |
+| Recorded offline validation | `OfflineValidationRunner` releases one recorded response per scope-declared input probe and bounded reads after the same `RunSafetyGuard`; no sockets exist. Used by the validation API/persistence/report tests. |
+| Report projection | `canarygate/report/{p0,matrix}.py` and `templates/p0.html` derive the frozen nine sections and the authorization matrix from stored runs; no new request is made. |
 | Real networking | **None.** No cited test opens a live connection, resolves a public name, scans VAmPI/crAPI or contacts an organizer target. |
 
 ## Implementation index
@@ -37,7 +43,8 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | R3 accounts/roles/login | `canarygate/accounts/*`, `canarygate/offline/target.py`, `canarygate/network/{guarded_httpx,boundary}.py`, `canarygate/scan/offline.py` | Fixture; mocked HTTP; recorded offline pre-provisioned synthetic credentials |
 | R4 authentication | `canarygate/offline/auth_checks.py`, `canarygate/oracles/authentication.py`, `canarygate/oracles/authn_probes.py`, `canarygate/scan/auth_{transcript,runner,plan,generic,scenarios,models}.py` | Fixture; decode-only unit tests; recorded offline authentication |
 | R5 read-BOLA | `canarygate/seed/registry.py`, `canarygate/oracles/read_bola.py`, `canarygate/scan/{generic,offline,plan,transcript,scenarios}.py` | Fixture; mocked HTTP; recorded offline workflow |
-| R6 input validation | `canarygate/offline/input_checks.py`, `canarygate/oracles/validation.py` | Fixture |
+| R6 input validation | `canarygate/offline/input_checks.py`, `canarygate/oracles/validation.py`, `canarygate/scan/validation_{transcript,runner,plan,models,generic,scenarios}.py` | Fixture; recorded offline validation |
+| R8 report / §13 matrix | `canarygate/report/{p0,matrix,fixture,scenario,authentication,validation}.py` | Recorded offline workflow; report projection |
 | R7 disclosure | `canarygate/oracles/disclosure.py`, `canarygate/evidence/redaction.py` | Fixture; redaction unit inputs |
 | R8 evidence/storage | `canarygate/evidence/{redaction,observations}.py`, `canarygate/database/{store,scenario_store}.py`, `canarygate/scan/models.py` | Fixture and recorded offline; SQLite temp files |
 | R9/R10 verdicts and remediation | `canarygate/offline/scan.py`, `canarygate/report/{fixture,scenario}.py` | Fixture; recorded offline |
@@ -107,29 +114,26 @@ Evidence type: synthetic fixture responses only; no row uses real networking.
 
 ## Nine HTML and JSON report sections (§12)
 
-Evidence type: fixture `TestClient`/SQLite only; no real networking.
+Evidence type: stored recorded runs; the projection makes no request.
 
-The opt-in JSON section view (`?view=sections`) and HTML now use one projection
-of the same stored, integrity-checked fixture run. The legacy default JSON and
-observation bundle remain unchanged. `test_p0_acceptance.py::test_nine_section_html_json_consistency_and_coverage`
-compares all nine JSON section values with parsed HTML for confirmed, safe,
-inconclusive and skipped fixture outcomes, with sockets/DNS blocked; the
-budget test checks a safety-blocked report. Scenario runs use a separate
-seven-section projection (`executive_summary`, `scope_and_accounts`,
-`endpoint_inventory`, `bola_evidence`, `outcome`, `constraints`, `limitations`);
-it is not the full frozen nine-section contract. A heading is not a complete feature:
+`?view=p0` on `/api/scenario-scans/{id}/report`, `/api/authentication-scans/{id}/report`
+and `/api/validation-scans/{id}/report` returns exactly the frozen nine sections
+in order (`build_p0_sections`, validated by `P0ReportSections`, which rejects a
+missing, extra or reordered section). `format=html` renders the same projection
+with a five-verdict legend. The legacy fixture `?view=sections` view keeps its
+earlier partial projection and is not reclassified.
 
 | # / section | Status and remaining gap |
 |---|---|
-| 1 Executive | Partial: fixture counts by verdict/category; no wider run coverage. |
-| 2 Scope/accounts/seeding | Partial: fixture scope/hash, recorded accounts, actor role and setup; other roles explicitly NOT_RECORDED, no full rules-of-engagement or general rung history. |
-| 3 Inventory | Partial: persisted fixture inventory including security/access/source; uploaded inventory is not scanned. |
-| 4 Findings/remediation | Partial: grouped fixture findings and available redacted evidence/reasons/remediation; not all required fields/severity, general reproductions, full request/response or all catalog entries. The mock target cannot be replayed with curl. |
-| 5 Secured endpoints | Partial: fixture SAFE checks with evidence; BOLA requires the recorded denial checklist. Legacy BOLA/authentication SAFE records without the relevant denial checklist are not promoted to secured (`test_legacy_safe_verdict_without_checklist_is_not_reclassified_as_secured`, `test_auth_secure_section_requires_recorded_denial_body_check`). Not general coverage. |
-| 6 Skipped/inconclusive | Partial: fixture entries and reasons, including BOLA and guard blocking; not an exhaustive catalog of every disallowed target operation. |
-| 7 Authorization matrix | Partial: one observed fixture cross-user cell explicitly labeled `partial_fixture`; no anonymous/own/other/role grid or drill-down. |
-| 8 Manual interventions/inferences | Missing capture: section says NOT_RECORDED, never fabricates a clean bootstrap. |
-| 9 Constraint checklist | Partial: fixture counters and scope hash; production constraints unverified. |
+| 1 Executive | Implemented for the three offline workflows: counts by verdict, category, severity, finding count and the no-live-target statement (`test_p0_report_api.py::test_frozen_nine_sections_are_available_for_every_run_kind`). Still synthetic-only data. |
+| 2 Scope and rules | Implemented: origin/host/port, scope hash, written reference, accounts, budget, rules of engagement, seeding rung `NOT_APPLICABLE_OFFLINE_RECORDED_RESPONSES`; no organizer-supplied scope exists to hash. |
+| 3 Inventory | Implemented: scenario runs use their stored inventory; authentication and validation runs derive it from validated scope operations with expected access and source (`test_report_groups_validation_findings_and_maps_severity`). No uploaded-spec inventory is scanned. |
+| 4 Findings and remediation | Implemented: per-finding id, timestamp, endpoint, severity (fixed mapping), verdict, exact reason, account/role, expectation and source, observed bounded facts, evidence digest, curl with `$TOKEN_A` placeholders and a catalog remediation for CONFIRMED (`test_confirmed_findings_always_carry_a_catalog_remediation`, `test_curl_reproduction_uses_placeholders_and_never_a_real_credential`). Request/response bodies are not retained and the report says so; target resource and verified owner are reported as `NOT_RECORDED` where minimisation removed them. |
+| 5 Secured endpoints | Implemented: only SAFE findings with recorded evidence, and denial-based authentication checks additionally require `denial_body_checked`; safe endpoints are listed with the observed handling. |
+| 6 Skipped/inconclusive | Implemented with the exact reason per check, including SKIPPED authentication checks and SKIPPED schema comparison. |
+| 7 Authorization matrix | Partial: aggregated four-column matrix over stored runs with tested/untested counts, per-state counts and explicit untested cells; `own_resource` is grey because only the owner baseline is observed, and role coverage is limited to the role-escalation probe. No drill-down UI and no live coverage (`test_authorization_matrix_aggregates_stored_runs_and_keeps_gaps_visible`). |
+| 8 Manual interventions/inferences | Implemented as recorded structure: `status: RECORDED`, `manual_intervention_required: false`, empty interventions for offline runs, and explicit inferences/assumptions with their sources (expected-access source, identity mapping, denial contract, identifier minimisation). No fabricated bootstrap history. |
+| 9 Constraint checklist | Implemented from stored counters: allow-list, blocked count, zero out-of-scope/redirect/destructive/external/creation values with their sources, redaction yes, local assets yes, scope hash, offline mode. Production constraints remain unverified because no live run exists. |
 
 ## Frozen §15 adversarial tests and added checks 20–21
 
@@ -185,15 +189,19 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 | Consistent HTML/JSON evidence | Partial | Both derive from `build_scenario_sections`; `test_confirmed_scan_is_explained_consistently_in_both_reports` compares verdict, checklist and evidence. Seven sections, not the nine-section contract. |
 | Acceptance outcomes through the workflow | Partial | CONFIRMED, SAFE, INCONCLUSIVE (metadata and leaky denial), SKIPPED (pagination limit and guard block) in `test_scenario_verdicts_survive_the_application`. Synthetic responses only. |
 | Production/live scanning | Missing | Disabled transport, no DNS pinning execution, no organizer approval, no supplied-target scan. |
-| Remaining P0 checks | Missing | BFLA, the frozen nine-section report, the full role/endpoint authorization matrix and manual-intervention capture. |
+| Remaining P0 checks | Missing | BFLA and live/organizer validation. The frozen nine-section report, the authorization-matrix view and manual-intervention capture are implemented for the three offline workflows; optional disclosure depth (DISC-03 patterns beyond the fixed list, DISC-04 nested schemas, DISC-06 timing) remains Partial. |
 
 ## Next blocking work
 
 1. Milestone 30 is complete in code: INPUT-05/06/07 and DISC-01–06 execute
    through `POST /api/validation-scans`; the narrow depth recorded per row above
    is the remaining limitation and is not a live-data claim.
-2. Milestone 31: complete the report contract — the frozen nine sections for
-   generic runs, the full authorization matrix and manual-intervention capture.
-3. Milestone 32: full P0 regression and acceptance audit. Do not claim P0.
+2. Milestone 31 is complete in code: the frozen nine sections, an aggregated
+   authorization matrix with visible gaps and recorded manual interventions/
+   inferences are served for the scenario, authentication and validation
+   workflows. The matrix remains partial offline coverage, not a live grid.
+3. Milestone 32: full P0 regression and acceptance audit against the frozen
+   specification, including an adversarial pass over the report claims. Do not
+   claim P0.
 4. Only after production guard/DNS/secret review and explicit written organizer
    authorization, run supplied-target acceptance and record scope and results.

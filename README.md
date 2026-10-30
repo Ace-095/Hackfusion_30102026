@@ -81,7 +81,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 27 generic proof-path integration](docs/checkpoints/27-generic-integration.md)
 [checkpoint 28 generic offline scan integration](docs/checkpoints/28-generic-scan-integration.md)
 [checkpoint 29 authentication checks](docs/checkpoints/29-authentication-checks.md)
-and [checkpoint 30 input-validation and disclosure checks](docs/checkpoints/30-input-disclosure.md).
+and [checkpoint 30 input-validation and disclosure checks](docs/checkpoints/30-input-disclosure.md)
+and [checkpoint 31 nine-section report and authorization matrix](docs/checkpoints/31-report-and-matrix.md).
 
 ## Run the fixture API locally
 
@@ -94,7 +95,10 @@ scenario id; see [checkpoint 28](docs/checkpoints/28-generic-scan-integration.md
 Authentication checks are exposed at `POST /api/authentication-scans`; see
 [checkpoint 29](docs/checkpoints/29-authentication-checks.md). Input-validation
 and disclosure checks are exposed at `POST /api/validation-scans`; see
-[checkpoint 30](docs/checkpoints/30-input-disclosure.md).
+[checkpoint 30](docs/checkpoints/30-input-disclosure.md). Any stored run renders
+the frozen nine-section P0 report at `?view=p0`, and
+`GET /api/authorization-matrix` shows partial authorization coverage with
+untested cells; see [checkpoint 31](docs/checkpoints/31-report-and-matrix.md).
 
 In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed
