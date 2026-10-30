@@ -32,10 +32,12 @@ def no_network(monkeypatch):
 @contextmanager
 def offline_client(monkeypatch, path):
     # Windows asyncio creates a loopback socketpair while TestClient starts, so
-    # the outbound guard is installed only after that internal event loop exists.
+    # the outbound guard is installed only after that internal event loop exists
+    # and is removed before the client exits, keeping later clients startable.
     with TestClient(create_app(path)) as api:
-        no_network(monkeypatch)
-        yield api
+        with monkeypatch.context() as guard:
+            no_network(guard)
+            yield api
 
 
 @pytest.mark.parametrize('scenario_id,verdict', [
