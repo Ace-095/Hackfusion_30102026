@@ -137,3 +137,5 @@ For the experimental pinned-reader safety tests, see [checkpoint 12](checkpoints
 For the guarded HTTPX boundary tests, see [checkpoint 13](checkpoints/13-guarded-httpx.md).
 
 For shared run-guard verification, see [checkpoint 14](checkpoints/14-run-guard.md).
+
+For network-deadline verification, see [checkpoint 15](checkpoints/15-network-deadline.md).

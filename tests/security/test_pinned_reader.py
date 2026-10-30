@@ -30,6 +30,7 @@ operations:
 class FakeSocket:
     def __init__(self, events): self.events = events
     def settimeout(self, value): self.events.append(('timeout', value))
+    def do_handshake(self): pass
     def connect(self, target): self.events.append(('connect', target))
     def close(self): self.events.append(('close-socket',))
 
@@ -61,7 +62,7 @@ def mocked_wire(monkeypatch):
     monkeypatch.setattr(socket, 'socket', sock)
     from canarygate.network import guarded_httpx
     class FakeTLS:
-        def wrap_socket(self, connection, *, server_hostname):
+        def wrap_socket(self, connection, *, server_hostname, do_handshake_on_connect=False):
             events.append(('tls', server_hostname))
             return connection
     monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: FakeTLS())
@@ -193,13 +194,14 @@ def test_real_http_serialization_with_mocked_socket(monkeypatch):
     wire = []
     class WireSocket:
         def settimeout(self, timeout): pass
+        def do_handshake(self): pass
         def connect(self, address): wire.append(('connect', address))
         def sendall(self, data): wire.append(('sent', data))
         def makefile(self, mode):
             return io.BytesIO(b'HTTP/1.1 302 Found\r\nLocation: https://evil.invalid/\r\nContent-Length: 0\r\n\r\n')
         def close(self): pass
     class TLS:
-        def wrap_socket(self, connection, *, server_hostname):
+        def wrap_socket(self, connection, *, server_hostname, do_handshake_on_connect=False):
             wire.append(('tls', server_hostname)); return connection
     monkeypatch.setattr(socket, 'socket', lambda *a: WireSocket())
     monkeypatch.setattr(socket, 'getaddrinfo', lambda *a, **k: pytest.fail('DNS invoked'))
@@ -322,7 +324,7 @@ def test_tls_key_logging_is_disabled_before_handshake(mocked_wire, monkeypatch):
     from canarygate.network import guarded_httpx
     class TLSWithKeyLog:
         keylog_filename = '/tmp/should-not-receive-session-secrets'
-        def wrap_socket(self, connection, *, server_hostname):
+        def wrap_socket(self, connection, *, server_hostname, do_handshake_on_connect=False):
             assert self.keylog_filename is None
             return connection
     context = TLSWithKeyLog()
@@ -462,3 +464,62 @@ def test_invalid_scope_copy_cannot_construct_run_guard():
     from canarygate.guard.run_guard import RunSafetyGuard
     bad = load_authorized_scope(SCOPE).model_copy(update={'request_budget': 0})
     with pytest.raises(ValueError): RunSafetyGuard(bad)
+
+
+@pytest.mark.parametrize('stall', ['handshake', 'headers', 'body', 'drip'])
+def test_absolute_network_deadline_interrupts_slow_peer(monkeypatch, stall):
+    """In-process socketpair only: a slow TLS peer must not evade the deadline."""
+    import ssl
+    import threading
+    import time
+    from pathlib import Path
+    from canarygate.network import guarded_httpx
+    fixtures = Path(__file__).parents[1] / 'fixtures' / 'tls'
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_context.load_cert_chain(fixtures / 'test-cert.pem', fixtures / 'test-key.pem')
+    client_context = ssl.create_default_context(cafile=str(fixtures / 'test-cert.pem'))
+    client_sock, server_sock = socket.socketpair()
+    stop = threading.Event()
+    calls = []
+    def server():
+        try:
+            if stall == 'handshake':
+                stop.wait(1.8)
+            with server_context.wrap_socket(server_sock, server_side=True) as peer:
+                peer.recv(16384)
+                if stall == 'headers':
+                    peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n')
+                    stop.wait(1.8)
+                    peer.sendall(b'\r\n{}')
+                elif stall == 'drip':
+                    for byte in b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}':
+                        peer.sendall(bytes([byte]))
+                        if stop.wait(0.03): break
+                else:
+                    peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{')
+                    stop.wait(1.8)
+                    peer.sendall(b'}')
+        except (OSError, ssl.SSLError):
+            pass
+    worker = threading.Thread(target=server, daemon=True)
+    worker.start()
+    class FakeConnect:
+        def __getattr__(self, name): return getattr(client_sock, name)
+        def connect(self, address): calls.append(address)
+    monkeypatch.setattr(socket, 'socket', lambda *args: FakeConnect())
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *args, **kwargs: pytest.fail('DNS invoked'))
+    monkeypatch.setattr(guarded_httpx.ssl, 'create_default_context', lambda: client_context)
+    monkeypatch.setattr(guarded_httpx, 'TOTAL_DEADLINE_SECONDS', 0.15, raising=False)
+    client = reader()
+    start = time.monotonic()
+    try:
+        with pytest.raises(ValueError, match='halted'): client.get('alice', '/items')
+        assert time.monotonic() - start < 1.2
+        with pytest.raises(ValueError, match='halted'): client.get('alice', '/items')
+        assert calls == [('203.0.113.12', 443)]
+    finally:
+        stop.set()
+        client_sock.close()
+        server_sock.close()
+        worker.join(timeout=2)
+    assert not worker.is_alive()

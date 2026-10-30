@@ -28,7 +28,8 @@ The HTTPX transport uses Python's HTTP/1.1 implementation only over its pinned
 socket. It currently supports **GET only**, an organizer-supplied literal IP and
 supplied bearer tokens. It neither verifies token identity nor logs in, resolves
 DNS, supports query operations or exposes response headers. A run guard can be explicitly shared across instances (checkpoint 14); independent
-guards have independent budgets. It lacks an absolute wall-clock deadline. These restrictions and
+guards have independent budgets. Checkpoint 15 adds a total network deadline,
+not a general hard bound on all process work. These restrictions and
 other incomplete production safety/evidence integration mean this is not a
 complete live scanner. The fixture report remains a synthetic result; see the
 [main demo guide](../VS_CODE_DEMO.md).

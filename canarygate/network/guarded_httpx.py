@@ -9,6 +9,8 @@ import ipaddress
 import re
 import socket
 import ssl
+import threading
+import time
 
 import httpx
 
@@ -17,6 +19,58 @@ from canarygate.scope.authorized import AuthorizedScope
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 4096
+TOTAL_DEADLINE_SECONDS = 10.0
+
+
+class _NetworkDeadline:
+    """Interrupt blocking socket operations when the total network deadline expires."""
+    def __init__(self, seconds):
+        self._end = time.monotonic() + seconds
+        self._lock = threading.Lock()
+        self._socket = None
+        self._expired = False
+        self._closed = False
+        self._timer = threading.Timer(seconds, self._expire)
+        self._timer.daemon = True
+
+    def start(self):
+        self._timer.start()
+
+    @staticmethod
+    def _interrupt(sock):
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+
+    def _expire(self):
+        with self._lock:
+            if not self._closed:
+                self._expired = True
+                self._interrupt(self._socket)
+
+    def attach(self, sock):
+        with self._lock:
+            self._socket = sock
+            if self._expired or time.monotonic() >= self._end:
+                self._expired = True
+                self._interrupt(sock)
+                raise TimeoutError("network deadline expired")
+
+    def remaining(self):
+        with self._lock:
+            remaining = self._end - time.monotonic()
+            if self._expired or remaining <= 0:
+                self._expired = True
+                raise TimeoutError("network deadline expired")
+            return remaining
+
+    def close(self):
+        with self._lock:
+            self._closed = True
+            self._socket = None
+        self._timer.cancel()
 
 
 class GuardedHTTPXTransport(httpx.BaseTransport):
@@ -65,14 +119,25 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
             self._run_guard.authorize(actor, "GET", self._scope.origin + path)
             sock = None
             connection = None
+            deadline = _NetworkDeadline(TOTAL_DEADLINE_SECONDS)
             try:
+                deadline.start()
                 family = socket.AF_INET if self._ip.version == 4 else socket.AF_INET6
                 sock = socket.socket(family, socket.SOCK_STREAM)
-                sock.settimeout(5.0)
+                deadline.attach(sock)
+                sock.settimeout(min(5.0, deadline.remaining()))
                 sock.connect((str(self._ip), self._scope.port))
+                deadline.remaining()
                 context = ssl.create_default_context()
                 context.keylog_filename = None
-                sock = context.wrap_socket(sock, server_hostname=self._scope.hostname)
+                # Avoid a blocking handshake before the watchdog can reference
+                # the wrapped socket. The timer can interrupt handshake and reads.
+                sock = context.wrap_socket(sock, server_hostname=self._scope.hostname,
+                                           do_handshake_on_connect=False)
+                deadline.attach(sock)
+                sock.settimeout(min(5.0, deadline.remaining()))
+                sock.do_handshake()
+                deadline.remaining()
                 connection = http.client.HTTPConnection(self._scope.hostname, self._scope.port, timeout=5.0)
                 connection.sock = sock
                 host = f"[{self._scope.hostname}]" if ":" in self._scope.hostname else self._scope.hostname
@@ -83,6 +148,7 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 })
                 response = connection.getresponse()
                 content = response.read(MAX_RESPONSE_BYTES + 1)
+                deadline.remaining()
                 if len(content) > MAX_RESPONSE_BYTES:
                     raise ValueError("response exceeds size limit")
                 # Halt is shared by all transports in this run.
@@ -93,6 +159,7 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 self._run_guard.halt()
                 raise ValueError("network request failed; execution halted") from None
             finally:
+                deadline.close()
                 try:
                     if connection is not None:
                         connection.close()

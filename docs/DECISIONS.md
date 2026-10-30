@@ -467,10 +467,27 @@ This does not yet integrate a real scanner. A caller must explicitly share the
 same guard; creating a new guard creates a new independent run. An eventual scan
 orchestrator must create exactly one guard per scan and pass it through all
 outbound paths, including login and discovery. The current HTTPX boundary remains
-GET-only, cannot do login, does not support resolver-only scopes or an absolute
-wall-clock deadline, and is not exposed through the API. No external target or
+GET-only, cannot do login, does not support resolver-only scopes and is not exposed through the API.
+Checkpoint 15 subsequently adds a bounded network deadline. No external target or
 DNS service was contacted in testing. The independently validated live-target
 safety requirements remain outstanding.
+
+## Checkpoint 15 — total network deadline
+
+Test-first TLS socketpair tests exposed that a peer could delay the handshake,
+headers or body beyond an intended total timeout while each individual socket
+operation remained within its timeout. The HTTPX boundary now uses a 10-second
+monotonic deadline and a watchdog that interrupts the active socket; it performs
+TLS handshake only after the watchdog can track the wrapped socket. Network
+failure or deadline expiry halts the shared run. Tests cover stalled handshake,
+stalled headers/body and a slow-drip response without real target traffic. The
+local full suite passed 274 tests with one third-party warning.
+
+The timer addresses network waits, not an independently verified hard execution
+time bound for arbitrary Python computation, thread starvation or local system
+calls. Live safety review and real-target validation remain outstanding. The
+component remains GET-only and is not connected to the scanner or API. See the
+[checkpoint 15 demo](checkpoints/15-network-deadline.md).
 
 ## Outstanding checkpoints
 
