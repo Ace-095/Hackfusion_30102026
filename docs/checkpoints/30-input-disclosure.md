@@ -188,7 +188,9 @@ recorded status, disclosure signal names and the enumeration status pair.
   40 in `tests/security/test_input_validation_probes.py`, 13 in
   `tests/integration/test_validation_scenario.py`).
 - `python -m compileall -q canarygate tests` remains clean.
-- CI: to be recorded after the checkpoint commit is pushed.
+- CI on `db5d17e` (run `41063312712`): `tests (ubuntu-latest, 3.11)` and
+  `tests (windows-latest, 3.11)` both succeeded on the first attempt.
+- Wheel build: 96 files, including `templates/validation.html`.
 
 ## Remaining gaps
 
