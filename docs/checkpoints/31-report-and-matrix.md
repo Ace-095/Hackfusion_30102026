@@ -54,7 +54,7 @@ catalog text.
 
 **Nothing invented where evidence was minimised.** Request and response bodies
 are not stored, so section 4 states "not retained" instead of fabricating them.
-Target resource and verified owner are reported as `NOT_RECORDED` for read-BOLA
+Target resource and verified owner were reported as `NOT_RECORDED` for read-BOLA
 runs because identifiers are minimised by design; the corresponding assumption
 appears in section 8. curl reproductions use `$TOKEN_A`/`$TOKEN_B` placeholders
 and never a real credential.
@@ -173,8 +173,9 @@ hatched cells are the coverage gaps, and each row names the run that produced it
   for a live target, `own_resource` is grey, and role coverage is only the
   role-escalation probe. This is deliberately visible, not smoothed over.
 - Section 4 reports `NOT_RECORDED` for target resource and verified owner in
-  read-BOLA findings because identifiers are minimised; restoring them would
-  require a deliberate evidence-model change.
+  read-BOLA findings because identifiers are minimised. **Checkpoint 32 fixed
+  this**: the frozen §12 fields now carry a redacted representation (resource
+  type, verified owner, withheld identifier) without exposing or inventing an id.
 - The legacy fixture report keeps its earlier partial projection; it was not
   rebuilt on the new builder.
 - BFLA, live/organizer validation and the full P0 regression audit remain

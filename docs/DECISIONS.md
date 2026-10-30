@@ -817,6 +817,30 @@ section states that explicitly, lists setup and guard-block entries when they
 exist, and records inferences (expected-access source, identity mapping, denial
 contract, identifier minimisation) with their sources.
 
+### Checkpoint 32: audit the claim, not the checklist
+
+The P0 acceptance audit is executable (`tools/p0_audit.py`) rather than a table
+maintained by hand. Each frozen requirement maps to implementation symbols,
+collected test node ids, an evidence class and — where it is not implemented —
+a mandatory gap statement. The tool fails on dangling references, on an
+implemented requirement without a test, and on any test file without a declared
+environment, so a new test cannot claim an environment it does not use. A test
+runs the audit, so it cannot rot.
+
+The audit found one genuine defect: §12 requires findings to name the target
+resource and verified owner, but the checkpoint-31 report emitted
+`NOT_RECORDED`. Identifier minimisation cannot override a frozen report field, so
+the projection now emits a redacted representation — resource type, the verified
+owner account (deduced only when exactly two accounts are authorized and only when
+`ownership_verified` and `owner_baseline` are both true), and an explicitly
+withheld identifier. Unverified runs say `NOT_VERIFIED` and name no owner. The
+alternative — exposing ids, or keeping the non-compliant field — was rejected.
+
+The gate stays closed. The audit distinguishes "offline subset accepted with
+limitations" from "complete frozen P0 accepted", and the two missing rows (BFLA,
+live validation) are the reason. Partial rows are not rounded up to implemented,
+and no BFLA or detection work was started to make the numbers look better.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

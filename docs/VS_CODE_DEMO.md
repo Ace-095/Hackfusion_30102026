@@ -249,3 +249,18 @@ cells are coverage gaps, each row names the stored run that produced it, and two
 runs that disagree keep the worse observation with both reasons. Repeat
 `view=p0` for a scenario run and an authentication run to show the same contract
 over a different workflow.
+
+
+### Checkpoint 32 acceptance audit demo
+
+```sh
+.venv/bin/python tools/p0_audit.py
+```
+
+The tool prints 35 requirement rows with status, evidence class, implementation
+and cited tests, then fails loudly on any dangling reference or unclassified test
+file. `tests/integration/test_p0_audit.py` runs the same audit, so the claim and
+the evidence cannot drift apart. The checkpoint document
+`docs/checkpoints/32-p0-acceptance-audit.md` states the split verdict: offline
+subset accepted with limitations, complete frozen P0 not accepted (BFLA and live
+validation missing).

@@ -1,4 +1,4 @@
-# CanaryGate v3.2 — P0 acceptance audit (checkpoint 31)
+# CanaryGate v3.2 — P0 acceptance audit (checkpoint 32)
 
 **Gate: NOT ACCEPTED.** This is an implementation/test audit, not a claim of
 production readiness or live validation. Tests below use synthetic fixtures,
@@ -15,7 +15,13 @@ with explicit SKIPPED/INCONCLUSIVE outcomes. Checkpoint 30 adds INPUT-05/06/07
 and DISC-01–06 on the same transport. Checkpoint 31 adds the frozen nine-section
 P0 report for the scenario, authentication and validation workflows, plus an
 aggregated authorization matrix that keeps untested cells visible and records
-manual interventions and inferences honestly. The recorded transport is still
+manual interventions and inferences honestly. Checkpoint 32 audits 35 frozen
+requirements mechanically (`tools/p0_audit.py`, self-tested), adds adversarial and
+cross-component consistency suites, and fixes the one behavioural defect the audit
+found: §12 requires a target resource and verified owner, which are now reported as
+a redacted representation instead of `NOT_RECORDED`. The decision is unchanged in
+substance: the offline subset is accepted with limitations; complete frozen P0 is
+not accepted. The recorded transport is still
 synthetic data, not live validation, and no live target has been contacted.
 The user-directed `docs/SAFETY_ADDENDUM.md` overrides the recipe target and
 classification/DNS details in the frozen document.
@@ -128,7 +134,7 @@ earlier partial projection and is not reclassified.
 | 1 Executive | Implemented for the three offline workflows: counts by verdict, category, severity, finding count and the no-live-target statement (`test_p0_report_api.py::test_frozen_nine_sections_are_available_for_every_run_kind`). Still synthetic-only data. |
 | 2 Scope and rules | Implemented: origin/host/port, scope hash, written reference, accounts, budget, rules of engagement, seeding rung `NOT_APPLICABLE_OFFLINE_RECORDED_RESPONSES`; no organizer-supplied scope exists to hash. |
 | 3 Inventory | Implemented: scenario runs use their stored inventory; authentication and validation runs derive it from validated scope operations with expected access and source (`test_report_groups_validation_findings_and_maps_severity`). No uploaded-spec inventory is scanned. |
-| 4 Findings and remediation | Implemented: per-finding id, timestamp, endpoint, severity (fixed mapping), verdict, exact reason, account/role, expectation and source, observed bounded facts, evidence digest, curl with `$TOKEN_A` placeholders and a catalog remediation for CONFIRMED (`test_confirmed_findings_always_carry_a_catalog_remediation`, `test_curl_reproduction_uses_placeholders_and_never_a_real_credential`). Request/response bodies are not retained and the report says so; target resource and verified owner are reported as `NOT_RECORDED` where minimisation removed them. |
+| 4 Findings and remediation | Implemented: per-finding id, timestamp, endpoint, severity (fixed mapping), verdict, exact reason, account/role, expectation and source, observed bounded facts, evidence digest, curl with `$TOKEN_A` placeholders and a catalog remediation for CONFIRMED (`test_confirmed_findings_always_carry_a_catalog_remediation`, `test_curl_reproduction_uses_placeholders_and_never_a_real_credential`). Request/response bodies are not retained and the report says so. The target resource and verified owner are reported as a redacted representation: resource type, the verified owner account (only when ownership and the owner baseline are proven) and an explicitly withheld identifier; unverified runs say `NOT_VERIFIED` and name no owner (`test_confirmed_bola_finding_names_a_redacted_resource_and_verified_owner`, `test_unverified_ownership_is_never_reported_as_a_verified_owner`). |
 | 5 Secured endpoints | Implemented: only SAFE findings with recorded evidence, and denial-based authentication checks additionally require `denial_body_checked`; safe endpoints are listed with the observed handling. |
 | 6 Skipped/inconclusive | Implemented with the exact reason per check, including SKIPPED authentication checks and SKIPPED schema comparison. |
 | 7 Authorization matrix | Partial: aggregated four-column matrix over stored runs with tested/untested counts, per-state counts and explicit untested cells; `own_resource` is grey because only the owner baseline is observed, and role coverage is limited to the role-escalation probe. No drill-down UI and no live coverage (`test_authorization_matrix_aggregates_stored_runs_and_keeps_gaps_visible`). |
@@ -189,7 +195,38 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 | Consistent HTML/JSON evidence | Partial | Both derive from `build_scenario_sections`; `test_confirmed_scan_is_explained_consistently_in_both_reports` compares verdict, checklist and evidence. Seven sections, not the nine-section contract. |
 | Acceptance outcomes through the workflow | Partial | CONFIRMED, SAFE, INCONCLUSIVE (metadata and leaky denial), SKIPPED (pagination limit and guard block) in `test_scenario_verdicts_survive_the_application`. Synthetic responses only. |
 | Production/live scanning | Missing | Disabled transport, no DNS pinning execution, no organizer approval, no supplied-target scan. |
-| Remaining P0 checks | Missing | BFLA and live/organizer validation. The frozen nine-section report, the authorization-matrix view and manual-intervention capture are implemented for the three offline workflows; optional disclosure depth (DISC-03 patterns beyond the fixed list, DISC-04 nested schemas, DISC-06 timing) remains Partial. |
+| Remaining P0 checks | Missing | Checkpoint 32's audit (`tools/p0_audit.py`, 35 rows) records 24 implemented, 9 partial, 2 missing and 0 unreachable. BFLA and live/organizer validation are the missing rows. The frozen nine-section report, the authorization-matrix view and manual-intervention capture are implemented for the three offline workflows; optional disclosure depth (DISC-03 patterns beyond the fixed list, DISC-04 nested schemas, DISC-06 timing) remains Partial. |
+
+
+## Checkpoint 32 acceptance audit
+
+`tools/p0_audit.py` is the machine-checked counterpart of this document. It maps
+every frozen requirement to implementation symbols, collected test node ids and a
+declared evidence class, verifies that the claimed API routes are served by the
+real application, and fails on any dangling reference, unclassified test file,
+implemented requirement without a test, or partial/missing row without a stated
+gap. `tests/integration/test_p0_audit.py` runs it and asserts it is clean.
+
+| Result | Count |
+|---|---|
+| Requirements audited | 35 |
+| Implemented (offline behaviour, tested) | 24 |
+| Partial (gap stated) | 9 |
+| Missing | 2 — BFLA, live/organizer validation |
+| Unreachable through the application API | 0 |
+| Test files with a declared evidence class | 44 of 44 |
+| Test files declaring real networking | 0 |
+
+Stage B adds nine adversarial tests over all 17 bundled scenarios (no false SAFE,
+no CONFIRMED without complete evidence, no secret in reports or SQLite, no green
+cell for a confirmed observation). Stage C adds six cross-component tests
+(per-run report counts equal stored runs, per-run matrix never worse than the
+aggregate, coverage maths, legacy/P0 disjointness). Details and the full table:
+`docs/checkpoints/32-p0-acceptance-audit.md`.
+
+**Gate: still NOT ACCEPTED for complete frozen P0.** The offline subset is
+accepted with documented limitations; live validation and BFLA remain absent and
+must not be simulated.
 
 ## Next blocking work
 

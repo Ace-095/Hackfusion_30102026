@@ -305,5 +305,6 @@ Manual interventions are recorded rather than decorated: offline runs state
 (setup status and guard-block entries when present) and explicit inferences with
 their sources. The constraint checklist carries all thirteen §21 items with a
 source per item. The report is deliberately conservative: read-BOLA findings
-report `NOT_RECORDED` for target resource and verified owner because identifiers
-are minimised, and that limitation is also listed in section 8.
+report the resource type and verified owner account while withholding the
+identifier; ownership is only claimed when the stored checklist proves it, and an
+unverified run says `NOT_VERIFIED` instead of naming an owner.

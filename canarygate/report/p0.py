@@ -172,6 +172,32 @@ def _finding(check_id, category, *, timestamp, endpoint, verdict, reason, accoun
     }
 
 
+OWNER_NOT_VERIFIED = "NOT_VERIFIED (ownership evidence incomplete)"
+
+
+def redacted_target_resource(run):
+    """Resource type plus the fact that the identifier is withheld, never a fake id."""
+    return f"{run['recipe']['resource_type']} (owner's private record; identifier minimised)"
+
+
+def redacted_verified_owner(run, actor):
+    """Name the verified owner without exposing identifiers.
+
+    Ownership is only claimed when the stored checklist proves both that ownership
+    was verified and that the owner baseline succeeded. With exactly two authorized
+    accounts the owner is the one that did not make the cross-account request;
+    otherwise the label stays generic rather than guessing.
+    """
+    checklist = run["checklist"]
+    if not (checklist.get("ownership_verified") and checklist.get("owner_baseline")):
+        return OWNER_NOT_VERIFIED
+    accounts = [item["account"] for item in run["scope"]["accounts"]]
+    if len(accounts) == 2 and actor in accounts:
+        owner = accounts[0] if accounts[1] == actor else accounts[1]
+        return f"{owner} (ownership verified; owner baseline recorded)"
+    return "an account distinct from the requester (ownership verified; owner baseline recorded)"
+
+
 def _scenario_findings(run):
     evidence = run["evidence"]["disclosure"] or run["evidence"]["ownership"]
     actor = evidence["actor"] if evidence else "account-a"
@@ -189,8 +215,8 @@ def _scenario_findings(run):
         source=run["policy"]["expected_source"], checklist=run["checklist"],
         curl=curl_for(method, path, actor=actor),
         evidence_sha256=evidence["sha256"] if evidence else "NOT_RECORDED",
-        target_resource="NOT_RECORDED (identifier minimised)",
-        verified_owner="NOT_RECORDED (fixture ownership is a bundled assumption)")]
+        target_resource=redacted_target_resource(run),
+        verified_owner=redacted_verified_owner(run, actor))]
 
 
 def _authentication_findings(run):
@@ -367,7 +393,8 @@ def _manual(kind, run):
          "value": "a 401/403 whose body equals the declared denial counts as a checked denial"},
         {"item": "target_resource_identity", "kind": "limitation",
          "source": "evidence minimisation policy",
-         "value": "resource identifiers are not retained, so they are reported as NOT_RECORDED"},
+         "value": "resource identifiers are not retained; the report names the resource type "
+                  "and verified owner but withholds the id"},
     ]
     if kind == "scenario":
         interventions.append({

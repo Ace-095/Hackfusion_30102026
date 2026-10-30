@@ -35,6 +35,8 @@ python -m pytest
 If PowerShell activation is restricted, use `.venv\Scripts\python.exe -m pip`
 and `.venv\Scripts\python.exe -m pytest` directly. Dependencies are pinned in
 `pyproject.toml`; the GitHub Actions workflow tests both Linux and Windows.
+`python tools/p0_audit.py` prints the 35-row P0 acceptance audit and exits
+non-zero on any dangling implementation/test reference or unclassified test file.
 
 ## Before parallel development
 
@@ -82,7 +84,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 28 generic offline scan integration](docs/checkpoints/28-generic-scan-integration.md)
 [checkpoint 29 authentication checks](docs/checkpoints/29-authentication-checks.md)
 and [checkpoint 30 input-validation and disclosure checks](docs/checkpoints/30-input-disclosure.md)
-and [checkpoint 31 nine-section report and authorization matrix](docs/checkpoints/31-report-and-matrix.md).
+[checkpoint 31 nine-section report and authorization matrix](docs/checkpoints/31-report-and-matrix.md)
+and [checkpoint 32 P0 acceptance audit](docs/checkpoints/32-p0-acceptance-audit.md).
 
 ## Run the fixture API locally
 

@@ -102,6 +102,38 @@ def test_scenario_finding_is_complete_and_explains_its_verdict():
     assert len(finding["evidence_sha256"]) == 64
 
 
+def test_confirmed_bola_finding_names_a_redacted_resource_and_verified_owner():
+    # Frozen section 12 item 4 requires "target resource and verified owner".
+    # Identifiers stay minimised, but the finding must still state the resource
+    # type, the owner label and that ownership was verified.
+    finding = build_p0_sections("scenario", scenario_run())["findings"]["Authorization"][0]
+    assert finding["verdict"] == "CONFIRMED"
+    assert finding["account"] == "account-a"
+    assert finding["target_resource"].startswith("records ")
+    assert "identifier minimised" in finding["target_resource"]
+    assert finding["verified_owner"].startswith("account-b ")
+    assert "ownership verified" in finding["verified_owner"].lower()
+    assert "owner baseline recorded" in finding["verified_owner"].lower()
+
+
+def test_unverified_ownership_is_never_reported_as_a_verified_owner():
+    # `synthetic-pagination-limit` is SKIPPED before any ownership evidence exists.
+    finding = build_p0_sections("scenario", scenario_run("synthetic-pagination-limit")
+                                )["findings"]["Authorization"][0]
+    assert finding["verdict"] == "SKIPPED"
+    assert finding["verified_owner"].startswith("NOT_VERIFIED")
+    assert "account-" not in finding["verified_owner"]
+    assert finding["target_resource"].startswith("records ")
+
+
+def test_verified_ownership_is_reported_even_when_the_verdict_is_inconclusive():
+    finding = build_p0_sections("scenario", scenario_run("synthetic-metadata")
+                                )["findings"]["Authorization"][0]
+    assert finding["verdict"] == "INCONCLUSIVE"
+    assert finding["verified_owner"].startswith("account-b ")
+    assert "ownership verified" in finding["verified_owner"].lower()
+
+
 def test_authentication_findings_cover_every_check_and_keep_skip_reasons():
     run = authentication_run("synthetic-jwt-opaque")
     sections = build_p0_sections("authentication", run)
