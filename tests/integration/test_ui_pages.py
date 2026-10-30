@@ -641,7 +641,7 @@ def test_a_scan_with_no_findings_is_explained_not_hidden(tmp_path):
 
         # The dashboard must not upgrade a SAFE run into an open finding.
         dashboard = client.get("/ui/").text
-        assert '<span class="stat-value">0</span>' in dashboard
+        assert '<span class="kpi-value">0</span>' in dashboard
 
 
 def test_inconclusive_runs_are_rendered_as_inconclusive_everywhere(tmp_path):

@@ -1158,3 +1158,34 @@ what the SCI reset clears and what it preserves, and says explicitly that it doe
 not reset, delete or rewrite the BOLA scan history or the grid above it. The one
 thing a judge must not conclude from a green reset proof is that the evidence
 changed — it did not.
+
+### Checkpoint 43: real progress, and why it took a callback
+
+The loading screen could have been a spinner, or a fake sequence of stage names
+ticking past on a timer. Both would have been easy and both would have been lies:
+the scan is synchronous, so at the moment the screen appears nothing has happened
+yet, and a timer cannot know when the lab answers.
+
+The smallest honest mechanism turned out to be a callback on the transport. Every
+lab request already goes through exactly one `_send`, so one call site after the
+response is enough to emit `{actor, method, path, status, elapsed_ms,
+requests_sent}`. It is invoked after the response is final, its return value is
+ignored, its exceptions are swallowed, and it never receives a credential — so it
+cannot change a request, a response or a verdict. Three tests pin that.
+
+On top of it sits a job registry and a worker thread in the UI layer. The job runs
+the *same* four steps the JSON API runs — plan builder, runner, oracle, store — so
+the stored run is byte-identical to a synchronous call and `/api/lab-matrix` fills
+exactly as before. The alternative, teaching the API route to accept an observer,
+would have added a query parameter to a frozen contract for the sake of the UI;
+that trade was rejected.
+
+Polling instead of SSE: a demonstration is three seconds long, and a JSON endpoint
+with a `since` cursor is a smaller surface than a stream, easier to test and
+trivial to cache. If the runs ever get long, the same transcript can be streamed
+without changing the events themselves.
+
+The landing page's animation is abstract on purpose. It draws networks, paths, a
+boundary and a report shape, but no status code, no verdict word and no number —
+so a judge cannot mistake the showreel for a result, and a screenshot of it can
+never become evidence.

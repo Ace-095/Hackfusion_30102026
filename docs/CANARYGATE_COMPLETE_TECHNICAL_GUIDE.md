@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP42](#17-checkpoint-history-cp26cp42)
+- [§17 Checkpoint history CP26–CP43](#17-checkpoint-history-cp26cp43)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -2108,7 +2108,7 @@ This is the closest thing the project has to an integration contract: if a proje
 
 ---
 
-## 17. Checkpoint history CP26–CP42
+## 17. Checkpoint history CP26–CP43
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2131,6 +2131,7 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 40 | Judge experience | `/ui/actions/lab-demo-run`, `lab_demo_result.html`, `partials/matrix_grid.html`, `X-Lab-Instance` | One port fills all nine cells through three ordinary sequential runs; coverage is claimed only from stored evidence; instance ids replace the port heuristic |
 | 41 | Demonstration readiness | `GatedLabTlsServer`, three more interface tests, clean-wheel check | Proved the demonstration survives a lab that disappears mid-run: stored runs stay, the missing pair's cells stay untested, and a connection failure is never a verdict |
 | 42 | Product experience | `landing.html` + `landing.css`/`landing.js`, `/ui/assessment`, execution timeline, disclosure proof, new navigation | The journey is self-service end to end; the run page shows recorded stages and says plainly that the backend streams no live events |
+| 43 | Live experience | transport `observer`, `ui/execution.py`, `/ui/execution/{id}` + `/events`, canvas showreel, interactive dashboard | The loading screen is fed by the transport itself: one event per completed request, with the lab's status and the measured duration; no percentage and no invented progress |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -3345,8 +3346,39 @@ $ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
 
 The guide still makes no claim about visual rendering: jsdom has no layout engine,
 and the cinematic sequence is checked structurally plus a focused jsdom run (skip
-control, Escape, no external assets). Live progress remains unimplemented by
-design; §14.10 and the architecture report state what it would need.
+control, Escape, no external assets).
+
+### G.14 Refresh at CP43
+
+Checkpoint 43 closes the one honesty gap this guide kept repeating: there is now
+**real progress telemetry**. The lab transport accepts an optional `observer`
+callback, invoked after each exchange with the actor, method, path, the lab's
+status, the measured duration and the running request count. `canarygate/ui/
+execution.py` runs an assessment on a worker thread with that callback attached and
+serves the transcript at `/ui/execution/{job_id}/events`; the page polls it. Each
+feed line is therefore a request that already completed.
+
+```
+$ .venv/bin/python -m pytest -q
+1098 passed, 1 warning in 112.43s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1098 collected tests, 65 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness
+29/29 browser checks passed
+```
+
+Measured end to end over real HTTP (uvicorn + lab, no TestClient): the assessment
+action returns `303`, the job emits 62 events for the demonstration, stores three
+runs, reports 54 requests, and the matrix reads 9 tested / 0 untested. One pair
+streams exactly 18 request events, equal to the stored run's `requests_sent`.
+
+The observer is deliberately powerless: it runs after the response is final,
+its return value is ignored, its exceptions are swallowed, and it never sees a
+credential. `tests/lab/test_targetlab_observer.py` proves those properties, and
+`tests/integration/test_ui_lab_pages.py` proves the stream matches the stored run.
 
 ---
 

@@ -33,6 +33,7 @@
       {#- Decorative motion layer. Hidden from assistive technology; every fact on
           this page is in the text below it. -#}
       <div class="scene" data-scene aria-hidden="true">
+        <canvas class="scene-canvas" data-scene-canvas></canvas>
         <div class="scene-grid"></div>
 
         <svg class="scene-network" viewBox="0 0 1200 620" preserveAspectRatio="xMidYMid slice" focusable="false">
@@ -68,7 +69,8 @@
           <span class="dot"></span> cross-account request · CONFIRMED
         </div>
 
-        {#- Evidence fragments assembling into a report. -#}
+        {#- Evidence fragments assembling into a report. These are the no-JS
+            fallback; the canvas draws the same sequence when it can. -#}
         <div class="evidence-stack">
           <div class="frag frag-1"><span class="frag-key">request</span><span class="frag-val mono">200</span></div>
           <div class="frag frag-2"><span class="frag-key">owner baseline</span><span class="frag-val mono">verified</span></div>

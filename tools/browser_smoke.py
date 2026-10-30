@@ -182,6 +182,45 @@ async function submitAndWait(w, form, panelSelector, pattern, seconds = 120) {
     : null;
   facts.runs.fixture_id = fixtureLink ? fixtureLink.split('/').pop() : null;
 
+  // 3b. The landing page: standalone, no external assets, and the intro can be
+  // skipped so the product is never behind an animation.
+  const landing = await open(base + '/');
+  const landDoc = landing.w.document;
+  const skipButton = landDoc.querySelector('[data-skip-intro]');
+  let landingPinned = landDoc.documentElement.classList.contains('is-static');
+  if (skipButton) {
+    skipButton.dispatchEvent(new landing.w.MouseEvent('click', { bubbles: true }));
+    landingPinned = landDoc.documentElement.classList.contains('is-static');
+  }
+  facts.pages.push({
+    path: '/',
+    title: landDoc.title,
+    h1: (landDoc.querySelector('h1') || {}).textContent?.trim(),
+    h1_count: landDoc.querySelectorAll('h1').length,
+    forms: landDoc.querySelectorAll('form').length,
+    skip: !!skipButton,
+    pinned_after_skip: landingPinned,
+    enter_href: (landDoc.querySelector('a[href="/ui/"]') || {}).href || null,
+    canvas: !!landDoc.querySelector('[data-scene-canvas]'),
+    external: !!landDoc.body.innerHTML.match(/(?:src|href)\s*=\s*["'](?:https?:)?\/\//i),
+    errors: landing.errors.filter((message) => !KNOWN_JSDOM_NOISE.test(message)
+                                          && !/getContext/.test(message)),
+  });
+
+  // 3c. The assessment workspace: the form the judge uses, with real options.
+  const workspace = await open(base + '/ui/assessment');
+  facts.pages.push({
+    path: '/ui/assessment',
+    title: workspace.w.document.title,
+    h1: (workspace.w.document.querySelector('h1') || {}).textContent?.trim(),
+    form_action: (workspace.w.document.querySelector('form[data-run-form]') || {}).action || null,
+    kinds: [...workspace.w.document.querySelectorAll('input[name="kind"]')].map((i) => i.value),
+    port_default: (workspace.w.document.querySelector('[data-port]') || {}).value || null,
+    inventory_only: workspace.w.document.body.innerHTML.includes('no security scan performed'),
+    external: !!workspace.w.document.body.innerHTML.match(/(?:src|href)\s*=\s*["'](?:https?:)?\/\//i),
+    errors: workspace.errors.filter((message) => !KNOWN_JSDOM_NOISE.test(message)),
+  });
+
   // 4. Endpoints page: the table filter hides non-matching rows.
   const endpoints = await open(base + '/ui/endpoints');
   const filter = endpoints.w.document.querySelector('[data-table-filter]');
@@ -383,9 +422,37 @@ def main(argv: list[str] | None = None) -> int:
         dash_facts = pages["/ui/"]
         check("dashboard loads with its own scripts",
               bool(dash_facts.get("htmx")) and bool(dash_facts.get("h1"))
-              and "Dashboard" in (dash_facts.get("title") or ""),
+              and any(word in (dash_facts.get("title") or "")
+                      for word in ("Dashboard", "Overview")),
               f"title={dash_facts.get('title')!r} h1={dash_facts.get('h1')!r} htmx={dash_facts.get('htmx')}")
         check("dashboard makes no external request", dash_facts.get("external") is False)
+
+        land = pages["/"]
+        check("landing page renders one headline and no form",
+              land.get("h1_count") == 1 and land.get("forms") == 0
+              and "boundary" in (land.get("h1") or "").lower(),
+              f"h1={land.get('h1')!r} count={land.get('h1_count')} forms={land.get('forms')}")
+        check("landing intro can be skipped", land.get("skip") is True
+              and land.get("pinned_after_skip") is True,
+              f"skip={land.get('skip')} pinned={land.get('pinned_after_skip')}")
+        check("landing links into the product", (land.get("enter_href") or "").endswith("/ui/"),
+              str(land.get("enter_href")))
+        check("landing makes no external request", land.get("external") is False)
+        check("landing runs without a page error", land.get("errors") == [],
+              str(land.get("errors")))
+
+        work = pages["/ui/assessment"]
+        check("workspace offers the three run kinds",
+              work.get("kinds") == ["demo", "bola", "sci"], str(work.get("kinds")))
+        check("workspace posts to the assessment action",
+              (work.get("form_action") or "").endswith("/ui/actions/run-assessment"),
+              str(work.get("form_action")))
+        check("workspace labels inventory-only inspection",
+              work.get("inventory_only") is True and work.get("port_default") == "8765",
+              f"inventory={work.get('inventory_only')} port={work.get('port_default')}")
+        check("workspace makes no external request", work.get("external") is False)
+        check("workspace runs without a page error", work.get("errors") == [],
+              str(work.get("errors")))
         check("banner is present in the browser", dash_facts.get("banner") is True)
         check("nav toggle changes aria-expanded",
               facts["client"].get("nav_toggle_expanded") == "true"

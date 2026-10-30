@@ -673,18 +673,19 @@ def test_the_matrix_page_leaks_no_lab_secret(client, lab):
 def test_the_assessment_workspace_is_built_from_backend_data(client):
     body = _text(client.get("/ui/assessment"))
     catalog = client.get("/api/lab-catalog").json()
-    for heading in ("A · API specification", "B · Testing environment",
-                    "C · Demo accounts", "D · Test selection"):
+    for heading in ("What are we inspecting?", "Where should it run?",
+                    "Who acts, and on whose data?", "What should run?"):
         assert heading in body, heading
     assert "Inventory only — no security scan performed" in body
-    assert "RUN SECURITY ASSESSMENT" in body
+    assert "Run security assessment" in body
     for account in catalog["accounts"]:
         assert account["account"] in body and account["title"] in body
         assert account["asset_id"] in body and account["asset_label"] in body
-    # The forms post to the existing action routes and nowhere else.
-    for action in ("/ui/actions/lab-bola-scan", "/ui/actions/lab-sci-scan",
-                   "/ui/actions/lab-demo-run"):
-        assert f'action="{action}"' in body, action
+    # One form, posting to the assessment action; the kinds are backend-supported.
+    assert body.count("<form") == 1
+    assert 'action="/ui/actions/run-assessment"' in body
+    for kind in ('value="bola"', 'value="sci"', 'value="demo"'):
+        assert kind in body, kind
     # Opening the workspace starts nothing.
     assert client.get("/api/lab-matrix").json()["summary"]["runs_considered"] == 0
     for secret in FORBIDDEN:
@@ -727,3 +728,118 @@ def test_the_run_page_shows_a_recorded_timeline_and_the_disclosure_proof(client,
         assert f'id="{check_id}"' in body
     for secret in FORBIDDEN:
         assert secret not in body, secret
+
+
+# --- the live execution screen ----------------------------------------------
+
+def _wait_for(client, url, timeout=30.0):
+    """Poll the job transcript until it stops running. Returns the last snapshot."""
+    import time
+    deadline = time.time() + timeout
+    snapshot = client.get(url + "/events?since=0").json()
+    while snapshot["status"] == "running" and time.time() < deadline:
+        time.sleep(0.05)
+        snapshot = client.get(url + "/events?since=0").json()
+    assert snapshot["status"] != "running", snapshot
+    return snapshot
+
+
+def test_the_execution_screen_reports_real_requests_and_stores_a_real_run(client, lab):
+    response = client.post("/ui/actions/run-assessment",
+                           data={"kind": "bola", "port": lab.port,
+                                 "actor": "mallapa", "asset": "BRD-2026-018"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    url = response.headers["location"]
+    page = _text(client.get(url))
+    assert "Assessment in progress" in page
+    assert "Live event feed" in page
+    snapshot = _wait_for(client, url)
+
+    assert snapshot["status"] == "complete"
+    requests = [event for event in snapshot["events"] if event["kind"] == "request"]
+    assert snapshot["requests_sent"] == len(requests) == 18
+    # Every event is a real exchange: a declared route, an actor, a lab status.
+    assert {event["method"] for event in requests} == {"GET", "POST"}
+    assert all(isinstance(event["status"], int) for event in requests)
+    assert all(event["elapsed_ms"] >= 0 for event in requests)
+    assert all(event["stage"] for event in requests)
+
+    # The stored run is an ordinary run, and its counters equal what was streamed.
+    stored = client.get(f"/api/lab-bola-scans/{snapshot['results'][0]['run_id']}").json()
+    assert stored["constraints"]["requests_sent"] == snapshot["requests_sent"]
+    assert stored["verdict"] == "CONFIRMED"
+    assert len(stored["checks"]) == 6
+
+    # The finished page says so, and the secret-free contract still holds.
+    finished = _text(client.get(url))
+    assert "Assessment complete" in finished
+    for secret in FORBIDDEN:
+        assert secret not in finished, secret
+        assert secret not in client.get(url + "/events?since=0").text, secret
+
+
+def test_the_loading_screen_streams_the_demonstration_into_nine_cells(client, lab):
+    response = client.post("/ui/actions/run-assessment",
+                           data={"kind": "demo", "port": lab.port},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    snapshot = _wait_for(client, response.headers["location"], timeout=60)
+    assert snapshot["status"] == "complete"
+    assert len(snapshot["results"]) == 3
+    assert snapshot["requests_sent"] == 54
+    # Three distinct pairs, in catalog order, each stored as its own run.
+    assert [(item["actor"], item["owner"]) for item in snapshot["results"]] == \
+        [("mallapa", "sakshi"), ("sakshi", "harsha"), ("harsha", "mallapa")]
+    matrix = client.get("/api/lab-matrix").json()
+    assert matrix["summary"]["tested"] == 9 and matrix["summary"]["untested"] == 0
+
+
+def test_a_refused_assessment_reports_the_failure_and_stores_nothing(client):
+    dead = socket.socket()
+    dead.bind(("127.0.0.1", 0))
+    port = dead.getsockname()[1]
+    dead.close()
+    response = client.post("/ui/actions/run-assessment",
+                           data={"kind": "bola", "port": port,
+                                 "actor": "mallapa", "asset": "BRD-2026-018"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    url = response.headers["location"]
+    snapshot = _wait_for(client, url)
+    assert snapshot["status"] == "failed"
+    assert snapshot["results"] == []
+    assert snapshot["requests_sent"] == 0
+    assert any(event["kind"] == "error" for event in snapshot["events"])
+    # Nothing was stored, and the screen never claims otherwise.
+    assert client.get("/api/lab-matrix").json()["summary"]["tested"] == 0
+    page = _text(client.get(url))
+    assert "Assessment did not complete" in page
+    assert "All nine cells have stored evidence" not in page
+
+
+def test_the_execution_events_endpoint_is_read_only(client, lab):
+    response = client.post("/ui/actions/run-assessment",
+                           data={"kind": "bola", "port": lab.port,
+                                 "actor": "sakshi", "asset": "ADS-2026-027"},
+                           follow_redirects=False)
+    url = response.headers["location"]
+    _wait_for(client, url)
+    before = client.get("/api/lab-matrix").json()["summary"]
+    payload = client.get(url + "/events?since=0").json()
+    assert set(payload) >= {"status", "events", "results", "requests_sent", "steps"}
+    assert client.get("/api/lab-matrix").json()["summary"] == before
+    assert client.get("/ui/execution/nope/events").status_code == 404
+    assert client.get("/ui/execution/nope").status_code == 404
+
+
+@pytest.mark.parametrize("kind", ["bola", "sci"])
+def test_the_assessment_form_validates_before_starting_anything(client, kind):
+    bad = client.post("/ui/actions/run-assessment",
+                      data={"kind": kind, "port": "80", "actor": "mallapa",
+                            "asset": "BRD-2026-018"})
+    assert bad.status_code == 422
+    unknown = client.post("/ui/actions/run-assessment",
+                          data={"kind": "nope", "port": "8765"})
+    assert unknown.status_code == 422
+    assert client.get("/api/lab-matrix").json()["summary"]["runs_considered"] == 0

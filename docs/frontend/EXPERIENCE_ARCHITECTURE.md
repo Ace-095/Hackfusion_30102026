@@ -74,11 +74,13 @@ table filter, disclosure), vendored HTMX. No framework, no build step, no CDN.
 |---|---|---|---|
 | Landing | `/` | static copy + CSS/SVG motion; links only | **[shipped]** |
 | Assessment workspace | `/ui/assessment` | `GET /api/lab-catalog`, `GET /api/lab-matrix`, spec-inspection card, existing action routes | **[shipped]** |
-| Execution view | section on `/ui/lab/bola/{id}` and `/ui/lab/sci/{id}` | stored checks, explicitly labelled "recorded, not streamed" | **[shipped]** |
+| Live execution view | `/ui/execution/{job_id}` (+ `/events`) | real transport events from the running job | **[shipped]** |
+| Recorded execution view | section on `/ui/lab/bola/{id}` | stored checks, labelled as recorded | **[shipped]** |
+| Dashboard | `/ui/` | matrix, verdict distribution, ownership map, disclosure proof, timeline, reports | **[shipped]** |
 | Disclosure proof | section on `/ui/lab/bola/{id}` and in the matrix cell panel | stored check evidence + secure twin | **[shipped]** |
 | Ownership proof | section on `/ui/lab/bola/{id}` | run `ownership` block | **[shipped]** |
 | Demo accounts | `/ui/lab/accounts` (rendered from the catalog) | `GET /api/lab-catalog` | **[shipped]** |
-| Live execution stream | `/ui/lab/execute` (SSE) | would need the observer described in §3 | **not built** |
+| Server-sent events | — | not needed; polling the job transcript is enough for a three-second demonstration | **not built (not required)** |
 | Per-endpoint findings, historical chart | — | needs new backend aggregation endpoints | **not built** |
 
 Old URLs are preserved; the nav adds the new entries beside them, so nothing that
@@ -111,10 +113,23 @@ verdict and evidence hash are only meaningful once the run is stored.
    and evidence hash, and a banner that says the run is complete and this view is
    recorded, not streamed.
 
-**Decision for this milestone:** option 3, plus the landing/workspace work. No
-animated request is drawn, no percentage is shown, and nothing in the UI suggests
-telemetry that does not exist. The execution view labels itself
-"recorded execution".
+**Decision, revised.** Option 1 shipped, in its simplest honest form: the
+transport takes an optional `observer` callback that is invoked *after* an exchange
+completes, with the actor, method, path, the lab's status code and the measured
+duration. `canarygate/ui/execution.py` runs an assessment on a worker thread with
+that callback attached and exposes `GET /ui/execution/{job_id}/events?since=N`;
+the page polls it and appends what arrived. No SSE was needed, and no percentage is
+invented — every line in the feed is either a completed request or a boundary the
+runner actually reached ("Pair 2 of 3", "stored").
+
+The observer cannot influence a scan: it is called after the response is final,
+its return value is ignored, its exceptions are swallowed, and it receives no
+credential. `tests/lab/test_targetlab_observer.py` pins all three properties, and
+`tests/integration/test_ui_lab_pages.py` proves the streamed request count equals
+the stored run's `requests_sent` (18 for one pair, 54 for the demonstration).
+
+The stored-run pages keep the recorded timeline as well, so the same evidence is
+readable after the job has left memory.
 
 ## 4. Data-integrity rules enforced by this milestone
 

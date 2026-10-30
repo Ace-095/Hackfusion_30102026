@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, icon, verdict_badge, stat %}
+{% block title %}Assessment in progress{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+{{ page_head("CanaryGate security engine", "Assessment in progress",
+             "Each line below is a request that has already completed against the loopback "
+             "lab. The feed is produced by the transport itself, not by a timer.") }}
+
+<section class="engine" data-job="{{ job.id }}" data-status="{{ job.status }}"
+         aria-labelledby="engine-title">
+  <div class="engine-head">
+    <div>
+      <p class="engine-kicker">CanaryGate security engine</p>
+      <h2 id="engine-title" data-engine-title>
+        {% if job.status == "running" %}Assessment in progress{% elif job.status == "complete" %}
+        Assessment complete{% else %}Assessment stopped{% endif %}
+      </h2>
+      <p class="note" data-engine-sub>
+        {{ job.kind|upper }} · {{ job.steps|length }} run(s) · TargetLab port {{ job.port }}
+      </p>
+    </div>
+    <div class="engine-pulse" aria-hidden="true"><span></span><span></span><span></span></div>
+  </div>
+
+  <div class="engine-stats">
+    {{ stat("Requests sent", job.requests_sent, "real HTTPS requests, counted by the guard",
+            small=True) }}
+    {{ stat("Runs stored", job.results|length ~ " / " ~ job.steps|length,
+            "a run is only counted once it is in the database", small=True) }}
+    <div class="stat">
+      <span class="stat-label">Elapsed</span>
+      <span class="stat-value sm mono" data-elapsed>0.0 s</span>
+      <span class="stat-foot">measured in the browser since this page loaded</span>
+    </div>
+  </div>
+
+  <div class="engine-grid">
+    <section class="card card-inset" aria-labelledby="op-title">
+      <div class="card-head"><h3 id="op-title">Current operation</h3>
+        <span class="badge badge-muted" data-op-state>queued</span></div>
+      <dl class="kv">
+        <div class="kv-row"><dt>Authentication</dt>
+          <dd class="mono" data-op-actor>{{ job.steps[0].actor if job.steps else "—" }}</dd></div>
+        <div class="kv-row"><dt>Resource owner</dt>
+          <dd class="mono" data-op-owner>{{ job.steps[0].owner if job.steps else "—" }}</dd></div>
+        <div class="kv-row"><dt>Pair</dt>
+          <dd class="mono" data-op-pair>{{ job.steps[0].actor if job.steps else "—" }} →
+            {{ job.steps[0].owner if job.steps else "—" }}</dd></div>
+        <div class="kv-row"><dt>Last request</dt>
+          <dd class="mono" data-op-last>—</dd></div>
+      </dl>
+      <p class="note mt-1" data-op-note>The engine has not sent its first request yet.</p>
+    </section>
+
+    <section class="card card-inset" aria-labelledby="net-title">
+      <div class="card-head"><h3 id="net-title">Requester → API → resource</h3>
+        <span class="hint">each hop lights up when a real request completes</span></div>
+      <div class="net" aria-hidden="true">
+        <span class="net-node" data-node="actor">
+          <b data-node-actor>{{ job.steps[0].actor if job.steps else "actor" }}</b>
+          <span>requester</span>
+        </span>
+        <span class="net-line"><i data-flow="1"></i></span>
+        <span class="net-node" data-node="api"><b>TargetLab</b><span class="mono xs">:{{ job.port }}</span></span>
+        <span class="net-line"><i data-flow="2"></i></span>
+        <span class="net-node" data-node="resource">
+          <b data-node-owner>{{ job.steps[0].owner if job.steps else "owner" }}</b>
+          <span>resource owner</span>
+        </span>
+      </div>
+      <p class="note mt-1">Only <span class="mono">127.0.0.1</span> is reachable from this
+        engine; no other host can appear in this diagram.</p>
+    </section>
+  </div>
+
+  <div class="engine-grid">
+    <section class="card card-inset" aria-labelledby="stages-title">
+      <div class="card-head"><h3 id="stages-title">Execution stages</h3>
+        <span class="hint">derived from the requests that actually ran</span></div>
+      <ol class="stage-list" data-stages>
+        <li data-stage="queued" class="is-active"><span>Queued</span><em>waiting</em></li>
+        {% for stage in stages %}
+        <li data-stage="{{ stage }}"><span>{{ stage|capitalize }}</span><em>pending</em></li>
+        {% endfor %}
+        <li data-stage="stored"><span>Evidence stored</span><em>pending</em></li>
+      </ol>
+    </section>
+
+    <section class="card card-inset" aria-labelledby="feed-title">
+      <div class="card-head"><h3 id="feed-title">Live event feed</h3>
+        <span class="hint">statuses are the lab's own</span></div>
+      <ol class="event-feed" data-feed aria-live="polite" aria-relevant="additions">
+        {% for event in job.events %}
+        <li class="ev ev-{{ event.kind }}">
+          <span class="ev-time mono">{{ '%6.0f'|format(event.t_ms / 1000) }}s</span>
+          <span class="ev-label">{{ event.label }}</span>
+          {% if event.get("status") is not none %}
+          <span class="ev-status mono s-{{ event.status }}">{{ event.status }}</span>
+          {% endif %}
+          {% if event.get("detail") %}<span class="ev-detail">{{ event.detail }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      <noscript>
+        <p class="note">JavaScript is off, so this page cannot poll. It refreshes itself
+          every three seconds until the assessment finishes.</p>
+        {% if job.status == "running" %}
+        <meta http-equiv="refresh" content="3">
+        {% endif %}
+      </noscript>
+    </section>
+  </div>
+
+  <div class="engine-foot" data-result hidden>
+    <div class="alert alert-ok">
+      {{ icon("check") }}
+      <div><b data-result-title>Assessment complete.</b>
+        <span data-result-copy>Opening the evidence…</span></div>
+    </div>
+    <p class="row">
+      <a class="btn btn-primary" data-result-link href="/ui/lab/matrix">Open the authorization matrix</a>
+      <a class="btn" data-result-detail href="/ui/lab/matrix">Inspect the stored evidence</a>
+    </p>
+  </div>
+
+  <div class="engine-foot" data-failed hidden>
+    <div class="alert alert-warn">
+      {{ icon("warning") }}
+      <div><b>Assessment did not complete.</b> <span data-failed-detail></span></div>
+    </div>
+    <p class="row"><a class="btn" href="/ui/assessment">Change the configuration</a>
+      <a class="btn btn-ghost" href="/ui/lab/matrix">See what is stored</a></p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/ui/static/js/execution.js" defer></script>{% endblock %}

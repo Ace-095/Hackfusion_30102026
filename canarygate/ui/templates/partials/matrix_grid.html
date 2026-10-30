@@ -1,4 +1,5 @@
-{# The nine-cell grid. Expects: rows, columns, selected (may be None). #}
+{# The nine-cell grid. Expects: rows, columns; `selected` is optional. #}
+{% set current = selected if selected is defined else None %}
 <div class="matrix-wrap">
   <table class="matrix table-compact">
     <caption class="visually-hidden">
@@ -19,10 +20,10 @@
       <tr>
         <th scope="row" class="mono">{{ account }}<br><span class="cell-meta">{{ title }}</span></th>
         {% for item in row_cells %}
-        <td class="{% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}is-selected{% endif %}{% if item.state == 'untested' %} cell-untested{% endif %}">
+        <td class="{% if current and current.requester == item.requester and current.asset_id == item.asset_id %}is-selected{% endif %}{% if item.state == 'untested' %} cell-untested{% endif %}">
           <a class="cell-link"
              href="/ui/lab/matrix?cell={{ item.requester }}:{{ item.asset_id }}#cell-detail"
-             {% if selected and selected.requester == item.requester and selected.asset_id == item.asset_id %}aria-current="true"{% endif %}>
+             {% if current and current.requester == item.requester and current.asset_id == item.asset_id %}aria-current="true"{% endif %}>
             {% if item.state == "tested" %}
               {{ verdict_badge(item.verdict) }}
               <span class="cell-meta mono">{{ item.evidence.check_id }} · run {{ item.evidence.run_id|short_id }}{% if item.stale %} · stale{% endif %}</span>

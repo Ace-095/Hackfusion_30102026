@@ -20,7 +20,7 @@ import urllib.parse
 from importlib import resources
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from canarygate.scan.auth_models import AuthenticationScanRequest
 from canarygate.scan.auth_scenarios import SCENARIO_IDS as AUTHENTICATION_SCENARIO_IDS
@@ -39,6 +39,7 @@ from canarygate.scan.validation_scenarios import SCENARIO_IDS as VALIDATION_SCEN
 from canarygate.scan.validation_scenarios import build_validation_scenario
 from canarygate.offline.scan import fixture_recipe
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
+from canarygate.ui import execution as execution_jobs
 from canarygate.ui.replay import build_replay
 from canarygate.ui.templating import templates
 
@@ -563,14 +564,27 @@ def dashboard(request: Request):
         setup_response = api.setup_status(store=_store(request))
         runs = _newest_first(api.findings(store=_store(request))["findings"])
         labs = {family: _listed(_lab_store(request, family)) for family in LAB_FAMILIES}
-        return health, inventory, setup_response, runs, labs
+        # The nine-cell matrix is assembled by the backend from stored runs; the
+        # dashboard only projects it, exactly like /api/lab-matrix does.
+        matrix = build_lab_matrix(list(reversed(labs["bola"])))
+        return health, inventory, setup_response, runs, labs, matrix
 
     result = _guard(request, build)
     if not isinstance(result, tuple):
         return result
-    health, inventory, setup_response, runs, labs = result
+    health, inventory, setup_response, runs, labs, matrix = result
     latest = runs[0] if runs else None
     lab_counts = {family: _verdict_counts(history) for family, history in labs.items()}
+    # Evidence accounting: one stored check that carries an evidence hash is one
+    # evidence record. Nothing is estimated.
+    lab_checks = sum(len(run.get("checks") or []) for history in labs.values() for run in history)
+    lab_evidence = sum(1 for history in labs.values() for run in history
+                       for check in (run.get("checks") or [])
+                       if check.get("evidence_sha256"))
+    latest_bola = labs["bola"][0] if labs["bola"] else None
+    offline_counts = _verdict_counts(runs)
+    combined = {verdict: offline_counts.get(verdict, 0) + lab_counts["bola"].get(verdict, 0)
+                + lab_counts["sci"].get(verdict, 0) for verdict in offline_counts}
     return _page(
         request, "dashboard.html", "dashboard",
         health=health,
@@ -590,6 +604,19 @@ def dashboard(request: Request):
         lab_latest={family: (history[0] if history else None)
                     for family, history in labs.items()},
         lab_run_count=sum(len(history) for history in labs.values()),
+        matrix=matrix, rows=_matrix_rows(matrix), columns=matrix["accounts"],
+        catalog=build_lab_catalog(),
+        lab_checks=lab_checks, lab_evidence=lab_evidence,
+        latest_bola=latest_bola,
+        bola_stages=_execution_stages(latest_bola) if latest_bola else [],
+        bola_proof=_disclosure_proof(latest_bola) if latest_bola else [],
+        all_verdicts=combined,
+        # Presentation only: which page explains a given verdict. The template never
+        # compares a verdict to a literal; it renders the row it was given.
+        verdict_rows=[{"verdict": verdict, "count": count,
+                       "href": "/ui/findings" if verdict in {"CONFIRMED", "SUSPECTED"}
+                               else "/ui/scans"}
+                      for verdict, count in combined.items()],
     )
 
 
@@ -1047,6 +1074,83 @@ def _disclosure_proof(run: dict) -> list[dict]:
             ],
         })
     return proofs
+
+
+#: In-process assessment jobs: the loading screen's only source of progress.
+#: Each event is a request that already completed, or a boundary the runner
+#: actually reached. Nothing here is a second scanner.
+ASSESSMENT_JOBS = execution_jobs.JobRegistry()
+
+
+@router.post("/ui/actions/run-assessment")
+async def run_assessment_action(request: Request):
+    """Start a BOLA / SCI / full demonstration as a background job.
+
+    The form posts a port, a kind and (for a single run) the catalog pair. The job
+    then executes the *same* plan builder, runner, oracle and store the JSON API
+    uses, and the browser watches it at ``/ui/execution/{id}``.
+    """
+    fields = await _form_fields(request)
+    kind = (fields.get("kind") or "demo").strip()
+    port_text = (fields.get("port") or "").strip()
+    if kind not in {"bola", "sci", "demo"}:
+        return _backend_error(request, HTTPException(status_code=422,
+                                                     detail="Choose bola, sci or demo."),
+                              fragment=False)
+    if not port_text.isdigit() or not 1024 <= int(port_text) <= 65535:
+        return _backend_error(
+            request,
+            HTTPException(status_code=422,
+                          detail="The TargetLab port must be a whole number between 1024 and 65535."),
+            fragment=False)
+    port = int(port_text)
+
+    if kind == "demo":
+        steps = execution_jobs.coverage_steps()
+    else:
+        try:
+            actor, owner = _selected_pair((fields.get("actor") or "").strip(),
+                                          (fields.get("asset") or "").strip(),
+                                          interaction=kind == "sci")
+        except HTTPException as exc:
+            return _backend_error(request, exc, fragment=False)
+        except StopIteration:
+            return _backend_error(request, HTTPException(
+                status_code=422, detail="That combination is not in the catalog."),
+                fragment=False)
+        steps = [{"actor": actor, "owner": owner}]
+
+    job = ASSESSMENT_JOBS.add(execution_jobs.AssessmentJob(kind=kind, port=port, steps=steps))
+    execution_jobs.start_assessment(
+        job, kind=kind, port=port,
+        store_bola=_store(request, "lab_bola"), store_sci=_store(request, "lab_sci"),
+        actor=steps[0]["actor"], owner=steps[0]["owner"])
+    return RedirectResponse(f"/ui/execution/{job.id}", status_code=303)
+
+
+@router.get("/ui/execution/{job_id}")
+def execution_page(request: Request, job_id: str):
+    job = ASSESSMENT_JOBS.get(job_id)
+    if job is None:
+        return _error(request, 404, "Unknown assessment",
+                      "This assessment is no longer in memory. Stored runs remain in the "
+                      "scan history and the asset matrix.")
+    snapshot = job.snapshot()
+    return _page(request, "execution.html", "assessment",
+                 job=snapshot,
+                 catalog=build_lab_catalog(),
+                 first=snapshot["steps"][0] if snapshot["steps"] else None,
+                 stages=[name for name in execution_jobs._STAGE_ORDER
+                         if name not in {"queued", "stored", "done"}])
+
+
+@router.get("/ui/execution/{job_id}/events")
+def execution_events(request: Request, job_id: str, since: int = 0):
+    """The job's transcript as JSON. Read-only; no scan work happens here."""
+    job = ASSESSMENT_JOBS.get(job_id)
+    if job is None:
+        return JSONResponse({"detail": "unknown assessment"}, status_code=404)
+    return JSONResponse(job.snapshot(since=max(since, 0)))
 
 
 @router.get("/ui/assessment")
