@@ -71,7 +71,8 @@
             {% endfor %}
           </ul>
           <p class="note">Full coverage is claimed only when all nine cells end up with a
-            stored check. Takes a few seconds: three runs, at most 18 requests each.</p>
+            stored check. Takes a few seconds: three runs, each capped by its own
+            default 20-request budget.</p>
         </div>
       </div>
       <div class="form-actions">
