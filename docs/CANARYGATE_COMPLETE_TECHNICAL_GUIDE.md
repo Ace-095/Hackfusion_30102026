@@ -98,14 +98,14 @@ CanaryGate is an evidence-first API authorization scanner that decides BOLA, aut
 
 ### 1.2 Thirty seconds
 
-It takes an OpenAPI document, lists the operations, and then runs targeted, bounded checks: can Alice read Bob's private object? Do crafted tokens change identity? Does malformed input get reflected? Do two controls that each look correct combine into a leak? Every request goes through one guard that enforces an exact host/port allow-list, method classes, a request budget, and (for the lab) a pinned TLS context. Results are stored as minimized, hashed evidence and rendered into a frozen nine-section report plus an authorization matrix that never hides an untested cell. The only "real" target it has ever talked to is a deliberately vulnerable loopback lab (`TargetLab`) that the same team wrote — so the honest claim is *controlled validation of our own lab*, not live-scanning readiness.
+It takes an OpenAPI document, lists the operations, and then runs targeted, bounded checks: can one colleague read another colleague's private asset? Do crafted tokens change identity? Does malformed input get reflected? Do two controls that each look correct combine into a leak? Every request goes through one guard that enforces an exact host/port allow-list, method classes, a request budget, and (for the lab) a pinned TLS context. Results are stored as minimized, hashed evidence and rendered into a frozen nine-section report plus an authorization matrix that never hides an untested cell. The only "real" target it has ever talked to is a deliberately vulnerable loopback lab (`TargetLab`) that the same team wrote — so the honest claim is *controlled validation of our own lab*, not live-scanning readiness.
 
 ### 1.3 Two minutes
 
 CanaryGate exists because API authorization bugs are boring to find and easy to fake. A scanner that says "403 was not returned, therefore vulnerable" is guessing: the server might have returned 200 with an empty body, the object might be shared, the identity might be wrong, or the response might be a login page. So the project defines a stricter contract:
 
 1. **Ownership must be verified, not assumed.** Two distinct accounts each read their own object; each object's owner field must match the reader, and the two objects must be different. `canarygate/seed/registry.py` records this as `FixtureOwnershipResult` / `GuardedOwnership`.
-2. **The private value must be established from the owner's own baseline.** The scanner learns Bob's private marker by reading Bob's object *as Bob*, then looks for *that exact value* in Alice's response.
+2. **The private value must be established from the owner's own baseline.** The scanner learns sakshi's private marker by reading sakshi's asset *as sakshi*, then looks for *that exact value* in mallapa's response.
 3. **The policy must come from a trusted source bound to the transport.** `canarygate/oracles/read_bola.py` only honors `"owner-only"` expectations whose `expected_source` matches the runner that produced the evidence (`synthetic fixture policy`, `offline scenario policy`, or `targetlab declared record policy`).
 4. **A denial must be checked, not inferred.** `403` alone is not enough: the body must equal the declared denial contract (`{"error": "forbidden"}`) for the synthetic paths, otherwise the result is `INCONCLUSIVE`.
 5. **Only five verdicts exist.** `CONFIRMED`, `SUSPECTED`, `SAFE`, `INCONCLUSIVE`, `SKIPPED` (`canarygate/models/result.py`). There is no sixth "probably."
@@ -118,11 +118,11 @@ The result is intentionally narrow. It does not do BFLA, mass assignment, BOPLA,
 
 Consider the one finding the demonstration actually produces.
 
-**Setup.** TargetLab declares two accounts (`alice`, `bob`), two records (`ra` owned by alice, `rb` owned by bob), each with a private marker, and three deliberate flaws (`targetlab/state.py`). The scope (`canarygate/scan/lab_bola_scenarios.py` → `AuthorizedScope`) lists 13 operations, all `READ_ONLY` except `POST /login` (`AUTHENTICATION`), and a budget of 20.
+**Setup.** TargetLab declares three accounts (`mallapa`, `sakshi`, `harsha`), three private assets (`MKT-2026-041` owned by mallapa, `BRD-2026-018` by sakshi, `ADS-2026-027` by harsha), each with a private marker, and three deliberate flaws (`targetlab/state.py`). The scope (`canarygate/scan/lab_bola_scenarios.py` → `AuthorizedScope`) lists 16 operations, all `READ_ONLY` except `POST /login` (`AUTHENTICATION`), and a budget of 20. A run selects one ordered pair of those accounts (`actor`, `owner`) and declares exactly that pair in its scope and credentials; the six ordered pairs answer the nine account × asset combinations.
 
-**Run.** `POST /api/lab-bola-scans {"port": …}` builds a `TargetLabRunner`, logs both accounts in, verifies identity via `/profile`, harvests each account's list (`GET /records`), verifies that each list contains only that account's record, reads each owner's own record to capture the private marker, then performs the cross-account reads on both the vulnerable and the secure route.
+**Run.** `POST /api/lab-bola-scans {"port": …, "actor": "mallapa", "owner": "sakshi"}` (the pair defaults to `mallapa` → `sakshi`) builds a `TargetLabRunner`, logs both accounts in, verifies identity via `/profile`, harvests each account's list (`GET /records`), verifies that each list contains only that account's asset, reads each owner's own asset to capture the private marker, then performs the cross-account reads on both the vulnerable and the secure route.
 
-**Decision.** For `LAB-BOLA-03` (alice reads bob's record), the oracle walks its checks in order: private resource? yes; distinct accounts? yes; trusted policy says `owner-only`? yes; ownership entries verified? yes; both owner baselines `200` with matching identity? yes; distinct private markers? yes; attacker request identity and path consistent? yes; response contains bob's marker plus bob's id and owner? yes. All ten checklist flags except `verified_denial` become true, and the verdict is `CONFIRMED` with reason *"Verified ownership and cross-user private baseline disclosure."* For `LAB-BOLA-05` (alice reads bob's **secure** record) the same machinery runs but the response is `403 {"error": "forbidden"}`, which sets `verified_denial` instead of `private_disclosure`, and the verdict is `SAFE` — a *positive* statement that the control was observed working, not an absence of evidence.
+**Decision.** For `LAB-BOLA-03` (mallapa reads sakshi's asset), the oracle walks its checks in order: private resource? yes; distinct accounts? yes; trusted policy says `owner-only`? yes; ownership entries verified? yes; both owner baselines `200` with matching identity? yes; distinct private markers? yes; attacker request identity and path consistent? yes; response contains sakshi's marker plus sakshi's id and owner? yes. All ten checklist flags except `verified_denial` become true, and the verdict is `CONFIRMED` with reason *"Verified ownership and cross-user private baseline disclosure."* For `LAB-BOLA-05` (mallapa reads sakshi's **secure** asset) the same machinery runs but the response is `403 {"error": "forbidden"}`, which sets `verified_denial` instead of `private_disclosure`, and the verdict is `SAFE` — a *positive* statement that the control was observed working, not an absence of evidence.
 
 **Report.** The nine-section report renders one finding per check, an executive summary that counts `SKIPPED` and `INCONCLUSIVE` alongside everything else, a secured-endpoints section that lists `LAB-BOLA-05/06` because they were *checked and denied*, and a constraint checklist that prints request counts, guard blocks, budget remaining, redirects followed (0), and destructive requests executed (0). The matrix colours `GET /records/{id}` red for `other_account_resource` and `GET /records/{id}/secure` green, with distinct `source_ref` values so the two can never be confused with an offline scenario or an SCI cell.
 
@@ -140,7 +140,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** HTTP/1.1 request: `METHOD /path?query HTTP/1.1`, headers, blank line, optional body. HTTPS wraps the connection in TLS; the client validates the server certificate chain against trusted roots and checks that the certificate's Subject Alternative Name covers the host (or IP) it connected to.
 
-**Example.** `GET /records/rb HTTP/1.1` + `Host: 127.0.0.1:8765` + `Authorization: Bearer lab-token-alice` → `HTTP/1.1 200 OK`, JSON body.
+**Example.** `GET /records/BRD-2026-018 HTTP/1.1` + `Host: 127.0.0.1:8765` + `Authorization: Bearer lab-token-mallapa` → `HTTP/1.1 200 OK`, JSON body.
 
 **Why CanaryGate cares.** The entire safety argument is "we know exactly which bytes went where." `canarygate/network/targetlab.py` builds the request by hand (`http.client.HTTPConnection` over a socket it wrapped itself), sets `Accept-Encoding: identity`, sets `Connection: close`, and caps the body at `MAX_RESPONSE_BYTES = 64 * 1024` (`canarygate/guard/policy.py`). There is no connection pool to inherit, no proxy environment variable to honour, and no redirect handling to disable because none exists.
 
@@ -166,11 +166,11 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.4 REST, resources, and endpoints
 
-**Simple.** REST models the world as resources (`/records/ra`), addresses them with URLs, and uses HTTP methods as verbs.
+**Simple.** REST models the world as resources (`/records/MKT-2026-041`), addresses them with URLs, and uses HTTP methods as verbs.
 
 **Technical.** A resource collection is `/records`; an instance is `/records/{id}`. Templates in the OpenAPI document (`/records/{record_id}`) describe the shape; concrete instances are discovered at runtime.
 
-**Example.** `GET /records` returns Alice's list; `GET /records/rb` addresses Bob's record.
+**Example.** `GET /records` returns mallapa's list; `GET /records/BRD-2026-018` addresses sakshi's asset.
 
 **Why CanaryGate cares.** BOLA is exactly the gap between *template* and *instance*: the route is authorized by its template, the object is not checked. CanaryGate therefore never reasons about `/records/{id}` in the abstract when making a finding — it needs two concrete ids, two concrete owners, and one concrete cross-account read. This is why the recipe (`ScenarioRecipe` / `LabBolaRecipe`) declares `discovery`, `detail`, `id_field`, `ownership_field`, `private_field` and `ownership_model` rather than just a path.
 
@@ -196,7 +196,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.7 JSON
 
-**Simple.** A text format for objects and arrays: `{"id": "rb", "owner": "bob", "private_note": "…"}`.
+**Simple.** A text format for objects and arrays: `{"id": "BRD-2026-018", "owner": "sakshi", "private_note": "…"}`.
 
 **Technical.** CanaryGate parses response bodies with a duplicate-key-rejecting object hook (`_unique_object` in `canarygate/network/targetlab.py`), refuses oversized bodies (> 64 KiB), and treats non-object bodies as ambiguous for BOLA decisions.
 
@@ -210,7 +210,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** Authentication produces a subject (a user id) and usually a role or claims. Authorization compares that subject against a policy for a resource or function.
 
-**Example.** Alice logs in (authentication) and then tries to read Bob's record (authorization). TargetLab returns `401` if Alice has no token and `403` if she has one but may not read.
+**Example.** Mallapa logs in (authentication) and then tries to read sakshi's asset (authorization). TargetLab returns `401` if mallapa has no token and `403` if he has one but may not read.
 
 **Why CanaryGate cares.** The two are tested by different engines and reported in different categories. Authentication probes ask "does a crafted credential change the effective identity or capability?" Authorization checks ask "does an authenticated but non-owning subject receive an object it should not?" A run that fails authentication first never gets to make an authorization claim — `canarygate/scan/lab_sci.py` returns a closed run with an explanatory reason when either account cannot authenticate.
 
@@ -218,9 +218,9 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Simple.** A session is server-side state keyed by a cookie. A bearer token is a credential the client presents on every request; whoever holds it is treated as the subject.
 
-**Technical.** TargetLab issues opaque tokens (`lab-token-alice`, `lab-token-bob`) and maps them to accounts via `TOKEN_TO_ACCOUNT`. It does not use cookies at all.
+**Technical.** TargetLab issues opaque tokens (`lab-token-mallapa`, `lab-token-sakshi`, `lab-token-harsha`) and maps them to accounts via `TOKEN_TO_ACCOUNT`. It does not use cookies at all.
 
-**Example.** `Authorization: Bearer lab-token-alice` → identity `alice`.
+**Example.** `Authorization: Bearer lab-token-mallapa` → identity `mallapa`.
 
 **Why CanaryGate cares.** "Bearer" means possession equals identity, so a leaked token is a full compromise — which is why tokens are never persisted, never reported, and why `has_distinct_credentials` uses `hmac.compare_digest` rather than `==` when checking that two accounts hold genuinely different tokens.
 
@@ -238,7 +238,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Simple.** Roles group permissions: `admin` can do more than `user`.
 
-**Technical.** RBAC maps subjects → roles → permissions. CanaryGate models roles as strings on accounts (`{"account": "alice", "role": "user"}`) and treats role expectations as declared policy (`role:admin`).
+**Technical.** RBAC maps subjects → roles → permissions. CanaryGate models roles as strings on accounts (`{"account": "mallapa", "role": "marketing_manager"}`) and treats role expectations as declared policy (`role:admin`).
 
 **Example.** `AUTHN-04b` (`jwt_role`) swaps the role claim to `admin` and asks for `/admin/users`. A `403` is `SAFE`; a `200` with `{"admin_capability": true}` is `CONFIRMED`.
 
@@ -246,13 +246,13 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 ### 2.12 Ownership and tenancy
 
-**Simple.** "This object belongs to Alice" is a fact the server knows and the scanner must verify.
+**Simple.** "This asset belongs to mallapa" is a fact the server knows and the scanner must verify.
 
 **Technical.** Ownership can be modelled as `private` (one owner), `shared` (several), or `public` (everyone). CanaryGate's `OwnedResource.ownership_model` (`canarygate/models/ownership.py`) is exactly that literal. BOLA only applies to `private`.
 
-**Example.** TargetLab's `/records/ra` is `{"id": "ra", "owner": "alice", "private_note": "…"}` — private.
+**Example.** TargetLab's `/records/MKT-2026-041` is `{"id": "MKT-2026-041", "owner": "mallapa", "private_note": "…"}` — private.
 
-**Why CanaryGate cares.** If the object is shared, Alice reading Bob's record is *correct behaviour*. The oracle refuses to proceed unless `ownership_model == "private"`, and the ownership registry must show two distinct resources with distinct owners. A shared resource can therefore never be falsely reported as BOLA.
+**Why CanaryGate cares.** If the asset were shared, mallapa reading sakshi's asset would be *correct behaviour*. The oracle refuses to proceed unless `ownership_model == "private"`, and the ownership registry must show two distinct resources with distinct owners. A shared resource can therefore never be falsely reported as BOLA.
 
 ### 2.13 ACL policies and expected access
 
@@ -270,7 +270,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** BOLA = broken object-level authorization; BFLA = broken function-level authorization. They fail differently and are detected differently.
 
-**Example.** Alice reading `/records/rb` is an object-level failure. A non-admin successfully calling `GET /admin/users` is a function-level failure.
+**Example.** Mallapa reading `/records/BRD-2026-018` is an object-level failure. A non-admin successfully calling `GET /admin/users` is a function-level failure.
 
 **Why CanaryGate cares.** The project implements object-level detection end-to-end (`[LOOP]` validated). It has **no BFLA engine**: no role inventory, no per-function policy model, no expected-permission ingestion at scale. Requirement `D11` is missing, and the guide says so in every chapter that touches roles.
 
@@ -280,7 +280,7 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 **Technical.** CanaryGate probes five behaviours: an extra/unexpected property, malformed JSON, special characters, enumeration/pagination limits, and (for the lab only) a wrong password in a well-formed login body.
 
-**Example.** A login endpoint that returns `200` for `{"username": "alice"}` with no password is a validation failure.
+**Example.** A login endpoint that returns `200` for `{"username": "mallapa"}` with no password is a validation failure.
 
 **Why CanaryGate cares.** A validation finding must show an *effect*, not just a `200`: `malformed_json → 422` is never `CONFIRMED`; a `200` with an unchanged body is `INCONCLUSIVE`, because the probe did not demonstrate that the input was honoured in a dangerous way.
 
@@ -323,9 +323,9 @@ Each concept below gets four things: a plain-language explanation, the technical
 
 This chapter is deliberately blunt: for each class you get the concept, the check identifiers that exist in code, the decision rule, an example, the limits, and a status label. If a class has no implementation, the chapter says so instead of describing it aspirationally.
 
-### 3.1 Read-BOLA (object-level authorization), Alice and Bob
+### 3.1 Read-BOLA (object-level authorization), the demo tenant
 
-**The flaw.** The server authenticates the caller but never checks that the requested object belongs to them. Alice changes `/records/ra` to `/records/rb` and receives Bob's private data.
+**The flaw.** The server authenticates the caller but never checks that the requested object belongs to them. Mallapa changes `/records/MKT-2026-041` to `/records/BRD-2026-018` and receives sakshi's private data.
 
 **Where it lives in CanaryGate.**
 - Oracle: `canarygate/oracles/read_bola.py::evaluate_read_bola`.
@@ -348,9 +348,9 @@ This chapter is deliberately blunt: for each class you get the concept, the chec
 
 **Verdicts.** `CONFIRMED` if (3) and (9); `SUSPECTED` if the marker matched but identity fields were incomplete; `SAFE` if (3) and (10); otherwise `INCONCLUSIVE`.
 
-**Alice/Bob example (loopback, real HTTPS).** `LAB-BOLA-01/02` are owner baselines (`SAFE`). `LAB-BOLA-03` (alice → bob) and `LAB-BOLA-04` (bob → alice) are `CONFIRMED` with status `200`, 9 of 10 checklist flags true (all but `verified_denial`). `LAB-BOLA-05/06` are the same reads on `/secure`, both `403` with the checked denial body, both `SAFE`. Run summary: 6 checks, 2 confirmed, 4 safe, 18 of 20 requests used.
+**Demo-tenant example (loopback, real HTTPS).** `LAB-BOLA-01/02` are owner baselines (`SAFE`). `LAB-BOLA-03` (mallapa → sakshi) and `LAB-BOLA-04` (sakshi → mallapa) are `CONFIRMED` with status `200`, 9 of 10 checklist flags true (all but `verified_denial`). `LAB-BOLA-05/06` are the same reads on `/secure`, both `403` with the checked denial body, both `SAFE`. Run summary: 6 checks, 2 confirmed, 4 safe, 18 of 20 requests used.
 
-**Limits.** The resource model, discovery route, detail route, id field, ownership field and private field must all be declared; IDs cannot be guessed "for free" — `resource_ids_withheld: true` means the run does not publish them. Two synthetic accounts only (`D3` partial). The policy is declared by the lab, not inferred from OpenAPI (`D2` partial). Nothing here generalizes to an arbitrary API without someone writing the recipe.
+**Limits.** The resource model, discovery route, detail route, id field, ownership field and private field must all be declared; IDs cannot be guessed "for free" — `resource_ids_withheld: true` means the run does not publish them. Three synthetic accounts with one private asset each, and the pair is selected per run (`D3` partial). The policy is declared by the lab, not inferred from OpenAPI (`D2` partial). Nothing here generalizes to an arbitrary API without someone writing the recipe.
 
 **Status:** `[FIXTURE]` + `[REC]` + `[LOOP]` implemented. No `[LIVE]`.
 
@@ -479,9 +479,9 @@ A baseline is one control exercised **alone**, on the same runner, in the same r
 
 | Baseline | Control | Request | Expected | Observed |
 |---|---|---|---|---|
-| `SCI-AUTHZ` | Authorization | alice → bob's `/records/{id}/guarded` | `403 {"error":"forbidden"}` | `403`, `checked_denial: true`, `SAFE` |
-| `SCI-AUTHN` | Authentication | alice `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | `401`, `checked_rejection: true`, `SAFE` |
-| combined | both | alice → the *identical* guarded read again | denial | `200` with bob's private marker → `private_data` |
+| `SCI-AUTHZ` | Authorization | mallapa → sakshi's `/records/{id}/guarded` | `403 {"error":"forbidden"}` | `403`, `checked_denial: true`, `SAFE` |
+| `SCI-AUTHN` | Authentication | mallapa `POST /login` with a wrong password | `401 {"error":"invalid_credentials"}` | `401`, `checked_rejection: true`, `SAFE` |
+| combined | both | mallapa → the *identical* guarded read again | denial | `200` with sakshi's private marker → `private_data` |
 
 **The CP37 bug.** Before CP37, `decide()` accepted an interaction with *one* baseline. That meant a plan that silently dropped a control could still be confirmed on the strength of the other one — a real false-positive path. CP37 changed the arithmetic:
 
@@ -522,35 +522,35 @@ sequenceDiagram
     participant G as RunSafetyGuard
     participant L as TargetLab 127.0.0.1 pinned CA
 
-    S->>G: authorize("alice", POST /login)
+    S->>G: authorize("mallapa", POST /login)
     G-->>S: AUTHENTICATION permitted (one-shot per actor+probe)
-    S->>L: POST /login {alice, correct password}
-    L-->>S: 200 {token, identity: alice, role: user}
-    S->>G: authorize("bob", POST /login)
+    S->>L: POST /login {mallapa, correct password}
+    L-->>S: 200 {token, identity: mallapa, role: marketing_manager}
+    S->>G: authorize("sakshi", POST /login)
     G-->>S: permitted
-    S->>L: POST /login {bob, correct password}
-    L-->>S: 200 {token, identity: bob}
-    S->>L: GET /profile (alice)
-    L-->>S: 200 {identity: alice}
-    S->>L: GET /profile (bob)
-    L-->>S: 200 {identity: bob}
-    S->>L: GET /records (alice)
-    L-->>S: 200 [ra]
-    S->>L: GET /records (bob)
-    L-->>S: 200 [rb]
-    S->>L: GET /records/rb/guarded (alice)
-    L-->>S: 200 {id: rb, owner: bob, private_note: <bob marker>}
-    S->>L: GET /records/ra/guarded (bob)
-    L-->>S: 200 {id: ra, owner: alice, private_note: <alice marker>}
+    S->>L: POST /login {sakshi, correct password}
+    L-->>S: 200 {token, identity: sakshi, role: brand_designer}
+    S->>L: GET /profile (mallapa)
+    L-->>S: 200 {identity: mallapa}
+    S->>L: GET /profile (sakshi)
+    L-->>S: 200 {identity: sakshi}
+    S->>L: GET /records (mallapa)
+    L-->>S: 200 [MKT-2026-041]
+    S->>L: GET /records (sakshi)
+    L-->>S: 200 [BRD-2026-018]
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
+    L-->>S: 200 {id: BRD-2026-018, owner: sakshi, private_note: <sakshi marker>}
+    S->>L: GET /records/MKT-2026-041/guarded (sakshi)
+    L-->>S: 200 {id: MKT-2026-041, owner: mallapa, private_note: <mallapa marker>}
     Note over S,L: BASELINE 1 — authorization alone
-    S->>L: GET /records/rb/guarded (alice)
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
     L-->>S: 403 {"error": "forbidden"}  (verified denial)
     Note over S,L: BASELINE 2 — authentication alone
-    S->>L: POST /login {alice, wrong password}
+    S->>L: POST /login {mallapa, wrong password}
     L-->>S: 401 {"error": "invalid_credentials"}  (verified rejection)
     Note over S,L: COMBINED — the identical read, after the rejected login
-    S->>L: GET /records/rb/guarded (alice)
-    L-->>S: 200 {id: rb, owner: bob, private_note: <bob marker>}
+    S->>L: GET /records/BRD-2026-018/guarded (mallapa)
+    L-->>S: 200 {id: BRD-2026-018, owner: sakshi, private_note: <sakshi marker>}
     Note over S,G: 11 requests on a budget of 16; blocked_by_guard = 0
 ```
 
@@ -844,9 +844,9 @@ flowchart TD
     A["1. POST /api/lab-bola-scans"] --> B["2. Validate payload<br/>(port 1024-65535, budget 16-40)"]
     B --> C{"3. CANARYGATE_TARGETLAB_CA set?"}
     C -- no --> X1["400, nothing stored"]
-    C -- yes --> D["4. Build plan + AuthorizedScope<br/>(13 operations, budget 20)"]
+    C -- yes --> D["4. Build plan + AuthorizedScope<br/>(16 operations, selected pair, budget 20)"]
     D --> E["5. Build TargetLabRunner<br/>(local_lab mode, literal 127.0.0.1, CA file, TLS ctx)"]
-    E --> F["6. Log in alice, bob<br/>(guarded, one-shot per actor)"]
+    E --> F["6. Log in the selected pair<br/>(guarded, one-shot per actor)"]
     F --> G["7. Verify identity via /profile x2"]
     G --> H["8. Discover GET /records x2"]
     H --> I["9. Cross-list isolation check"]
@@ -894,10 +894,10 @@ flowchart TD
 
 ```
 STAGE 1 — read-BOLA on the vulnerable route — CONFIRMED
-  LAB-BOLA-01  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-02  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-03  alice/bob  GET /records/{id}  status 200  CONFIRMED
-  LAB-BOLA-04  alice/bob  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-01  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-02  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-03  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-04  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
   owner baselines verified against each account's own record; the leaked marker matched the owner's baseline
 ```
 
@@ -1042,7 +1042,7 @@ flowchart TD
 4. **Ground truth scored after the fact** — `EXPECTED_VERDICTS` in `scan/lab_bola_scenarios.py`, `ground_truth.evaluated_after_verdicts: true`, `used_as_decision_input: false`.
 5. **A negative control** — the secure route produces `SAFE` with a checked denial body, proving the pipeline can say "no" to the same shape of request.
 
-What CP36 did **not** establish: general BOLA detection. Only one resource type, two accounts, two routes, and a policy the lab declares about itself.
+What CP36 did **not** establish: general BOLA detection. Only one resource type, a three-account demo tenant, two routes, and a policy the lab declares about itself.
 
 ### 7.6 Where BOLA evidence can be wrong, and what stops it
 
@@ -1187,7 +1187,7 @@ Two design details worth defending:
 
 ### 8.7 Coverage, and the sentence that keeps it honest
 
-The lab validates one interaction kind against one declared flaw with two accounts. The other two kinds are validated offline. There is no discovery of new interaction pairs, no fuzzing of sequences, and no claim that the engine would find an unknown interaction in an unknown API. Say it as: **"We proved the engine can detect an interaction when the interaction is declared and the evidence is real. We did not prove it can find one on its own."**
+The lab validates one interaction kind against one declared flaw, with any ordered pair of three demo accounts. The other two kinds are validated offline. There is no discovery of new interaction pairs, no fuzzing of sequences, and no claim that the engine would find an unknown interaction in an unknown API. Say it as: **"We proved the engine can detect an interaction when the interaction is declared and the evidence is real. We did not prove it can find one on its own."**
 
 
 ---
@@ -1208,9 +1208,9 @@ FLAWS = {
 
 ### 9.2 The data it declares
 
-- **Accounts:** `alice` / `alice-lab-password`, `bob` / `bob-lab-password`, both role `user`, tokens `lab-token-alice` / `lab-token-bob`.
-- **Records:** `ra` (owner alice) and `rb` (owner bob), each with `id`, `owner`, `private_note`.
-- **Markers:** `targetlab-alice-private-marker`, `targetlab-bob-private-marker`, and `targetlab-trace-marker` inside the synthetic stack trace.
+- **Accounts:** `mallapa` (`marketing_manager`), `sakshi` (`brand_designer`), `harsha` (`campaign_analyst`), passwords `<name>-lab-password`, tokens `lab-token-<name>`.
+- **Assets:** `MKT-2026-041` (owner mallapa), `BRD-2026-018` (owner sakshi), `ADS-2026-027` (owner harsha), each with `id`, `owner`, `private_note` plus business context.
+- **Markers:** `targetlab-<account>-private-marker`, and `targetlab-trace-marker` inside the synthetic stack trace.
 - **Mutable state:** `compatibility: set[str]`, `logins`, `rejected_logins`, all behind a lock.
 
 ### 9.3 Its routes and intended correctness
@@ -1423,8 +1423,8 @@ For every check the stored evidence is bounded to things that cannot leak:
   "id": "LAB-BOLA-03",
   "direction": "cross_account",
   "endpoint": "GET /records/{id}",
-  "actor": "alice",
-  "owner": "bob",
+  "actor": "mallapa",
+  "owner": "sakshi",
   "status": 200,
   "verdict": "CONFIRMED",
   "reason": "Verified ownership and cross-user private baseline disclosure",
@@ -1868,10 +1868,10 @@ flowchart TD
  "severity": "High",
  "verdict": "CONFIRMED",
  "reason": "Verified ownership and cross-user private baseline disclosure",
- "account": "alice",
- "role": "user",
+ "account": "mallapa",
+ "role": "marketing_manager",
  "target_resource": "the owner's private record (identifier minimised)",
- "verified_owner": "bob (ownership verified; owner baseline recorded)",
+ "verified_owner": "sakshi (ownership verified; owner baseline recorded)",
  "request": {"method": "GET", "path": "/records/{id}",
              "credentials": "placeholder only",
              "body": "not retained (bounded recorded fixture)"},
@@ -2309,7 +2309,7 @@ curl -sS localhost:8000/api/lab-bola-scans/<run_id> | python -c "import json,sys
 curl -sS localhost:8000/api/lab-bola-scans/<run_id> | python -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d['ownership'], indent=1)[:600])"
 ```
 **Expected:** both accounts `SUCCESS`, `ids withheld`, `cross_list_isolated: true`, per-account baselines verified.
-**What the judge observes:** the scanner proves Alice owns one object and Bob owns another before it claims anything.
+**What the judge observes:** the scanner proves mallapa owns one asset and sakshi another before it claims anything.
 **Technical point:** `collect_guarded_ownership` is the same registry used by every transport.
 **Say:** "Two identities, two objects, two baselines, one isolation check — no finding without all four."
 
@@ -2467,7 +2467,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Say:** "The API validates `{port, budget}`, builds a plan and an `AuthorizedScope`, constructs a `TargetLabRunner`, and every call goes through `TargetLabTransport.request`, which validates the path, enters the run guard, authorizes, then opens a socket to `127.0.0.1`, wraps TLS with the pinned CA, sends one request, refuses redirects, and caps the body."
 **Deeper:** The runner keeps tokens in memory, proves provenance via `verifies_recorded_read`, and refuses a second login for the same actor and probe.
 **Example:** Figure 4 in §5.5.
-**Limit:** Only 13 operations are possible; anything else is refused before the guard.
+**Limit:** Only the 16 declared operations are possible; anything else is refused before the guard.
 
 **Q12. Where is the state?**
 **Say:** "Three places: SQLite for runs, in-memory state for a run (tokens, budget, guard counters), and TargetLab's own per-process state (compatibility flags, login counters)."
@@ -2599,7 +2599,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Limit:** The recipe author must declare the model correctly; we do not infer it.
 
 **Q32. How do you find resource ids?**
-**Say:** "From each account's own discovery response, and we require cross-list isolation: Alice's list must not contain Bob's object. Ids are withheld from reports."
+**Say:** "From each account's own discovery response, and we require cross-list isolation: mallapa's list must not contain sakshi's asset. Ids are withheld from reports."
 **Deeper:** `discovery` and `detail` operations, `id_field` and `ownership_field` come from the recipe; a list that is global (like VAmPI's) would fail isolation and produce no finding.
 **Example:** `cross_list_isolated: true` in the ownership block.
 **Limit:** If the API does not expose an isolated list, we cannot establish ownership and return an incomplete result.
@@ -2654,7 +2654,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q40. Why `wrong_password` instead of malformed JSON for the rejected login?**
 **Say:** "Because the lab only sets its legacy flag when the body parses and carries a string username. A completely broken body returns 422 before touching the state machine, so the interaction would never reproduce."
 **Deeper:** `wrong_password` is a well-formed body with an obviously fake password, permitted only on the exact authentication POST and one-shot per run/actor.
-**Example:** `wrong_password_body()` produces `{"username": "alice", "password": "targetlab-wrong-password-for-alice"}`.
+**Example:** `wrong_password_body("mallapa")` produces `{"username": "mallapa", "password": "targetlab-wrong-password-for-mallapa"}`.
 **Limit:** The probe name lives in the input-probe vocabulary (`INPUT_PROBE_NAMES`), not the auth-probe tuple; that is a vocabulary quirk worth knowing if you read the code.
 
 **Q41. What does the reset proof actually prove?**
@@ -2744,7 +2744,7 @@ Defined as the code uses the term, not as a textbook would.
 
 | Term | Meaning in CanaryGate |
 |---|---|
-| **Account** | A synthetic identity with a role and, for the lab, a password and token (`alice`, `bob`). |
+| **Account** | A synthetic identity with a role and, for the lab, a password and token (`mallapa`, `sakshi`, `harsha`). |
 | **Actor** | The identity a request is sent *as*. |
 | **Attribution** | Why an SCI verdict came out as it did (`interaction_induced`, `individual_failure`, `incomplete_baseline`, `unverified_evidence`, `ambiguous_impact`, `no_demonstrated_impact`, `no_failure`, `not_permitted`; plus the latent `unproven_impact`, Appendix C5). |
 | **Baseline** | A control exercised alone on the same runner/target, with its own verified response. |
@@ -2982,7 +2982,7 @@ Twenty-five concepts, in the order they build on each other. If you can explain 
 Idea: the caller is authenticated, but the handler never checks that *this* object belongs to *this* caller. Why here: it is the project's core finding and the reason the whole evidence contract exists. Point at: `oracles/read_bola.py`.
 
 **2. Ownership is a claim until it is verified.**
-Idea: `"owner": "bob"` in a response is data, not proof. Why here: the oracle refuses to proceed unless the registry verified two owners with two distinct objects. Point at: `seed/registry.py`.
+Idea: `"owner": "sakshi"` in a response is data, not proof. Why here: the oracle refuses to proceed unless the registry verified two owners with two distinct objects. Point at: `seed/registry.py`.
 
 **3. Private, shared and public are different worlds.**
 Idea: a shared object read by another account is correct behaviour. Why here: `ownership_model` must be `private`, which kills the largest class of BOLA false positives. Point at: `models/ownership.py`.
@@ -3116,10 +3116,10 @@ database: /tmp/canarygate-demo-bmfc20vt/demo.sqlite3
 TargetLab: https://127.0.0.1:38569 (pinned test CA, loopback only)
 
 STAGE 1 — read-BOLA on the vulnerable route — CONFIRMED
-  LAB-BOLA-01  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-02  alice/bob  GET /records/{id}  status 200  SAFE
-  LAB-BOLA-03  alice/bob  GET /records/{id}  status 200  CONFIRMED
-  LAB-BOLA-04  alice/bob  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-01  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-02  mallapa/sakshi  GET /records/{id}  status 200  SAFE
+  LAB-BOLA-03  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
+  LAB-BOLA-04  mallapa/sakshi  GET /records/{id}  status 200  CONFIRMED
   owner baselines verified against each account's own record; the leaked marker matched the owner's baseline
 
 STAGE 2 — the secure route — SAFE
@@ -3127,8 +3127,8 @@ STAGE 2 — the secure route — SAFE
   LAB-BOLA-06  GET /records/{id}/secure  status 403  SAFE (checked denial body)
 
 STAGE 3 — security control interaction — CONFIRMED (interaction_induced)
-  SCI-AUTHZ  alice -> bob's guarded record   status 403  SAFE
-  SCI-AUTHN  alice posts a wrong password    status 401  SAFE
+  SCI-AUTHZ  mallapa -> sakshi's guarded record   status 403  SAFE
+  SCI-AUTHN  mallapa posts a wrong password    status 401  SAFE
   combined   the identical guarded read      status 200  private_data
   verdict    CONFIRMED (interaction_induced)  remediation sci_authentication
   reset      403 -> 401 -> 200 -> 403  proven (separate two-run scenario)
