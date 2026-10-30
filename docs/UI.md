@@ -617,36 +617,22 @@ browser. Everything above is the strongest verification this environment allows.
 `GET /` serves `templates/intro.html` (shell: `intro_base.html`); `GET /ui/intro`
 replays it, and the interface sidebar links there.
 
-The page is two things at once: an **18-second title sequence** and the **pitch**.
+The page is two things at once: a **21-second title sequence** and the **pitch**.
 Every line is copy that already exists in the product — no invented claim, no
 sample verdict.
 
 ### 14.1 The sequence
 
-| Scene | Cut at | Content |
+| Scene | Window | Content |
 | --- | --- | --- |
-| 1 | 0.00 s | **The canary**, singing on the gate rail: "A canary goes quiet before you feel the gas." |
-| 2 | 2.50 s | Kinetic type: REQUEST → RESPONSE → BOUNDARY → **PROOF**, slammed in and out |
-| 3 | 4.00 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
-| 4 | 5.50 s | "A 200 response alone is never enough." |
-| 5 | 7.00 s | "Two-part evidence. One verdict." ownership / disclosure cards |
-| 6 | 8.50 s | The five verdicts blast in behind a 24-ray burst; four dim, CONFIRMED keeps focus |
-| 7 | 10.00 s | Flight-recorder rows building up, ending on CONFIRMED |
-| 8 | 11.50 s | Matrix cells filling in, with `not assessed` left visible |
-| 9 | 12.95 s | The wordmark, gate bars parting, and the canary landing on it |
-
-Every cut sits on the **0.5 s beat grid** of the 120 BPM track, so the picture
-lands with the kick; windows overlap by ~0.25 s, and the finale runs to 15.00 s
-and holds, meeting the hand-off exactly. The opening canary holds for 2.5 s —
-still the longest single window (a sixth of the reel) — because the bird is why
-the product is called CanaryGate. A test fails if that window drops below 2.4 s
-or if the next cut starts before the bird leaves.
-
-Each scene is labelled `[ NN / 09 ]` in the corner: a bookended counter that
-tells the viewer a cut is coming and how far through the reel they are.
-
-The wordmark scene is **first in the DOM** and last on screen, because reading
-order should start at the product name.
+| — | 0.0 s | `CanaryGate` wordmark, tagline, `local · fixture-only · no live scanning`, **Enter the interface** |
+| 1 | 0.2 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
+| 2 | 3.2 s | "A 200 response alone is never enough." |
+| 3 | 6.1 s | "Two-part evidence. One verdict." ownership / disclosure cards |
+| 4 | 9.2 s | The five verdicts cascade, then four dim and CONFIRMED keeps focus |
+| 5 | 12.0 s | Flight-recorder rows building up, ending on CONFIRMED |
+| 6 | 15.0 s | Matrix cells filling in, with `not assessed` left visible |
+| 7 | 17.5 s | The wordmark again, with the gate bars parting |
 
 The h1 is the wordmark and it sits **first in the DOM**, so a screen reader meets
 the page title before the scene captions, and the primary CTA is first in tab
@@ -655,8 +641,7 @@ visual timing.
 
 ### 14.2 What makes it move
 
-Hand-written CSS and one hand-written canvas; **no GSAP, no Three.js, no video,
-no screenshots, no libraries of any kind**.
+All hand-written CSS; **no GSAP, no Three.js, no canvas video, no screenshots**.
 
 * **Mask reveals.** Each line is clipped from the bottom (`clip-path: inset`)
   and rises, staggered by `--n`, with a slight overshoot ease.
@@ -690,33 +675,6 @@ off and why, and offers *Play the sequence anyway*. Choosing it sets
 `html.force-motion`, which every reduced-motion rule is scoped against
 (`html:not(.force-motion) .scene`), then restarts the sequence and starts the
 canvas. The visitor keeps control in both directions.
-
-### 14.2b The canvas engine (Canvas · SVG)
-
-The reference the user pointed at is built with **Canvas · SVG**, and until this
-pass the canvas was ambient scenery. It is now the engine of the film:
-
-| Layer | What it draws |
-| --- | --- |
-| Corridor | 26 perspective rings the camera flies through, recycling forever; four rails per ring, fading with depth |
-| Gate | The bright vertical line the product is named after, blooming on every cut |
-| Packets | Requests on the rails, rippling where they cross the gate plane |
-| Cut | White flash → shutter tearing the frame into nine bands → camera kick → two-frame chromatic hop (`html.cut`) |
-| Burst | 46 particles leaving the chip cluster on the verdict scene |
-| Grain / vignette | A noise tile generated once at runtime (no image downloaded) over a radial vignette |
-
-Two properties make it safe to ship:
-
-* **It cannot drift from the timeline.** The cut times are not written in the
-  JavaScript; `sceneWindows()` reads `--sd` off each scene element, so
-  `intro.css` is the only schedule in the project. Change a `--sd` and the
-  canvas follows within a frame.
-* **It is decoration.** `aria-hidden`, skipped entirely under reduced motion, no
-  2D context leaves it silent rather than broken, and the tab being hidden stops
-  the loop.
-
-The grain is `createImageData` at runtime, so the "no external asset" rule holds:
-there is no texture file, only arithmetic.
 
 ### 14.3 Sound
 
@@ -760,147 +718,78 @@ itself and says so.
 
 | Test | What it proves |
 | --- | --- |
-| `test_landing_page_is_the_front_door_and_hands_off_to_the_interface` | One `<h1>` (the wordmark), nine scenes, project copy, product parts rather than screenshots, verdicts as vocabulary, real anchors + `<noscript>` fallback, no external references, no app shell |
+| `test_landing_page_is_the_front_door_and_hands_off_to_the_interface` | One `<h1>` (the wordmark), seven scenes, project copy, product parts rather than screenshots, verdicts as vocabulary, real anchors + `<noscript>` fallback, no external references, no app shell |
 | `test_landing_page_carries_the_argument_below_the_sequence` | The four sections exist, all seven journey links resolve to real routes, the limits section states what the build refuses to do |
-| `test_landing_assets_are_local_and_agree_on_the_runtime` | Local assets, `--run: 15s` == `RUN_MS = 15000`, no inline styles, reduced-motion and Esc handling present, sound is synthesised (no audio file), toggle starts off |
-| `test_all_four_copies_of_the_runtime_agree` | `--run`, `RUN_MS`, the visible countdown and the `<noscript>` refresh agree with each other (15 s, hand-off at 17 s) |
-| `test_the_canvas_is_decoration_and_cannot_drift_from_the_css` | Canvas is `aria-hidden`, reads `--sd` instead of keeping its own schedule, guarded for a missing 2D context, skipped under reduced motion |
-| `test_the_reel_hud_reports_time_and_cut_never_a_result` | The HUD is `aria-hidden`, exposes time / cut / bar hooks, and contains no verdict vocabulary |
-| `test_every_cut_is_numbered_against_the_whole_sequence` | Nine chips, `1..9` with no duplicates, one shared denominator |
-| `test_every_beat_finishes_before_its_scene_is_cut` | Every delayed beat (burst, verdicts, rows, words, gate) ends inside the window its scene is given |
-| `test_the_burst_rays_keep_their_rotation` | The 24 rays keep distinct angles in the markup, and no CSS transform is applied to a ray |
-| `test_the_canary_holds_the_opening_long_enough_to_be_seen` | The bird's window is ≥ 2.4 s and the next cut does not start before it leaves |
-| `test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay` | Every static URL carries a fingerprint; documents are `no-store`; fingerprinted assets are immutable |
+| `test_landing_assets_are_local_and_agree_on_the_runtime` | Local assets, `--run: 21s` == `RUN_MS = 21000`, no inline styles, reduced-motion and Esc handling present, sound is synthesised (no audio file), toggle starts off |
 | `test_landing_page_can_be_replayed_from_the_interface` | `/ui/intro` renders, the sidebar links to it, and the dashboard is untouched |
+| `test_all_four_copies_of_the_runtime_agree` | `--run`, `RUN_MS`, the visible countdown and the `<noscript>` refresh agree with each other (21 s, hand-off at 24 s) |
+| `test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay` | Every static URL carries a fingerprint; documents are `no-store`; fingerprinted assets are immutable |
+| `test_asset_fingerprint_changes_only_when_an_asset_changes` | The fingerprint tracks file contents, not mtimes |
+| `test_the_build_stamp_follows_an_edit_on_a_long_running_server` | The stamp is recomputed per render, so a long-running server cannot serve an edited asset under a cached URL |
 
-Behaviour was verified in jsdom against the real rendered page, in two harnesses
-(`18/18` and `10/10`):
-
-* **the reel** — nine scenes, decorative canvas, `aria-hidden` HUD, nine chips,
-  two canaries, HUD clock and progress advancing, the cut counter following the
-  stylesheet's own `--sd` values (`cut 01 / 09` while the canary holds, `cut 03`
-  after the 4.00 s window), the countdown, no page errors;
-* **reduced motion** — never auto-navigates, points at the menu, keeps the
-  "play anyway" button and both menus, leaves the canvas off — and opting in
-  turns the reel on, sets `force-motion` and restarts the clock.
-
-The automatic hand-off was timed end to end: **15 s**, no interaction.
-
-A third harness (`9/9`) executes the canvas engine itself for a full run with a
-stubbed 2D context and a hand-driven clock. It proves the engine never throws,
-that it clears every frame, draws the corridor, gate gradient, vignette and
-grain tile, and — by counting rising edges in the flash alpha — that **exactly
-nine cuts fire**, with the verdict burst throwing sparks on scene 6.
+Behaviour was verified in jsdom against the real rendered page (19 assertions):
+scene count, no `<img>` anywhere, countdown, Esc, scroll cancelling the
+hand-off, replay rebuilding the subtree and resetting progress, sound off by
+default then synthesising oscillators and suspending on mute, and reduced
+motion never navigating. The full automatic hand-off was timed separately:
+**21 059 ms**, no interaction.
 
 **Still not done:** a real-browser visual pass. There is no browser binary in
 this environment (§12.6 explains why), so pacing, type rendering and the feel of
 the transitions are verified structurally and behaviourally, not visually.
 
-### 14.7 The canary
+### 14.7 Caching: why a rebuild could look like no rebuild at all
 
-The product is named after the bird in the coal mine: it reacts to gas long
-before a person can, and *its silence is itself the signal*. That metaphor is the
-opening scene of the sequence.
+Symptom worth recording, because it cost a cycle: after the landing page was
+rebuilt, the page still played the *previous* cut. The server was serving the
+new files; the browser was not fetching them.
 
-* **Hand-drawn SVG** (`templates/_canary.html`), no image file, no icon library.
-  Body, head, crest, beak (two halves), wing, tail, eye, legs and perch are
-  separate groups, so each can animate on its own.
-* **Motion**: it floats, breathes, opens its beak on a 0.62 s cycle, flicks its
-  wing and tail, blinks irregularly, and three song arcs leave the beak in
-  sequence. A red alarm ring pulses behind it.
-* **Twice per page**: singing in scene 1, perched on the wordmark in scene 9.
-  The macro takes a `uid` so the two gradient definitions cannot collide —
-  duplicate SVG ids would silently make the second bird borrow the first's
-  gradient (there is a test for this).
-* **Decorative by contract**: `role="presentation" aria-hidden="true"`. The
-  meaning is in the sentence beside it, so a screen reader hears the argument
-  rather than a description of a drawing.
-
-### 14.8 "Blast" — what makes it move
-
-Built for the showreel brief, within the no-dependency rule:
-
-| Technique | Where |
-| --- | --- |
-| Kinetic typography | Scene 2: four words slam in at `scale(1.5) → blur(16px) → settle`, then punch out in sequence |
-| Horizontal slam cut | Scene 2's whole window uses a faster, louder keyframe than the rest |
-| Verdict burst | 24 SVG rays + expanding ring + core, behind the five verdicts |
-| Component choreography | Recorder rows and matrix cells animate individually; nothing is a screenshot |
-| Beat sync | While the synthesized soundtrack is on, each downbeat toggles `html.beat` for 170 ms, pulsing the canary and the wordmark |
-| Gate motif | A single vertical line in scene 1, two parting bars around the wordmark in scene 9 |
-| Ambient canvas | Slow request lines with ripples where they cross the gate |
-
-Runtime is **15 s** — the showreel brief's length — with cuts on a 0.5 s grid
-and ~0.25 s overlaps. The runtime lives in four places (`--run`, `RUN_MS`, the
-visible countdown, the `<noscript>` refresh) and a test asserts all four agree,
-because they have drifted before.
-
-### 14.8a Two traps the verdict burst fell into
-
-Cut 6 is the busiest in the reel, and it exposed both of these. Both were
-invisible to every existing test, so each now has its own guard.
-
-**1. A CSS transform overrides the SVG transform attribute.** Each of the 24
-rays is drawn at its angle with `transform="rotate(N 120 120)"` in the markup.
-The first version also animated `transform` in the keyframes (`scaleY`), which
-*replaces* that attribute: all 24 rays collapsed onto the same vertical line,
-and with `animation-fill-mode: both` the line froze there. The viewer saw one
-red needle appear and stop, not a burst. The fix is structural — rotation stays
-in the markup, rays animate opacity only, and the outward motion moved to the
-group (`.burst-rays`, which has no attribute to fight with). Guarded by
-`test_the_burst_rays_keep_their_rotation`.
-
-**2. A beat scheduled past its own cut.** The burst was delayed 1.15 s inside a
-1.75 s scene, so it arrived with 0.6 s left and was sliced off by the cut; the
-"200" badge, the verdict, the last word punch and the gate bars were all
-overdue too. Everything is now timed to finish *inside* its window — the burst
-lands at 0.05 s and is gone by 1.50 s, the verdict dim settles at 1.65 s.
-Guarded by `test_every_beat_finishes_before_its_scene_is_cut`, which reads the
-window lengths out of the stylesheet itself, so a future retime cannot silently
-push a beat past its cut.
-
-### 14.9 Sound still leads the picture
-
-The soundtrack remains synthesized in the browser (no audio file): **120 BPM**,
-kick on the beat, a tick between, a bar marker every four, master gain 0.07,
-**off by default**. The tempo is not decorative — 120 BPM is a beat every 0.5 s,
-which is exactly the cut grid, so the edits land with the music. Every cut also
-fires a short quiet tick (`shutterSound`) once the visitor has turned sound on. The new
-part is that the picture listens to it — `flashBeat()` fires on downbeats and
-the stylesheet answers with a short scale pulse. Muting clears the class, so the
-motion never outlives the music.
-
-### 14.10 Caching: why a rebuild could look like no rebuild at all
-
-Symptom worth recording, because it cost a cycle: after the canary landed, the
-page still played the *previous* cut — no bird, old scene count. The server was
-serving the new files; the browser was not fetching them.
-
-Two omissions combined:
-
-* static assets were linked as bare paths (`/ui/static/css/intro.css`) with no
-  version, and
-* nothing set `Cache-Control` anywhere, so the browser was free to apply
-  heuristic freshness to both the stylesheet and the HTML document.
-
-Result: new markup + a cached stylesheet holding the *old* scene windows. The
-canary scene had no window in that stylesheet, so it never appeared, while the
-old windows still fired. The page genuinely looked unchanged.
+Two omissions combined: static assets were linked as bare paths with no
+version, and nothing set `Cache-Control` anywhere, so the browser was free to
+apply heuristic freshness to both the stylesheet and the HTML document. The
+result was new markup paired with a cached stylesheet holding the old scene
+windows — the page genuinely looked unchanged.
 
 The fix (`canarygate/ui/templating.py`, `canarygate/ui/app.py`):
 
 | Piece | Behaviour |
 | --- | --- |
 | `asset_version()` | SHA-256 over every static file's path + contents, truncated to 12 hex chars; stable across checkouts, changes only when an asset changes |
-| `current_asset_version()` | The same value, but re-checked against file stats on every render — so a server that stays up (as this one does during a demo) does not keep advertising the version it started with |
-| `asset_v` template global | appended to every `/ui/static` URL as `?v=<fingerprint>` |
+| `current_asset_version()` | The same value, re-checked against file stats on every render, so a server that stays up does not keep advertising the version it started with |
+| `asset_v()` template global | appended to every `/ui/static` URL as `?v=<fingerprint>` |
 | HTML | `Cache-Control: no-store, max-age=0` + `Pragma: no-cache` — the document is never reused |
 | Fingerprinted assets | `Cache-Control: public, max-age=31536000, immutable` — safe, because a changed file gets a changed URL |
 | Other responses | `no-cache` (revalidate, never serve blind) |
 | `X-Asset-Version` | the running build, readable from the network tab |
 
-Four tests hold this: fingerprints appear on every static URL, the fingerprint
-tracks file *contents* (not mtimes), the document is never stored, and the stamp
-follows an edit on a long-running server. If a
-future change to the landing page "does not show up", check `X-Asset-Version`
-before reading the CSS.
+Four tests hold this: fingerprints appear on every static URL (both sets of
+tests), the fingerprint tracks file *contents* not mtimes, the document is never
+stored, and the stamp follows an edit on a long-running server.
+
+### 14.8 What was tried and deliberately removed
+
+Recorded so the next person does not rebuild it by accident. Three landing-page
+experiments were built, shipped and then reverted **at the user's request**,
+because the first cover remained their favourite:
+
+| Experiment | Why it went |
+| --- | --- |
+| A hand-drawn SVG **canary** (singing, blinking, wing-flicking) plus kinetic type and a 24-ray verdict burst | The user preferred the original cover; the bird lives on only in this note |
+| A **15-second Canvas · SVG showreel** — perspective corridor, shutter cuts, particle burst, reel HUD, numbered scene chips | Same |
+| Retimed scenes / beat grid / 120 BPM soundtrack | Same |
+
+The revert was to commit `85775f4` for `intro.html`, `intro_base.html`,
+`intro.css` and `intro.js`. What was **kept** from those cycles, because it is
+repair rather than style: asset fingerprinting and cache policy (§14.7), the
+reduced-motion fix that keeps the menu always reachable (§14.2a), and the
+runtime-consistency test. Two bugs found during those cycles are worth knowing
+about even though their artwork is gone — they are generic traps:
+
+* **A CSS `transform` overrides an SVG `transform` attribute.** Animating
+  `transform` on an SVG element that carries `transform="rotate(…)"` erases the
+  rotation, and with `fill-mode: both` it freezes wherever the animation ends.
+  Keep rotation in the markup, or animate the parent group instead.
+* **A delayed animation can outlive the element's window.** With
+  `animation-fill-mode: both`, an animation still in its delay when a scene is
+  cut is simply never seen. Timing must be checked against the scene's own
+  duration, not just against the total runtime.

@@ -1,8 +1,7 @@
 {% extends "intro_base.html" %}
-{% from "_canary.html" import canary, burst %}
 
 {#-
-  The landing page: a fifteen second title sequence, then the pitch.
+  The landing page: a twenty-one second title sequence, then the pitch.
 
   Rules this page follows:
   * every line is real project copy — no invented claim, no sample verdict;
@@ -21,14 +20,13 @@
     <div class="hero-scenes" data-intro-scenes>
 
       <!-- 07 · the product -------------------------------------------------- -->
-      <article class="scene scene-title" data-scene="9">
-        <p class="kicker pop"><span class="kicker-n"><b>09</b><i>/&nbsp;09</i></span>canarygate · v3.2 · local offline build</p>
+      <article class="scene scene-title" data-scene="7">
+        <p class="kicker pop">canarygate · v3.2 · local offline build</p>
         <h1 class="wordmark">
           <span class="wordmark-a">Canary</span><span class="wordmark-b">Gate</span>
           <span class="wordmark-gate" aria-hidden="true"></span>
         </h1>
         <p class="tagline pop">evidence-based API authorization testing</p>
-        <div class="wordmark-canary" aria-hidden="true">{{ canary("sm", "perched", uid="mark") }}</div>
         <p class="facts pop">
           <span>local</span><span>fixture-only</span><span>no live scanning</span>
         </p>
@@ -39,40 +37,9 @@
       </article>
 
 
-      <!-- 01 · the canary ------------------------------------------------ -->
-      <article class="scene scene-0" data-scene="1">
-        <p class="kicker pop"><span class="kicker-n"><b>01</b><i>/&nbsp;09</i></span>why a canary</p>
-        <div class="canary-stage pop">
-          {{ canary("lg", "singing", uid="hero") }}
-          <span class="canary-silence" aria-hidden="true"></span>
-        </div>
-        <h2 class="scene-line">
-          <span class="pop">A canary goes quiet</span>
-          <span class="pop accent">before you feel the gas.</span>
-        </h2>
-        <p class="scene-sub pop">
-          CanaryGate is that bird for API authorisation: the warning arrives
-          with the evidence, not after the breach.
-        </p>
-      </article>
-
-      <!-- 02 · kinetic type: the four words ------------------------------- -->
-      <article class="scene scene-words" data-scene="2" aria-label="Request, response, boundary, proof">
-        <p class="kicker pop"><span class="kicker-n"><b>02</b><i>/&nbsp;09</i></span>what a finding is made of</p>
-        <div class="word-slam" aria-hidden="true">
-          <span class="slam pop">REQUEST</span>
-          <span class="slam slam-2 pop">RESPONSE</span>
-          <span class="slam slam-3 pop">BOUNDARY</span>
-          <span class="slam slam-4 pop">PROOF</span>
-        </div>
-        <p class="slam-caption pop">
-          A finding is the boundary being crossed <em>and</em> the proof that it happened.
-        </p>
-      </article>
-
-      <!-- 03 · the problem ------------------------------------------------ -->
-      <article class="scene scene-1" data-scene="3">
-        <p class="kicker pop"><span class="kicker-n"><b>03</b><i>/&nbsp;09</i></span>the problem</p>
+      <!-- 01 · the problem ------------------------------------------------ -->
+      <article class="scene scene-1" data-scene="1">
+        <p class="kicker pop">01 — the problem</p>
         <h2 class="scene-line">
           <span class="pop">Answering a request</span>
           <span class="pop">is not the same as</span>
@@ -88,8 +55,8 @@
       </article>
 
       <!-- 02 · the claim -------------------------------------------------- -->
-      <article class="scene scene-2" data-scene="4">
-        <p class="kicker pop"><span class="kicker-n"><b>04</b><i>/&nbsp;09</i></span>the standard of proof</p>
+      <article class="scene scene-2" data-scene="2">
+        <p class="kicker pop">02 — the standard of proof</p>
         <h2 class="scene-line">
           <span class="pop">A 200 response alone</span>
           <span class="pop accent">is never enough.</span>
@@ -101,8 +68,8 @@
       </article>
 
       <!-- 03 · two-part evidence ------------------------------------------ -->
-      <article class="scene scene-3" data-scene="5">
-        <p class="kicker pop"><span class="kicker-n"><b>05</b><i>/&nbsp;09</i></span>the method</p>
+      <article class="scene scene-3" data-scene="3">
+        <p class="kicker pop">03 — the method</p>
         <h2 class="scene-line"><span class="pop">Two-part evidence. One verdict.</span></h2>
         <div class="proof-pair">
           <div class="proof pop">
@@ -121,9 +88,8 @@
       </article>
 
       <!-- 04 · the vocabulary --------------------------------------------- -->
-      <article class="scene scene-4" data-scene="6">
-        <p class="kicker pop"><span class="kicker-n"><b>06</b><i>/&nbsp;09</i></span>the vocabulary</p>
-        <div class="burst-stage" aria-hidden="true">{{ burst() }}</div>
+      <article class="scene scene-4" data-scene="4">
+        <p class="kicker pop">04 — the vocabulary</p>
         <ul class="verdicts" aria-label="The five verdicts this tool can record">
           <li class="v v-confirmed pop">CONFIRMED</li>
           <li class="v v-suspected pop">SUSPECTED</li>
@@ -137,8 +103,8 @@
       </article>
 
       <!-- 05 · the flight recorder ---------------------------------------- -->
-      <article class="scene scene-5" data-scene="7">
-        <p class="kicker pop"><span class="kicker-n"><b>07</b><i>/&nbsp;09</i></span>the record</p>
+      <article class="scene scene-5" data-scene="5">
+        <p class="kicker pop">05 — the record</p>
         <div class="mini pop" aria-hidden="true">
           <div class="mini-row">
             <span class="mini-n">1</span><span class="mini-method">GET</span>
@@ -164,8 +130,8 @@
       </article>
 
       <!-- 06 · the matrix -------------------------------------------------- -->
-      <article class="scene scene-6" data-scene="8">
-        <p class="kicker pop"><span class="kicker-n"><b>08</b><i>/&nbsp;09</i></span>the coverage</p>
+      <article class="scene scene-6" data-scene="6">
+        <p class="kicker pop">06 — the coverage</p>
         <div class="matrix-mini pop" aria-hidden="true">
           <div class="mx-row mx-head"><span></span><span>alice</span><span>bob</span></div>
           <div class="mx-row"><span>/items</span><span class="mx safe">SAFE</span><span class="mx safe">SAFE</span></div>
@@ -189,20 +155,10 @@
       </p>
     </div>
 
-    {#- The reel's clock. Decorative instrumentation: it reports elapsed time
-        and which cut is playing, never a scan result, and it is hidden from
-        assistive technology because the sentences beside it carry the meaning. -#}
-    <p class="hero-hud" data-intro-hud aria-hidden="true">
-      <span class="hero-hud-line"><span class="hero-hud-dot"></span>reel</span>
-      <span class="hero-hud-line hero-hud-time" data-intro-hud-time>00:00.00</span>
-      <span class="hero-hud-line"><span class="hero-hud-bar"><span data-intro-hud-bar></span></span></span>
-      <span class="hero-hud-line hero-hud-scene" data-intro-hud-scene>cut 01 / 09</span>
-    </p>
-
     <div class="hero-foot">
       <p class="hero-progress" data-intro-count aria-hidden="true">
         <span class="hero-bar"><span class="hero-bar-fill" data-intro-progress></span></span>
-        <span class="hero-clock" data-intro-countdown>entering the interface in 15s</span>
+        <span class="hero-clock" data-intro-countdown>entering the interface in 21s</span>
       </p>
       <nav class="hero-menu" id="interface-menu" aria-label="Menu">
         <span class="hero-menu-label">Menu</span>

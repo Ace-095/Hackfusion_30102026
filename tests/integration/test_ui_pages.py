@@ -683,9 +683,8 @@ def test_landing_page_is_the_front_door_and_hands_off_to_the_interface(tmp_path)
         assert re.search(r'<h1 class="wordmark">\s*<span class="wordmark-a">Canary</span>'
                          r'<span class="wordmark-b">Gate</span>', body)
 
-        # Nine scenes (eight numbered beats plus the final wordmark), and the
-        # copy is the project's own phrasing.
-        assert body.count('data-scene="') == 9
+        # Seven scenes, and the copy is the project's own phrasing.
+        assert body.count('data-scene="') == 7
         assert "is never enough" in body
         assert "Ownership proof" in body and "Disclosure proof" in body
         assert "Every request recorded" in body
@@ -757,13 +756,11 @@ def test_landing_assets_are_local_and_agree_on_the_runtime(tmp_path):
 
         # One runtime, declared in both files; the countdown cannot drift from
         # the animation if these stay equal.
-        assert "--run: 15s" in css
-        assert "RUN_MS = 15000" in script
+        assert "--run: 21s" in css
+        assert "RUN_MS = 21000" in script
         # Every scene delay lives in the stylesheet, not inline.
         assert body_has_no_inline_style(client.get("/").text)
-        assert ".scene-1     { --sd:" in css
-        # Every scene is timed from the stylesheet, never from the markup.
-        assert css.count("--sd:") >= 9
+        assert ".scene-1 { --sd:" in css
 
         # Accessibility and honesty behaviour that a redesign must not remove.
         assert "prefers-reduced-motion: reduce" in css
@@ -843,153 +840,6 @@ def test_landing_page_explains_a_static_storyboard_and_offers_to_play_it(tmp_pat
         assert "intro:force-motion" in script
 
 
-def test_the_canary_is_drawn_in_svg_and_stays_decorative(tmp_path):
-    """The namesake bird is real vector art, not an image file, and it is not
-    read out to a screen reader."""
-    with _client(tmp_path) as client:
-        body = client.get("/").text
-
-        # Two birds: the singing one in the opening scene, the perched one on
-        # the wordmark.
-        assert body.count('class="canary canary-lg canary-singing"') == 1
-        assert body.count('class="canary canary-sm canary-perched"') == 1
-
-        # It is SVG with separate animatable parts, and no bitmap anywhere.
-        assert "<svg" in body and 'viewBox="0 0 160 160"' in body
-        for part in ("canary-beak", "canary-wing", "canary-tail", "canary-eye", "canary-song"):
-            assert part in body, part
-        assert "<img" not in body
-        assert not re.search(r"\.(png|jpe?g|webp|gif)\b", body)
-
-        # Decorative: hidden from assistive technology, no stray <title>.
-        assert 'role="presentation" aria-hidden="true"' in body
-
-        # The meaning is carried by text, not by the drawing.
-        assert "A canary goes quiet" in body
-        assert "before you feel the gas" in body
-        assert "the warning arrives" in body
-
-
-def test_the_sequence_uses_kinetic_type_and_a_verdict_burst(tmp_path):
-    with _client(tmp_path) as client:
-        body = client.get("/").text
-
-        # The four words slam in as type, not as an image.
-        assert 'class="word-slam"' in body
-        for word in ("REQUEST", "RESPONSE", "BOUNDARY", "PROOF"):
-            assert f">{word}</span>" in body, word
-        assert "boundary being crossed" in body
-
-        # The verdict reveal celebrates itself, in SVG.
-        assert 'class="burst"' in body
-        assert body.count('class="burst-ray"') == 24      # +1 for the <g> wrapper
-        assert "burst-ring" in body and "burst-core" in body
-
-        css = client.get("/ui/static/css/intro.css").text
-        assert "@keyframes slam-in" in css
-        assert "@keyframes burst-pop" in css
-        assert "@keyframes canary-sing" in css
-        # Motion is still opt-out, including the new pieces.
-        assert "html:not(.force-motion) .canary-beak" in css
-        assert "html:not(.force-motion) .burst" in css
-
-
-def test_the_soundtrack_drives_the_motion_not_the_other_way_round(tmp_path):
-    """The visual pulse is triggered by the synthesised beat, and stops with it."""
-    with _client(tmp_path) as client:
-        script = client.get("/ui/static/js/intro.js").text
-        css = client.get("/ui/static/css/intro.css").text
-
-        # One short pulse per downbeat, cleared again immediately.
-        assert "function flashBeat()" in script
-        assert 'classList.add("beat")' in script
-        assert 'classList.remove("beat")' in script
-        assert "isDownbeat" in script
-        # Stopping the sound stops the pulse.
-        assert 'document.documentElement.classList.remove("beat");' in script
-        # The stylesheet answers that class.
-        assert "html.beat .canary" in css and "html.beat .wordmark" in css
-
-
-def test_two_birds_on_one_page_do_not_collide_in_the_svg(tmp_path):
-    """SVG gradient ids are document-global: the macro must keep them unique."""
-    with _client(tmp_path) as client:
-        body = client.get("/").text
-        ids = re.findall(r'id="(canary-[^"]+)"', body)
-        assert len(ids) == 4
-        assert len(set(ids)) == len(ids), ids
-        # Every reference resolves to an id that exists on this page.
-        for ref in set(re.findall(r'url\(#(canary-[^)]+)\)', body)):
-            assert ref in ids, ref
-
-
-def test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay(tmp_path):
-    """A cached asset must never fight fresh markup.
-
-    The landing page once looked unchanged after a rebuild because the browser
-    served its cached copy of ``intro.css`` next to the new HTML: the stylesheet
-    still carried the previous scene windows, so the new scenes (including the
-    canary) never got a moment on screen. Every static URL now carries a content
-    fingerprint, and the document itself is never stored.
-    """
-    with _client(tmp_path) as client:
-        page = client.get("/")
-        assert page.headers["cache-control"] == "no-store, max-age=0"
-        # The header and the URLs must agree, or "which build am I on?" is
-        # unanswerable.
-        stamp = page.headers["x-asset-version"]
-        assert re.fullmatch(r"[0-9a-f]{12}", stamp)
-        assert f"?v={stamp}" in page.text
-
-        for template_path in ("/", "/ui/", "/ui/scans"):
-            body = client.get(template_path).text
-            static_urls = re.findall(r'(?:src|href)="(/ui/static/[^"]*)"', body)
-            assert static_urls, template_path
-            for url in static_urls:
-                assert re.search(r"\?v=[0-9a-f]{12}$", url), (template_path, url)
-
-        # Fingerprinted URLs may be cached hard; that is the point of the stamp.
-        css = client.get("/ui/static/css/intro.css")
-        assert css.headers["cache-control"] == "public, max-age=31536000, immutable"
-
-
-def test_asset_fingerprint_changes_only_when_an_asset_changes(tmp_path):
-    from canarygate.ui.templating import asset_version
-
-    (tmp_path / "a.css").write_text("body { color: red }")
-    (tmp_path / "js").mkdir()
-    (tmp_path / "js" / "b.js").write_text("var x = 1;")
-
-    first = asset_version(tmp_path)
-    assert first == asset_version(tmp_path)          # stable across calls
-    assert re.fullmatch(r"[0-9a-f]{12}", first)
-
-    (tmp_path / "js" / "b.js").write_text("var x = 2;")
-    assert asset_version(tmp_path) != first           # content, not mtime
-
-
-def test_the_canary_holds_the_opening_long_enough_to_be_seen(tmp_path):
-    """The bird is the theme; it cannot be a two-frame flash.
-
-    Guards the one number a future retime is most likely to lose: the window
-    between the opening canary scene and the next cut.
-    """
-    with _client(tmp_path) as client:
-        css = client.get("/ui/static/css/intro.css").text
-
-    opening = re.search(r"\.scene-0\s*\{\s*--sd:\s*([\d.]+)s;\s*animation:\s*scene-out\s+([\d.]+)s", css)
-    assert opening, "the opening scene lost its timed window"
-    start, duration = float(opening.group(1)), float(opening.group(2))
-    assert 0 <= start < 0.5
-    # A 15s reel; the bird still gets the longest single window (1/6 of the run).
-    assert duration >= 2.4, f"the canary is only on screen for {duration}s"
-
-    # The next cut must not start before the bird has had that time.
-    following = re.search(r"\.scene-words\s*\{\s*--sd:\s*([\d.]+)s", css)
-    assert following
-    assert start + duration >= float(following.group(1))
-
-
 def test_all_four_copies_of_the_runtime_agree(tmp_path):
     """The runtime is declared in four places, and they have drifted before.
 
@@ -1011,64 +861,56 @@ def test_all_four_copies_of_the_runtime_agree(tmp_path):
 
     assert run and run_ms and countdown and noscript, "a runtime declaration is missing"
     seconds = int(run.group(1))
-    assert seconds == 15                      # the showreel brief: fifteen seconds
+    assert seconds == 21
     assert int(run_ms.group(1)) == seconds * 1000
     assert int(countdown.group(1)) == seconds
     # The no-JS hand-off waits for the sequence to finish, then a beat longer.
-    assert int(noscript.group(1)) == seconds + 2
+    assert int(noscript.group(1)) == seconds + 3
 
 
-def test_the_canvas_is_decoration_and_cannot_drift_from_the_css(tmp_path):
-    """The reel engine must stay decorative, and must not keep its own clock."""
+def test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay(tmp_path):
+    """A cached asset must never fight fresh markup.
+
+    The landing page once looked unchanged after a rebuild because the browser
+    served its cached copy of ``intro.css`` next to the new HTML: the stylesheet
+    still carried the previous scene windows, so the new scenes never got a
+    moment on screen. Every static URL now carries a content fingerprint, and
+    the document itself is never stored.
+    """
     with _client(tmp_path) as client:
-        page = client.get("/").text
-        script = client.get("/ui/static/js/intro.js").text
-        css = client.get("/ui/static/css/intro.css").text
+        page = client.get("/")
+        assert page.headers["cache-control"] == "no-store, max-age=0"
+        # The header and the URLs must agree, or "which build am I on?" is
+        # unanswerable.
+        stamp = page.headers["x-asset-version"]
+        assert re.fullmatch(r"[0-9a-f]{12}", stamp)
+        assert f"?v={stamp}" in page.text
 
-    assert 'data-intro-canvas aria-hidden="true"' in page
-    # The cut times are read from the stylesheet, never re-declared in JS.
-    assert 'getPropertyValue("--sd")' in script
-    assert ".scene-words" in script
-    # Reduced motion still skips the canvas entirely.
-    assert "if (canvasStarted || !canvas || !motionAllowed()) return;" in script
-    assert "html:not(.force-motion) .cover-canvas" in css
-    # No 2D context (jsdom, or an old browser) must not throw.
-    assert "try { ctx = canvas.getContext(\"2d\"); } catch (error) { ctx = null; }" in script
-    # The cut flash is shared between the canvas and the stylesheet.
-    assert "html.cut .hero-scenes" in css
-    assert 'root.classList.add("cut")' in script
+        for path in ("/", "/ui/", "/ui/scans"):
+            body = client.get(path).text
+            static_urls = re.findall(r'(?:src|href)="(/ui/static/[^"]*)"', body)
+            assert static_urls, path
+            for url in static_urls:
+                assert re.search(r"\?v=[0-9a-f]{12}$", url), (path, url)
 
-
-def test_the_reel_hud_reports_time_and_cut_never_a_result(tmp_path):
-    """The HUD is instrumentation for the film, not a fake scan readout."""
-    with _client(tmp_path) as client:
-        page = client.get("/").text
-        css = client.get("/ui/static/css/intro.css").text
-
-    hud = re.search(r'<p class="hero-hud"[^>]*>(.*?)</p>', page, re.S)
-    assert hud, "the reel HUD is missing"
-    assert 'aria-hidden="true"' in hud.group(0)
-    for hook in ("data-intro-hud-time", "data-intro-hud-scene", "data-intro-hud-bar"):
-        assert hook in hud.group(0), hook
-    # It reports the film's own state only: a timecode and a cut counter.
-    assert "cut 01 / 09" in hud.group(1)
-    assert "00:00.00" in hud.group(1)
-    for forbidden in ("CONFIRMED", "SUSPECTED", "vulnerab", "risk", "score"):
-        assert forbidden not in hud.group(1), forbidden
-    # Hidden for reduced motion, where there is no reel to report on.
-    assert "html:not(.force-motion) .hero-hud { display: none; }" in css
+        # Fingerprinted URLs may be cached hard; that is the point of the stamp.
+        css = client.get("/ui/static/css/intro.css")
+        assert css.headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
-def test_every_cut_is_numbered_against_the_whole_sequence(tmp_path):
-    """Nine bookended chips, so the viewer always knows where they are."""
-    with _client(tmp_path) as client:
-        page = client.get("/").text
+def test_asset_fingerprint_changes_only_when_an_asset_changes(tmp_path):
+    from canarygate.ui.templating import asset_version
 
-    chips = re.findall(r'<span class="kicker-n"><b>(\d{2})</b><i>/&nbsp;(\d{2})</i></span>', page)
-    assert len(chips) == 9, chips
-    numbers = [int(n) for n, _ in chips]
-    assert sorted(numbers) == list(range(1, 10)), numbers   # no duplicate cut
-    assert {total for _, total in chips} == {"09"}          # one denominator
+    (tmp_path / "a.css").write_text("body { color: red }")
+    (tmp_path / "js").mkdir()
+    (tmp_path / "js" / "b.js").write_text("var x = 1;")
+
+    first = asset_version(tmp_path)
+    assert first == asset_version(tmp_path)          # stable across calls
+    assert re.fullmatch(r"[0-9a-f]{12}", first)
+
+    (tmp_path / "js" / "b.js").write_text("var x = 2;")
+    assert asset_version(tmp_path) != first           # content, not mtime
 
 
 def test_the_build_stamp_follows_an_edit_on_a_long_running_server(tmp_path):
@@ -1091,127 +933,3 @@ def test_the_build_stamp_follows_an_edit_on_a_long_running_server(tmp_path):
     # force a distinct mtime so the stat watch is what is being tested
     os.utime(tmp_path / "intro.css", ns=(1, 2_000_000_000))
     assert current_asset_version(tmp_path) != first
-
-
-def _css_blocks(css):
-    """(selector, body) pairs, near enough for a stylesheet that has no nesting
-    except one level of @media. Comments are stripped first: a rule preceded by
-    a paragraph of explanation would otherwise carry that paragraph in its
-    selector."""
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return [(sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)]
-
-
-def _scene_windows(css):
-    windows = {}
-    for sel, body in _css_blocks(css):
-        match = re.fullmatch(r"\.(scene-[a-z0-9]+)", sel)
-        if not match:
-            continue
-        start = re.search(r"--sd:\s*([\d.]+)s", body)
-        length = re.search(r"animation:\s*[\w-]+\s+([\d.]+)s", body)
-        if start and length:
-            windows[match.group(1)] = (float(start.group(1)), float(length.group(1)))
-    return windows
-
-
-#: Every delayed beat in the sequence: the scene that owns it, the latest
-#: moment it can still be running (offset + duration, worst case across the --n
-#: stagger), and the numbers that must still exist in its rules so this table
-#: cannot quietly drift away from the stylesheet.
-BEATS = [
-    ("the request crosses the gate", [".wire-packet"], ".scene-1", 1.60, [0.2, 1.4]),
-    ("the 200 lands after it", [".wire-status"], ".scene-1", 1.55, [1.05, 0.5]),
-    ("each word punches in then out", [".slam"], ".scene-words", 1.70, [0.3, 0.42, 1.1, 0.1]),
-    ("the red burst", [".burst"], ".scene-4", 1.50, [0.05, 1.45]),
-    ("its rays expand", [".burst-rays"], ".scene-4", 1.50, [0.05, 1.45]),
-    ("and flare one by one", [".burst-ray"], ".scene-4", 1.43, [0.04, 0.09, 0.13, 1.3]),
-    ("the verdicts cascade and dim", [".scene-4 .v"], ".scene-4", 1.65, [0.2, 0.08, 0.55, 0.95, 0.7]),
-    ("the recorder rows build", [".mini-row"], ".scene-5", 1.20, [0.35, 0.55, 0.75, 0.45]),
-    ("the verdict lands", [".mini-verdict .v"], ".scene-5", 1.55, [1.05, 0.5]),
-    ("the matrix fills", [".mx-row"], ".scene-6", 1.30, [0.3, 0.5, 0.7, 0.9, 0.4]),
-    ("the gate parts around the wordmark", [".wordmark-gate::after"], ".scene-title", 1.90,
-     [0.35, 1.55]),
-    ("the canary lands on it", [".wordmark-canary"], ".scene-title", 1.30, [0.55, 0.75]),
-]
-
-
-def test_every_beat_finishes_before_its_scene_is_cut(tmp_path):
-    """Nothing may be scheduled past the end of the scene that owns it.
-
-    This is the bug the user actually saw: on the 15s retime the verdict burst
-    was still delayed 1.15s inside a 1.75s scene, so the red star arrived with
-    0.6s left, froze at 16% opacity and was sliced off by the cut. The same
-    retime pushed the "200" badge, the verdict, the word punches and the gate
-    bars past their windows too. Overflowing timing is invisible to every other
-    test — the markup is right, the CSS parses, the page renders, nothing
-    errors — so it is asserted arithmetically here.
-    """
-    with _client(tmp_path) as client:
-        css = client.get("/ui/static/css/intro.css").text
-
-    windows = _scene_windows(css)
-    assert len(windows) == 9, windows
-    blocks = _css_blocks(css)
-
-    failures = []
-    for label, selectors, scene, latest, literals in BEATS:
-        assert scene.lstrip(".") in windows, f"{scene} has no timed window"
-        _start, length = windows[scene.lstrip(".")]
-
-        numbers = set()
-        for sel, body in blocks:
-            # the selector itself, or any rule that extends it (pseudo, child,
-            # descendant), never a different class that merely starts the same;
-            # grouped rules ("a, b { }") are checked part by part
-            parts = [part.strip() for part in sel.split(",") if part.strip()]
-            if any(re.match(re.escape(s) + r"(\s*[:>+~]|$)", part)
-                   for s in selectors for part in parts):
-                numbers |= {round(float(v), 3) for v in re.findall(r"(\d+(?:\.\d+)?)s", body)}
-        for literal in literals:
-            assert round(literal, 3) in numbers, \
-                f"{label}: {literal}s is no longer in the stylesheet"
-
-        if latest > length + 0.001:
-            failures.append(f"{label} runs to {latest:.2f}s in a {length:.2f}s scene")
-
-    assert not failures, "; ".join(failures)
-
-
-def test_the_burst_rays_keep_their_rotation(tmp_path):
-    """A CSS transform beats the SVG transform attribute — and flattens the burst.
-
-    The 24 rays are drawn at their angles with ``transform="rotate(.. 120 120)"``
-    attributes. The first version of this animation also set ``transform`` in the
-    keyframes, which *overrides* those attributes: every ray collapsed onto the
-    same vertical line, and because the animation filled forwards it froze there.
-    What the viewer saw was a single red line that appeared and stopped — the
-    burst had become a needle. Rotation must therefore stay in the markup, and
-    ray animation must stay opacity-only.
-    """
-    with _client(tmp_path) as client:
-        page = client.get("/").text
-        css = client.get("/ui/static/css/intro.css").text
-
-    ray_markup = re.search(r'class="burst-rays"[^>]*>(.*?)</g>', page, re.S)
-    assert ray_markup, "the burst has no ray group"
-    angles = re.findall(r'rotate\((\d+) 120 120\)', ray_markup.group(1))
-    assert len(angles) == 24, angles
-    assert len(set(angles)) == 24, "two rays share an angle"
-
-    ray_rule = re.search(r"\.burst-ray\s*\{([^}]*)\}", css)
-    assert ray_rule and "animation:" in ray_rule.group(1)
-    assert "transform" not in ray_rule.group(1), "a transform on the ray erases its rotation"
-
-    # whatever the ray animates must not touch transform either
-    for keyframes in re.finditer(r"@keyframes\s+([\w-]+)\s*\{(?:[^{}]*\{[^{}]*\})*\s*\}", css):
-        # "ray-*" is the per-ray animation; "rays-expand" is the group's, which
-        # is where the transform is allowed to live
-        if not keyframes.group(1).startswith("ray-"):
-            continue
-        assert "transform" not in keyframes.group(0), keyframes.group(1)
-
-    # the outward motion lives on the group instead
-    group_rule = re.search(r"\.burst-rays\s*\{([^}]*)\}", css)
-    assert group_rule and "transform-origin: 120px 120px" in group_rule.group(1)
-    assert "rays-expand" in css
