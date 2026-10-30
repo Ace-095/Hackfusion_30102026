@@ -28,6 +28,10 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/findings` | `{mode, findings: [FixtureRun, ...]}` |
 | `GET /api/matrix` | `{mode, cells: [...]}` for runs; not a full authorization matrix |
 | `GET /api/reports/{id}?format=json` | `FixtureRun`, or 404; `json` is the default |
+| `POST /api/scenario-scans` | Sync offline generic scenario scan; body `{scenario_id}`; returns `ScenarioRun` (201) |
+| `GET /api/scenario-scans/{id}` | `ScenarioRun`, or 404 |
+| `GET /api/scenario-scans/{id}/report?view=sections` | Scenario section JSON for the same stored run |
+| `GET /api/scenario-scans/{id}/report?format=html` | HTML scenario report from the same sections |
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
@@ -146,3 +150,35 @@ observations separately. The one-cell matrix is labeled `partial_fixture` and
 manual interventions/inferences are `NOT_RECORDED`, not an empty claim. Existing
 BOLA and authentication records without the relevant denial checklist are not promoted to secured endpoints.
 This is fixture-only, not a complete v3.2 report or live-evidence contract.
+
+
+## Generic offline scenario scans (checkpoint 28)
+
+`POST /api/scenario-scans` accepts exactly `{"scenario_id": "<bundled-id>"}`.
+There is no field for a target, host, URL, transcript or credentials; unknown
+scenario ids return 404 and unexpected fields return 422. The bundled ids are
+`synthetic-vulnerable`, `synthetic-secure`, `synthetic-metadata`,
+`synthetic-leaky-denial`, `synthetic-pagination-limit` and
+`synthetic-guard-block`.
+
+The response `mode` is `offline_scenario`, `transport` is
+`offline_transcript`, and `network_transport_enabled` is always `false`. Runs
+are stored in the same local SQLite file in a separate `scenario_runs` table and
+survive restarts. The response is a minimized scenario run: scope label and
+hash, accounts/roles, recipe selectors, trusted synthetic policy, setup statuses,
+hashed ownership/disclosure evidence, the ten-key read-BOLA checklist, verdict,
+reason, remediation, request counters and limitations. Raw bodies, tokens,
+transcript contents and resource identifiers are not stored.
+
+`GET /api/scenario-scans/{id}/report?view=sections` returns
+`{mode, id, run_id, sections}` where sections are `executive_summary`,
+`scope_and_accounts`, `endpoint_inventory`, `bola_evidence`, `outcome`,
+`constraints` and `limitations`. The HTML report renders the same projection, so
+verdicts and evidence do not diverge between formats. This is a
+scenario-specific report, not the complete frozen nine-section P0 report.
+
+`verified_denial` is false for a CONFIRMED disclosure because disclosure and
+denial are alternatives; CONFIRMED requires the ownership and disclosure
+prerequisites, not every checklist boolean. Stored payload/evidence hashes detect
+accidental or naive database changes and yield a generic 500; they are not
+signatures. The API remains local-only and unauthenticated: do not expose it.

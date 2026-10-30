@@ -78,13 +78,17 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 24 demo](docs/checkpoints/24-independent-validation-plan.md), and
 [checkpoint 25 demo](docs/checkpoints/25-fixture-detection-pipeline.md),
 [checkpoint 26 P0 audit](docs/checkpoints/26-p0-audit.md) and
-[checkpoint 27 generic proof-path integration](docs/checkpoints/27-generic-integration.md).
+[checkpoint 27 generic proof-path integration](docs/checkpoints/27-generic-integration.md)
+and [checkpoint 28 generic offline scan integration](docs/checkpoints/28-generic-scan-integration.md).
 
 ## Run the fixture API locally
 
 ```sh
 python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
 ```
+
+Generic offline scenarios are exposed at `POST /api/scenario-scans` with a bundled
+scenario id; see [checkpoint 28](docs/checkpoints/28-generic-scan-integration.md).
 
 In a second terminal, run `python -m canarygate.demo`. The command prints the
 fixture inventory, scan results and a local HTML report URL. The detailed

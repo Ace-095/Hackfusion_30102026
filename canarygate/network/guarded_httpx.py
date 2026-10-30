@@ -5,7 +5,6 @@ socket creation. Production network execution is disabled pending complete
 safety review; tests explicitly replace the gate using mocked network resources.
 """
 import http.client
-import hashlib
 import hmac
 import json
 import os
@@ -15,15 +14,15 @@ import socket
 import ssl
 import threading
 import time
-import weakref
 
 import httpx
 
 from canarygate.accounts.login_config import LoginConfig
+from canarygate.guard.policy import MAX_RESPONSE_BYTES
 from canarygate.guard.run_guard import RunSafetyGuard
+from canarygate.network.boundary import GuardedReadRunner, PAGINATION_METADATA_KEY
 from canarygate.scope.authorized import AuthorizedScope
 
-MAX_RESPONSE_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 4096
 TOTAL_DEADLINE_SECONDS = 10.0
 
@@ -233,7 +232,7 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                 pagination_metadata = (not callable(getheader) or any(
                     getheader(name) is not None for name in ("Link", "X-Next-Page", "Content-Range", "X-Total-Count")))
                 return httpx.Response(status_code=response.status, content=content, request=request,
-                                      extensions={"canary_pagination_metadata_present": pagination_metadata})
+                                      extensions={PAGINATION_METADATA_KEY: pagination_metadata})
             except Exception:
                 self._run_guard.halt()
                 raise ValueError("network request failed; execution halted") from None
@@ -249,18 +248,17 @@ class GuardedHTTPXTransport(httpx.BaseTransport):
                     raise ValueError("network cleanup failed; execution halted") from None
 
 
-class GuardedHTTPXRunner:
+class GuardedHTTPXRunner(GuardedReadRunner):
     """Narrow client wrapper; every request goes through GuardedHTTPXTransport."""
+    transport_label = "guarded_httpx_disabled"
+
     def __init__(self, scope: AuthorizedScope, bearer_tokens: dict[str, str], *, run_guard: RunSafetyGuard | None = None, login_config: LoginConfig | None = None):
+        super().__init__()
         self._transport = GuardedHTTPXTransport(scope, bearer_tokens, run_guard=run_guard, login_config=login_config)
         self._scope = self._transport._scope
         self._paths = frozenset(op.path for op in self._scope.operations
                                 if op.method == "GET" and op.classification == "READ_ONLY")
         self._client = httpx.Client(transport=self._transport, trust_env=False, follow_redirects=False)
-        # Ephemeral provenance only. Weak keys keep the runner from retaining raw
-        # responses; hashes are never returned, persisted, logged or used as evidence.
-        self._read_records = weakref.WeakKeyDictionary()
-        self._read_records_lock = threading.Lock()
 
     @property
     def scope(self):
@@ -284,32 +282,11 @@ class GuardedHTTPXRunner:
         if not isinstance(path, str) or path not in self._paths:
             raise ValueError("request outside scope")
         response = self._client.get(self._scope.origin + path, extensions={"canary_actor": actor})
-        with self._read_records_lock:
-            self._read_records[response] = (actor, path, response.status_code, hashlib.sha256(response.content).digest(),
-                                            response.extensions.get("canary_pagination_metadata_present"))
+        self._record_read(response, actor, path)
         return response
 
-    def verifies_recorded_read(self, response: httpx.Response, actor: str, path: str) -> bool:
-        """Check same-run GET provenance and detect post-receipt response mutation.
-
-        This is an in-process invariant, not cryptographic attestation or an
-        authorization claim. No credentials or body hashes leave this runner.
-        """
-        if not isinstance(response, httpx.Response) or not self.supports_read_path(path):
-            return False
-        with self._read_records_lock:
-            record = self._read_records.get(response)
-        if record is None or record[:3] != (actor, path, response.status_code):
-            return False
-        try:
-            request = response.request
-            return (request.method == "GET" and request.url == httpx.URL(self._scope.origin + path)
-                    and request.extensions.get("canary_actor") == actor and not request.content
-                    and len(response.content) <= MAX_RESPONSE_BYTES
-                    and hmac.compare_digest(record[3], hashlib.sha256(response.content).digest())
-                    and response.extensions.get("canary_pagination_metadata_present") is record[4])
-        except (AttributeError, RuntimeError, TypeError, ValueError):
-            return False
+    def stats(self):
+        return self._transport._run_guard.stats()
 
     def login(self, actor: str) -> httpx.Response:
         if self._transport._login is None:

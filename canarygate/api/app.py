@@ -8,10 +8,14 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from canarygate.database.scenario_store import ScenarioStore
 from canarygate.database.store import FixtureStore, default_database_path
 from canarygate.evidence.redaction import EvidenceIntegrityError
 from canarygate.offline.scan import inventory, run_fixture
 from canarygate.report.fixture import build_fixture_sections, render_fixture_report
+from canarygate.report.scenario import build_scenario_sections, render_scenario_report
+from canarygate.scan.models import (ScenarioRun, ScenarioScanRequest, ScenarioSectionReport)
+from canarygate.scan.scenarios import build_scenario, execute_offline_scenario
 from canarygate.spec.parser import MAX_SPEC_BYTES, parse_inventory
 from .schemas import (Health, Inventory, SetupResponse, FixtureRun, FindingsResponse, MatrixResponse,
                       ObservationSet, FixtureReportBundle, FixtureSectionReport, SpecInspection)
@@ -23,6 +27,10 @@ def get_store(request: Request) -> FixtureStore:
     return request.app.state.store
 
 
+def get_scenario_store(request: Request) -> ScenarioStore:
+    return request.app.state.scenario_store
+
+
 def _database_call(method, *args):
     try:
         return method(*args)
@@ -30,6 +38,15 @@ def _database_call(method, *args):
         raise HTTPException(status_code=500, detail="Stored fixture data failed integrity verification") from None
     except (sqlite3.Error, OSError, ValueError):
         raise HTTPException(status_code=500, detail="Fixture storage unavailable or invalid") from None
+
+
+def _scenario_call(method, *args):
+    try:
+        return method(*args)
+    except EvidenceIntegrityError:
+        raise HTTPException(status_code=500, detail="Stored scenario data failed integrity verification") from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(status_code=500, detail="Scenario storage unavailable or invalid") from None
 
 
 @router.get("/api/health", response_model=Health)
@@ -125,6 +142,46 @@ def matrix(store: FixtureStore = Depends(get_store)):
     return {"mode": "fixture", "cells": cells}
 
 
+@router.post("/api/scenario-scans", status_code=201, response_model=ScenarioRun)
+def start_scenario_scan(payload: ScenarioScanRequest, store: ScenarioStore = Depends(get_scenario_store)):
+    """Run one bundled synthetic offline scenario through the generic workflow."""
+    try:
+        plan = build_scenario(payload.scenario_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown offline scenario") from None
+    run = execute_offline_scenario(plan)
+    return _scenario_call(store.save, run)
+
+
+def _find_scenario(store, run_id):
+    run = _scenario_call(store.get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Scenario scan not found")
+    return run
+
+
+@router.get("/api/scenario-scans/{run_id}", response_model=ScenarioRun)
+def scenario_scan(run_id: str, store: ScenarioStore = Depends(get_scenario_store)):
+    return _find_scenario(store, run_id)
+
+
+@router.get("/api/scenario-scans/{run_id}/report", response_model=ScenarioSectionReport,
+            responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
+def scenario_report(run_id: str, format: str = "json", view: str = "run",
+                    store: ScenarioStore = Depends(get_scenario_store)):
+    run = _find_scenario(store, run_id)
+    if view not in {"run", "sections"}:
+        raise HTTPException(status_code=400, detail="View must be run or sections")
+    if format not in {"json", "html"}:
+        raise HTTPException(status_code=400, detail="Format must be json or html")
+    if format == "html":
+        return HTMLResponse(render_scenario_report(run))
+    if view == "sections":
+        return ScenarioSectionReport(mode="offline_scenario", id=run_id, run_id=run_id,
+                                     sections=build_scenario_sections(run))
+    return run
+
+
 @router.get("/api/reports/{run_id}", response_model=FixtureRun | FixtureReportBundle | FixtureSectionReport,
             responses={200: {"content": {"text/html": {"schema": {"type": "string"}}}}})
 def report(run_id: str, format: str = "json", include_observations: bool = False, view: str = "run",
@@ -149,17 +206,21 @@ def report(run_id: str, format: str = "json", include_observations: bool = False
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
-    store = FixtureStore(database_path if database_path is not None else default_database_path())
+    path = database_path if database_path is not None else default_database_path()
+    store = FixtureStore(path)
+    scenario_store = ScenarioStore(path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         store.initialize()
+        scenario_store.initialize()
         yield
 
     # Default Swagger/ReDoc CDN assets are disabled to avoid external requests.
     application = FastAPI(title="CanaryGate offline fixture API", version="0.1.0",
                           docs_url=None, redoc_url=None, lifespan=lifespan)
     application.state.store = store
+    application.state.scenario_store = scenario_store
     application.include_router(router)
     return application
 

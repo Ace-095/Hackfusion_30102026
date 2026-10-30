@@ -6,7 +6,7 @@ supported; the only accepted policy/denial contract remains synthetic.
 import httpx
 
 from canarygate.models.result import Result
-from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+from canarygate.network.boundary import GuardedReadRunner
 from canarygate.scope.loader import fixture_scope
 from canarygate.seed.recipe import Resource
 from canarygate.seed.registry import (FixtureOwnershipResult, _json, _safe_id, _valid_detail,
@@ -26,7 +26,7 @@ def empty_checklist():
 
 def _request_matches(response, actor, path, source_runner=None):
     if source_runner is not None:
-        return (type(source_runner) is GuardedHTTPXRunner
+        return (isinstance(source_runner, GuardedReadRunner)
                 and source_runner.verifies_recorded_read(response, actor, path))
     try:
         request = response.request
@@ -58,23 +58,25 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
                       remediation_key='bola' if verdict == 'CONFIRMED' else '')
 
     if not isinstance(resource, Resource) or not isinstance(ownership, FixtureOwnershipResult):
-        return result('INCONCLUSIVE', 'Fixture ownership evidence is missing')
+        return result('INCONCLUSIVE', 'Ownership evidence is missing')
     checks['private_resource'] = resource.ownership_model == 'private'
     source_runner = ownership.source_runner
     parties_valid = isinstance(actor, str) and isinstance(owner, str) and actor != owner
     fixture_identities = parties_valid and source_runner is None and {actor, owner} == {'alice', 'bob'}
     guarded_identities = False
-    if parties_valid and type(source_runner) is GuardedHTTPXRunner and is_issued_guarded_ownership(ownership, resource):
+    if parties_valid and isinstance(source_runner, GuardedReadRunner) and is_issued_guarded_ownership(ownership, resource):
         try:
             guarded_identities = (set(ownership.identity_accounts) == {actor, owner}
                                   and source_runner.has_distinct_credentials(actor, owner))
         except ValueError:
             guarded_identities = False
     checks['distinct_accounts'] = bool(fixture_identities or guarded_identities)
+    trusted_source = ('synthetic fixture policy' if source_runner is None
+                      else 'offline scenario policy')
     checks['policy_denies_access'] = (expected_access == 'owner-only'
-                                     and expected_source == 'synthetic fixture policy')
+                                     and expected_source == trusted_source)
     if not checks['private_resource'] or not checks['distinct_accounts']:
-        return result('INCONCLUSIVE', 'A distinct fixture actor and private resource are required')
+        return result('INCONCLUSIVE', 'A distinct actor and private resource are required')
     entries = [e for e in ownership.entries if e.owner in (actor, owner)]
     if (ownership.ownership_status != 'SUCCESS' or len(entries) != 2
             or {e.owner for e in entries} != {actor, owner}
@@ -119,7 +121,7 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
         return result('INCONCLUSIVE', 'Cross-account request identity or target is inconsistent')
     checks['attacker_request'] = True
     if len(response.content) > 64 * 1024:
-        return result('INCONCLUSIVE', 'Cross-account response exceeds the fixture limit')
+        return result('INCONCLUSIVE', 'Cross-account response exceeds the analysis limit')
     body = _json(response)
     if not isinstance(body, dict):
         return result('INCONCLUSIVE', 'Cross-account response body is empty or ambiguous')
@@ -128,17 +130,17 @@ def evaluate_read_bola(*, ownership, resource_type, resource, actor, owner, resp
     observed_owner = extract(body, resource.ownership_field)
     marker_matches = response.status_code == 200 and extract(body, field) == values[owner]
     checks['private_disclosure'] = bool(marker_matches and observed_id == ids[owner] and observed_owner == owner)
-    # The fixture has exactly this denial contract. Status alone is insufficient.
+    # The synthetic policy has exactly this denial contract. Status alone is insufficient.
     checks['verified_denial'] = (response.status_code == 403 and body == {'error': 'forbidden'}
                                  and values[owner] not in body['error'])
     if not checks['policy_denies_access']:
-        return result('INCONCLUSIVE', 'A reliable fixture owner-only policy is not established')
+        return result('INCONCLUSIVE', 'A reliable owner-only policy is not established')
     if checks['private_disclosure']:
-        return result('CONFIRMED', 'Verified fixture ownership and cross-user private baseline disclosure')
+        return result('CONFIRMED', 'Verified ownership and cross-user private baseline disclosure')
     if (marker_matches and (observed_id is MISSING or observed_owner is MISSING)
             and (observed_id is MISSING or observed_id == ids[owner])
             and (observed_owner is MISSING or observed_owner == owner)):
         return result('SUSPECTED', 'Private marker observed, but response identity is incomplete')
     if checks['verified_denial']:
-        return result('SAFE', 'The fixture denied the cross-user read with a checked denial body')
+        return result('SAFE', 'The endpoint denied the cross-user read with a checked denial body')
     return result('INCONCLUSIVE', 'No verified private disclosure or checked denial was established')

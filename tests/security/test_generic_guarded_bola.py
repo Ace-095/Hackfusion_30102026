@@ -103,7 +103,7 @@ def evaluate(environment, ownership, response, resource=None, **kwargs):
     runner,original,_,_=environment
     args=dict(ownership=ownership, resource_type='records', resource=resource or original,
               actor='account-a', owner='account-b', response=response, expected_access='owner-only',
-              expected_source='synthetic fixture policy')
+              expected_source='offline scenario policy')
     args.update(kwargs)
     return evaluate_read_bola(**args)
 

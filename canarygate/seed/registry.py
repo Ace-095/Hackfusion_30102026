@@ -10,7 +10,7 @@ import re
 from canarygate.guard.safety_guard import GuardRejected
 from canarygate.models.ownership import OwnedResource
 from canarygate.offline.runner import FixtureRunner
-from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+from canarygate.network.boundary import GuardedReadRunner
 from canarygate.seed.recipe import Resource
 from canarygate.seed.extraction import MISSING, extract, valid_selector
 
@@ -147,7 +147,7 @@ def collect_guarded_ownership(runner, *, resource_type, resource, accounts, prof
     The profile controls show observed identities, not authorization. The
     separate ownership and policy/disclosure requirements still apply.
     """
-    if (type(runner) is not GuardedHTTPXRunner or not isinstance(accounts, (tuple, list))
+    if (not isinstance(runner, GuardedReadRunner) or not isinstance(accounts, (tuple, list))
             or len(accounts) != 2 or not all(isinstance(a, str) for a in accounts)):
         return FixtureOwnershipResult(reason='Two guarded accounts and profile controls are required')
     from canarygate.accounts.identity_check import observe_identity_pair
@@ -222,7 +222,7 @@ def _collect_ownership(runner, *, resource_type, resource, accounts, tokens,
                 on_discovery(actor, response, bool(candidates) if valid else None)
             if not valid:
                 return FixtureOwnershipResult(entries=_unverified(resource_type, resource.ownership_model, ids),
-                                              resource_status='FAILED', reason='Fixture resource discovery incomplete or ambiguous')
+                                              resource_status='FAILED', reason='Resource discovery incomplete or ambiguous')
             all_ids.extend(page_ids)
             own_ids.extend(candidates)
             if resource.pagination is None:
@@ -234,12 +234,12 @@ def _collect_ownership(runner, *, resource_type, resource, accounts, tokens,
                     or not re.fullmatch(r'[A-Za-z0-9_-]{1,32}', continuation)
                     or continuation in seen_tokens or page + 1 >= max_pages):
                 return FixtureOwnershipResult(entries=_unverified(resource_type, resource.ownership_model, ids),
-                                              resource_status='FAILED', reason='Fixture pagination incomplete or ambiguous')
+                                              resource_status='FAILED', reason='Pagination incomplete or ambiguous')
             seen_tokens.add(continuation)
             next_token = continuation
         if not own_ids:
             return FixtureOwnershipResult(entries=_unverified(resource_type, resource.ownership_model, ids),
-                                          resource_status='PARTIAL', reason='Fixture resource discovery incomplete or ambiguous')
+                                          resource_status='PARTIAL', reason='Resource discovery incomplete or ambiguous')
         ids[actor], lists[actor] = own_ids[0], set(all_ids)
     candidates = _unverified(resource_type, resource.ownership_model, ids)
     if ids[accounts[0]] == ids[accounts[1]]:

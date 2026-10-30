@@ -692,6 +692,35 @@ made about arbitrary live data. No independent lab was run, no live execution
 was enabled, and VAmPI/crAPI blockers remain. Full local suite: 471 passed,
 one third-party warning. See [judge demo](checkpoints/25-fixture-detection-pipeline.md).
 
+### Checkpoint 28: generic workflow uses a recorded transport, not live HTTPX
+
+To integrate the generic proof path without enabling production networking,
+Checkpoint 28 adds a bounded `OfflineTranscript` and `OfflineGuardedRunner`.
+Recorded responses are released only after the shared `RunSafetyGuard` authorizes
+the exact actor, method, URL and budget; there is no socket, DNS, redirect,
+retry, or credential header. The orchestrator is transport-agnostic and is also
+tested with the disabled guarded HTTPX runner, but only recorded-transcript runs
+satisfy the persistence model.
+
+The fixture `SafetyGuard` and guarded-scope preflight now share
+`canarygate.guard.policy.check_common` for prohibited methods, actor and method
+allowlists and budget semantics. Scope-specific classification, exact fixture
+queries and auth probes remain separate layers; this is one contract, not yet
+one unified guard class.
+
+Scenario evidence is a fixed, minimized schema (phase, actor/role, method, path
+template, status, allowlisted flags, hash). It deliberately omits raw bodies,
+tokens, query strings and resource identifiers. The report's `verified_denial`
+is false for a CONFIRMED disclosure because the two are alternative outcomes;
+CONFIRMED requires all ownership/disclosure prerequisites rather than every
+boolean.
+
+`POST /api/scenario-scans` exposes only six bundled synthetic scenario ids. It
+cannot accept a host, URL, transcript or credential. Repeated runs are stored in
+`scenario_runs`; payload tampering fails closed. This remains an offline
+demonstration, not live-target validation, and the full nine-section report,
+remaining P0 checks and production guard review are still outstanding.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

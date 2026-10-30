@@ -20,6 +20,8 @@ class RunSafetyGuard:
         self._halted = False
         self._server_error_streak = 0
         self._authentication_attempts = set()
+        self._blocked = 0
+        self._redirects = 0
 
     @property
     def scope(self):
@@ -38,16 +40,36 @@ class RunSafetyGuard:
             yield
 
     def authorize(self, actor, method, url):
-        return self._policy.check(actor, method, url)
+        try:
+            return self._policy.check(actor, method, url)
+        except ValueError:
+            with self._lock:
+                self._blocked += 1
+            raise
 
     def authorize_authentication(self, actor, url):
         with self._lock:
             if actor in self._authentication_attempts:
+                self._blocked += 1
                 raise ValueError("authentication already attempted in this run")
-            classification = self._policy.check(actor, "POST", url)
+            try:
+                classification = self._policy.check(actor, "POST", url)
+            except ValueError:
+                self._blocked += 1
+                raise
             if classification != "AUTHENTICATION":
+                self._blocked += 1
                 raise ValueError("not an authentication operation")
             self._authentication_attempts.add(actor)
+
+    def stats(self):
+        """Counters for honest constraint reports; never includes credentials or bodies."""
+        with self._lock:
+            return {"requests_sent": self._scope.request_budget - self._policy.remaining,
+                    "budget_remaining": self._policy.remaining,
+                    "blocked_by_guard": self._blocked,
+                    "redirects_observed": self._redirects,
+                    "halted": self._halted}
 
     def halt(self):
         with self._lock:
@@ -55,6 +77,8 @@ class RunSafetyGuard:
 
     def record_status(self, status):
         with self._lock:
+            if 300 <= status < 400:
+                self._redirects += 1
             self._server_error_streak = self._server_error_streak + 1 if status >= 500 else 0
             if self._server_error_streak >= 2 or status in (423, 429) or 300 <= status < 400:
                 self._halted = True

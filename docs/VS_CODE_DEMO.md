@@ -164,6 +164,23 @@ Checkpoint 26 adds the fixture-only nine-section JSON view and the honest P0
 audit; see `docs/checkpoints/26-p0-audit.md` and `docs/P0_ACCEPTANCE_MATRIX.md`.
 Checkpoint 27 adds the shared fixture/mocked-HTTPX ownership and oracle proof
 path, adversarial redaction tests and a JWT metadata helper; see
-`docs/checkpoints/27-generic-integration.md`. Generic runs are not persisted,
-production networking remains disabled, and none of these documents indicates
-P0 or production acceptance.
+`docs/checkpoints/27-generic-integration.md`. Checkpoint 28 connects the generic
+workflow to the application with a recorded offline transport, SQLite
+persistence and consistent JSON/HTML scenario reports; see
+`docs/checkpoints/28-generic-scan-integration.md`. Production networking remains
+disabled and none of these documents indicates P0 or production acceptance.
+
+### Checkpoint 28 offline scenario demo
+
+With the local API running as above:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/scenario-scans   -H "content-type: application/json" -d '{"scenario_id": "synthetic-vulnerable"}'
+curl -sS "http://127.0.0.1:8000/api/scenario-scans/<id>/report?view=sections"
+curl -sS "http://127.0.0.1:8000/api/scenario-scans/<id>/report?format=html"
+```
+
+Repeat with `synthetic-secure` (checked denial) and `synthetic-metadata`
+(inconclusive), plus `synthetic-pagination-limit` and `synthetic-guard-block`
+for skipped outcomes. The scenario report is local synthetic evidence, not an
+organizer-target or live scan.

@@ -9,7 +9,7 @@ import re
 from typing import Literal
 
 from canarygate.accounts.identity_check import observe_identity_pair
-from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+from canarygate.network.boundary import GuardedReadRunner
 
 MAX_LIST_ITEMS = 20
 
@@ -52,11 +52,11 @@ def _list_ids(response, actor, id_field, owner_field):
     return tuple(ids)
 
 
-def harvest_private_lists(runner: GuardedHTTPXRunner, *, actor_a: str, actor_b: str,
+def harvest_private_lists(runner: GuardedReadRunner, *, actor_a: str, actor_b: str,
                           profile_path: str, identity_field: str, list_path: str,
                           id_field: str, owner_field: str, ownership_model: str) -> HarvestObservation:
     """Observe two scoped list responses after separate account-profile controls."""
-    if (ownership_model != "private" or not isinstance(runner, GuardedHTTPXRunner)
+    if (ownership_model != "private" or not isinstance(runner, GuardedReadRunner)
             or not isinstance(list_path, str) or not runner.supports_read_path(list_path)
             or not all(isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name)
                        for name in (id_field, owner_field)) or id_field == owner_field):

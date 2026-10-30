@@ -1,15 +1,17 @@
-# CanaryGate v3.2 — P0 acceptance audit (checkpoint 27)
+# CanaryGate v3.2 — P0 acceptance audit (checkpoint 28)
 
 **Gate: NOT ACCEPTED.** This is an implementation/test audit, not a claim of
 production readiness or live validation. Tests below use synthetic fixtures,
 mocked HTTP, or in-process socketpairs; no target scanner traffic was sent to
 VAmPI, crAPI, an organizer API, or the internet. The public API can only run
-its bundled fixture. Production networking remains disabled. “Partial” means
-specific tested behavior exists, not that the frozen requirement is complete.
-Checkpoint 27 added a shared fixture/mocked-HTTPX ownership registry and oracle
-path, broader redaction regressions and a JWT metadata helper. The generic path
-is exercised by tests with fake sockets; it is **not** wired into the API,
-persistence or reports, and no live target has been contacted.
+its bundled fixture and six bundled synthetic offline scenarios. Production
+networking remains disabled. “Partial” means specific tested behavior exists,
+not that the frozen requirement is complete. Checkpoint 27 added the shared
+fixture/mocked-HTTPX ownership registry and oracle; checkpoint 28 connects that
+generic path to the application through a bounded recorded transport, SQLite
+persistence, API access and consistent JSON/HTML scenario reports. The recorded
+transport is still synthetic data, not live validation, and no live target has
+been contacted.
 The user-directed `docs/SAFETY_ADDENDUM.md` overrides the recipe target and
 classification/DNS details in the frozen document.
 
@@ -21,7 +23,8 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | Label | What it means here |
 |---|---|
 | Fixture | In-process `FixtureRunner`/`FixtureTarget`; no socket is created. Used by R1/R2/R4/R5/R6/R7/R9/R10 and all persisted-report tests. |
-| Mocked HTTP | Disabled `GuardedHTTPXTransport` with fake HTTP/TLS/socket objects; DNS functions fail the test if called. Used by R3/R5/C1–C3/recipe/adversarial-17–21 and the generic proof-path tests. |
+| Mocked HTTP | Disabled `GuardedHTTPXTransport` with fake HTTP/TLS/socket objects; DNS functions fail the test if called. Used by R3/R5/C1–C3/recipe/adversarial-17–21 and the transport-reuse test. |
+| Recorded offline | `OfflineGuardedRunner` releases bounded synthetic transcript responses after `RunSafetyGuard`; no sockets exist. Used by the scenario API/persistence/report tests. |
 | Real networking | **None.** No cited test opens a live connection, resolves a public name, scans VAmPI/crAPI or contacts an organizer target. |
 
 ## Implementation index
@@ -29,17 +32,17 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 | Area | Primary source files | Test type |
 |---|---|---|
 | R1 inventory / R2 access provenance | `canarygate/spec/parser.py`, `canarygate/offline/scan.py` | Fixture; parser unit inputs |
-| R3 accounts/roles/login | `canarygate/accounts/*`, `canarygate/offline/target.py`, `canarygate/network/guarded_httpx.py` | Fixture; mocked HTTP for the guarded prototype |
+| R3 accounts/roles/login | `canarygate/accounts/*`, `canarygate/offline/target.py`, `canarygate/network/{guarded_httpx,boundary}.py`, `canarygate/scan/offline.py` | Fixture; mocked HTTP; recorded offline pre-provisioned synthetic credentials |
 | R4 authentication | `canarygate/offline/auth_checks.py`, `canarygate/oracles/authentication.py` | Fixture; decode-only unit tests |
-| R5 read-BOLA | `canarygate/seed/registry.py`, `canarygate/oracles/read_bola.py`, `canarygate/seed/{discovery,ownership,extraction,recipe}.py` | Fixture; mocked HTTP (shared oracle) |
+| R5 read-BOLA | `canarygate/seed/registry.py`, `canarygate/oracles/read_bola.py`, `canarygate/scan/{generic,offline,plan,transcript,scenarios}.py` | Fixture; mocked HTTP; recorded offline workflow |
 | R6 input validation | `canarygate/offline/input_checks.py`, `canarygate/oracles/validation.py` | Fixture |
 | R7 disclosure | `canarygate/oracles/disclosure.py`, `canarygate/evidence/redaction.py` | Fixture; redaction unit inputs |
-| R8 evidence/storage | `canarygate/evidence/{redaction,observations}.py`, `canarygate/database/store.py` | Fixture; SQLite temp files |
-| R9/R10 verdicts and remediation | `canarygate/offline/scan.py`, `canarygate/report/fixture.py` | Fixture |
-| C1–C3 guard/limits/traffic | `canarygate/guard/{safety_guard,run_guard,authorized_preflight}.py`, `canarygate/network/guarded_httpx.py`, `canarygate/scope/*` | Fixture; mocked HTTP/fake sockets |
+| R8 evidence/storage | `canarygate/evidence/{redaction,observations}.py`, `canarygate/database/{store,scenario_store}.py`, `canarygate/scan/models.py` | Fixture and recorded offline; SQLite temp files |
+| R9/R10 verdicts and remediation | `canarygate/offline/scan.py`, `canarygate/report/{fixture,scenario}.py` | Fixture; recorded offline |
+| C1–C3 guard/limits/traffic | `canarygate/guard/{policy,safety_guard,run_guard,authorized_preflight}.py`, `canarygate/network/{boundary,guarded_httpx}.py`, `canarygate/scan/offline.py`, `canarygate/scope/*` | Fixture; mocked HTTP; recorded offline |
 | Recipe/ownership/pagination | `canarygate/seed/{recipe,registry}.py` | Fixture; mocked HTTP |
-| Reports | `canarygate/report/fixture.py`, `canarygate/report/templates/fixture.html`, `canarygate/api/{app,schemas}.py` | Fixture; API `TestClient` |
-| End-to-end | `canarygate/offline/scan.py`, `canarygate/api/app.py`, `canarygate/database/store.py` | Fixture; API `TestClient`; sockets/DNS blocked |
+| Reports | `canarygate/report/{fixture,scenario}.py`, `canarygate/report/templates/{fixture,scenario}.html`, `canarygate/api/{app,schemas}.py` | Fixture and recorded offline; API `TestClient` |
+| End-to-end | `canarygate/offline/scan.py`, `canarygate/scan/{generic,scenarios}.py`, `canarygate/api/app.py`, `canarygate/database/{store,scenario_store}.py` | Fixture and recorded offline; API `TestClient`; sockets/DNS blocked |
 
 
 ## Frozen section 4 / traceability requirements
@@ -48,17 +51,17 @@ is not proof of broader coverage. Run all with `.venv/bin/python tools/run_ci_te
 |---|---|---|
 | R1 OpenAPI inventory | Partial | `spec/parser.py`; `tests/unit/test_spec_parser.py::test_security_inheritance_and_overrides`, `test_local_reference_resolution_and_parameter_override`, `test_unsafe_or_unresolved_references_are_rejected`; inspection endpoint is in-memory (`test_spec_inspection.py`). Subset parser, not full OpenAPI semantic validation; uploaded document cannot drive a scan. |
 | R2 expected access and provenance | Partial | Inventory records public/authenticated from OpenAPI, not object/role policy (`test_security_inheritance_and_overrides`). Owner-only source is a trusted synthetic fixture policy; general policy ingestion/confirmation and inferred-rule workflow absent. |
-| R3 accounts and roles/login | Partial | Bundled two-account simulated login; `test_offline_scan.py::test_full_fixture_api_pipeline_cannot_open_network`. The disabled guarded HTTPX prototype tests exact login and identity controls (`test_pinned_reader.py`). Checkpoint 27 also feeds two guarded profile controls into the shared ownership collector (`test_generic_guarded_bola.py::test_generic_guarded_runner_feeds_same_oracle`), using mocked sockets. This is not connected to the API/scan; real supplied credentials, API-key/cookie workflows, role coverage and supplied-target execution remain absent. |
+| R3 accounts and roles/login | Partial | Bundled two-account simulated fixture login; `test_offline_scan.py::test_full_fixture_api_pipeline_cannot_open_network`. The disabled guarded HTTPX prototype tests exact login and identity controls (`test_pinned_reader.py`). Checkpoint 28's offline scenario uses pre-provisioned synthetic credentials and two guarded profile controls through the API (`test_generic_scenario_scan.py`), not a login flow. Real supplied credentials, API-key/cookie workflows, role coverage and supplied-target execution remain absent. |
 | R4 authentication | Partial | AUTHN table below. Only specific fixture checks run; no generic authentication suite. |
-| R5 Read-BOLA | Partial | Fixture registry + two-part oracle (`test_verified_ownership.py`, `test_read_bola_oracle.py`), now shared with mocked guarded HTTPX (`test_generic_guarded_bola.py::test_generic_guarded_runner_feeds_same_oracle`). `test_confirmed_requires_both_evidence_parts` checks prerequisites and separate evidence; `test_verified_denial_requires_checked_body_and_expected_denial` checks a denial, not status alone. Confirmed/safe/inconclusive outcomes, forged responses, invalid provenance, unknown owner, missing baseline, shared/public resources and pagination are adversarial (`test_generic_guarded_bola.py`, `test_checkpoint27_acceptance.py`). Still fixture-policy/denial-contract specific, not orchestrated by a supplied target, not persisted for the generic path, and no BFLA. |
+| R5 Read-BOLA | Partial | Fixture registry + two-part oracle (`test_verified_ownership.py`, `test_read_bola_oracle.py`), shared with mocked HTTPX and the recorded offline workflow. Checkpoint 28 runs six scenarios through `POST /api/scenario-scans` and persists/reports them (`test_generic_scenario_scan.py::test_scenario_verdicts_survive_the_application`, `test_confirmed_scan_is_explained_consistently_in_both_reports`). `test_confirmed_requires_both_evidence_parts` and `test_verified_denial_requires_checked_body_and_expected_denial` still govern evidence. The policy source and denial contract remain synthetic; there is no supplied-target operation selection, no general policy ingestion and no BFLA. |
 | R6 validation | Partial | INPUT table below. |
 | R7 disclosure | Partial | DISC table below. |
-| R8 evidence/redaction/storage | Partial | `test_offline_scan.py::test_full_fixture_api_pipeline_cannot_open_network` verifies hashed fixture evidence summaries; `test_sqlite_persistence.py` covers restart/integrity. Checkpoint 27 added alternate key, nested array, header, cookie, token, error and debug-string redaction tests (`test_redaction_adversarial.py`) and an end-to-end JSON/HTML/SQLite/log sentinel test (`test_checkpoint27_redaction.py`). Raw bodies are not stored and stored evidence is narrowed to known schema fields; arbitrary live secrets, URLs, headers, logs and encodings remain unproven. Hashes are not signatures. |
-| R9 vulnerable vs secured | Partial | Fixture confirmed vs checked denial and five persisted verdicts tested in `test_generic_fixture_pipeline.py::test_all_five_verdicts_and_redacted_fixture_reports_without_network`; checked authentication denial and historical SAFE handling tested in `test_p0_acceptance.py`. No general endpoint/role coverage. |
+| R8 evidence/redaction/storage | Partial | Fixture evidence summaries, SQLite restart/integrity (`test_sqlite_persistence.py`) and the checkpoint-27 redaction regressions remain. Checkpoint 28 adds a strict scenario evidence schema (phase, actor/role, method, path template, status, allowlisted flags, hash), a separate `scenario_runs` table with payload/evidence checks, restart/tamper tests and a no-secrets assertion over JSON, HTML and SQLite bytes (`test_generic_scenario_scan.py`). Raw bodies, tokens and identifiers are not stored. Arbitrary live secrets, encodings and log sinks remain unproven; hashes are not signatures. |
+| R9 vulnerable vs secured | Partial | Fixture five persisted verdicts (`test_generic_fixture_pipeline.py`) and checkpoint-26 authentication-history checks remain. Checkpoint 28's scenario API yields CONFIRMED, SAFE, two INCONCLUSIVE cases and two SKIPPED cases (`test_scenario_verdicts_survive_the_application`), with consistent secured/skipped reporting (`test_secure_scan_reports_checked_denial_and_skipped_scan_reports_reason`). No general endpoint/role coverage or live target. |
 | R10 remediation | Partial | Findings have fixture-specific remediation strings; tests `test_auth_checks.py::test_actual_probe_responses_determine_auth_verdicts`, `test_input_disclosure.py::test_disclosure_checks_detect_observed_signatures_without_leaking_raw_details`, `test_p0_acceptance.py::test_debug_header_is_detected_without_storing_value`. No complete centralized catalog or all-check coverage. |
-| C1–C3 central guard, limits and prohibited traffic | Partial | Fixture `SafetyGuard` before mock transport; exact host/port/query, classification, budget and sequential calls tested in `test_scope_classifications.py`, `test_fixture_guard.py`. Disabled prototype `GuardedHTTPX` enforces its guard immediately before mocked TLS/socket creation, and tests pinning, quotas, halting, deadlines and no DNS in `test_pinned_reader.py`; `test_live_disabled.py` confirms production remains disabled. Checkpoint 27 made hidden pagination headers fail closed through the guarded boundary (`test_generic_guarded_bola.py::test_hidden_pagination_header_cannot_prove_list_completeness`). The fixture and prototype still have separate execution guards and are not one production boundary; resource creation is not executed and the approved-resolver flow remains unimplemented. |
+| C1–C3 central guard, limits and prohibited traffic | Partial | Fixture `SafetyGuard` and guarded `RunSafetyGuard` now both call `canarygate/guard/policy.check_common` for prohibited methods, actors/methods and budgets. Tests prove the shared call and identical violations (`test_shared_safety_policy.py`), and that prohibited methods never reach the fixture handler or recorded transcript. Exact fixture query/classification rules and validated-scope operation rules remain scope-specific layers; there is still no single unified guard class. The HTTPX transport remains disabled, no DNS/live test exists, and the approved-resolver flow is unimplemented. |
 | Recipe, ownership, pagination, setup gates | Partial | Recipe rejects `base_url`/embedded passwords (`test_scope_classifications.py::test_scope_is_sole_target_authority_and_recipe_rejects_secrets_and_base_url`). Two private lists, peer exclusions and owner reads checked in `test_verified_ownership.py`; selectors/four-page cap/termination/budget checked in `test_generic_fixture_pipeline.py`. The same collector now serves mocked guarded HTTPX, binding the evidence to the exact recipe and requester and failing closed on hidden pagination metadata (`test_generic_guarded_bola.py`). Only narrow list/selector semantics; no general known-ID/creation/registration bootstrap, roles/login are synthetic, and no endpoint orchestrates the generic path. |
-| End-to-end acceptance and independently authorized validation | Partial | Bundled OpenAPI/scope/recipe through two mock logins and SQLite JSON/HTML in `test_offline_scan.py`, `test_p0_acceptance.py`, `test_checkpoint27_acceptance.py`. The latter exercises confirmed, secured, incomplete-evidence, malformed-response, authentication-denial and pagination-limit outcomes, and checks both reports and redaction. Generic mocked HTTPX has a component-level proof path but no scanner orchestration, persistence or report integration. Real target and VAmPI/crAPI have not been scanned. |
+| End-to-end acceptance and independently authorized validation | Partial | Fixture workflows remain in `test_offline_scan.py`, `test_p0_acceptance.py`, `test_checkpoint27_acceptance.py`. Checkpoint 28 adds a generic offline workflow from validated scope/recipe/transcript through guarded reads, the shared oracle, SQLite and both reports (`test_generic_scenario_scan.py`). It uses recorded synthetic responses, not an uploaded spec or organizer target. Real target and VAmPI/crAPI have not been scanned; live readiness is not claimed. |
 
 ## Individual authentication checks (§8)
 
@@ -107,7 +110,10 @@ of the same stored, integrity-checked fixture run. The legacy default JSON and
 observation bundle remain unchanged. `test_p0_acceptance.py::test_nine_section_html_json_consistency_and_coverage`
 compares all nine JSON section values with parsed HTML for confirmed, safe,
 inconclusive and skipped fixture outcomes, with sockets/DNS blocked; the
-budget test checks a safety-blocked report. A heading is not a complete feature:
+budget test checks a safety-blocked report. Scenario runs use a separate
+seven-section projection (`executive_summary`, `scope_and_accounts`,
+`endpoint_inventory`, `bola_evidence`, `outcome`, `constraints`, `limitations`);
+it is not the full frozen nine-section contract. A heading is not a complete feature:
 
 | # / section | Status and remaining gap |
 |---|---|
@@ -149,31 +155,28 @@ Evidence type: fixtures, mocked HTTP or fake sockets; none use real networking.
 | 20 Classified destructive/unknown GET blocked | Partial | `test_scope_classifications.py::test_operation_classification_blocks_destructive_and_unknown_get_before_transport` covers fixture; prototype tests likewise, not an enabled integration. |
 | 21 No public DNS / offline network | Partial | Fixture no DNS test above; approved-resolver-based live execution not implemented. |
 
-## Checkpoint 27 generic proof-path status
+## Checkpoint 28 generic workflow status
 
 | Requirement | Status | Evidence and remaining gap |
 |---|---|---|
-| One ownership algorithm for fixture and guarded HTTPX | Partial | `collect_fixture_ownership` and `collect_guarded_ownership` share `_collect_ownership`; two profile controls precede private lists, peer exclusion and owner reads. Tests use fake HTTP/TLS/socket objects. |
-| One two-part oracle for both sources | Partial | `evaluate_read_bola` consumes either source; fixture header checks or guarded request-metadata provenance are selected explicitly. No second authorization engine. |
-| Strict confirmation prerequisites | Partial | `test_generic_guarded_bola.py::test_generic_guarded_runner_feeds_same_oracle` verifies CONFIRMED/SAFE/INCONCLUSIVE; missing/unverified baselines, shared/public models, unknown policy and malformed denials cannot confirm or become SAFE. |
-| Response provenance and mutation resistance | Partial | Guarded responses are recorded ephemerally; identity, path, status, body hash and pagination-metadata state must match. Forgery/mutation tests exist. This is an in-process invariant, not cryptographic attestation. |
-| Generic persistence and reports | Missing | Generic oracle output is not stored or rendered; only fixture runs reach SQLite/JSON/HTML. |
-| API/orchestration for generic runs | Missing | No supplied-target scan is exposed by the API; production networking remains disabled. |
-| Evidence redaction | Partial | Bounded fixture schema plus broader key/pattern redaction tested through SQLite, JSON, HTML, observations and logs. Not universal. |
-| JWT metadata | Partial | Decode-only, bounds-checked, non-authoritative metadata; crafted-token checks remain missing/SKIPPED. |
+| Orchestrator connects scope/recipe/guarded reads/ownership/oracle | Partial | `canarygate/scan/generic.py::run_generic_scan`, exercised through `POST /api/scenario-scans`. The same orchestrator runs over mocked HTTPX in `test_same_orchestrator_runs_over_mocked_httpx_boundary`; only recorded runs are persistable. |
+| One safety-policy contract at every boundary | Partial | `check_common` is called by both `SafetyGuard` and `AuthorizedPreflight`; `test_shared_safety_policy.py` proves shared violations and no-execution blocks. Scope-specific layers and separate classes remain; production execution is disabled. |
+| Persistence of generic verdicts | Partial | `scenario_runs` stores minimized, hashed runs; restart and tamper tests in `test_generic_scenario_scan.py`. No signing, no generic live-data evidence. |
+| API visibility | Partial | `POST/GET /api/scenario-scans`, `/report?view=sections`, `/report?format=html`. Only six bundled synthetic scenario ids; no user target/transcript. |
+| Consistent HTML/JSON evidence | Partial | Both derive from `build_scenario_sections`; `test_confirmed_scan_is_explained_consistently_in_both_reports` compares verdict, checklist and evidence. Seven sections, not the nine-section contract. |
+| Acceptance outcomes through the workflow | Partial | CONFIRMED, SAFE, INCONCLUSIVE (metadata and leaky denial), SKIPPED (pagination limit and guard block) in `test_scenario_verdicts_survive_the_application`. Synthetic responses only. |
+| Production/live scanning | Missing | Disabled transport, no DNS pinning execution, no organizer approval, no supplied-target scan. |
+| Remaining P0 checks | Missing | AUTHN-04a/04b/05/06/08, INPUT-05–07, full DISC coverage, role/endpoint matrix and manual-intervention capture. |
 
 ## Next blocking work
 
-1. Build a generic scan orchestrator that connects recipe/spec/scope, guarded
-   reads, ownership, the shared oracle, persistence and reports **without**
-   enabling production networking. The current generic proof path is tested at
-   component level only.
-2. Complete remaining P0 checks: crafted JWT behavior where separately
-   authorized, INPUT-05–07 with an approved JSON/string operation, broader
-   DISC/output coverage, and the role/endpoint matrix. Keep inapplicable checks
-   SKIPPED and ambiguous results INCONCLUSIVE.
-3. Reconcile the fixture `SafetyGuard` and `RunSafetyGuard` into one reviewed
-   execution boundary and complete production guard/DNS/secret review; no live
-   execution is enabled meanwhile.
-4. Only after production guard/secret review and explicit written organizer
+1. Milestone 29: remaining P0 authentication checks — crafted-token behavior
+   only where separately authorized, plus logout/API-key applicability — with
+   SKIPPED/INCONCLUSIVE instead of inferred SAFE.
+2. Milestone 30: remaining input-validation and disclosure checks, including an
+   approved JSON/string operation and broader output coverage.
+3. Milestone 31: complete the report contract — nine sections for generic runs,
+   full authorization matrix and manual-intervention/inference capture.
+4. Milestone 32: full P0 regression and acceptance audit. Do not claim P0.
+5. Only after production guard/DNS/secret review and explicit written organizer
    authorization, run supplied-target acceptance and record scope and results.

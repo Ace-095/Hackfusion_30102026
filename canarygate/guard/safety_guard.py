@@ -1,10 +1,15 @@
-"""Operation-aware guard for the fixture runner, not a live transport guard."""
+"""Operation-aware guard for the fixture runner, not a live transport guard.
+
+Shared prohibitions come from `canarygate.guard.policy` so the fixture and
+guarded-HTTPX/offline boundaries cannot drift into competing authorities.
+"""
 import httpx
 
+from canarygate.guard.policy import SafetyPolicyViolation, check_common
 from canarygate.scope.loader import FixtureScope, OperationClass
 
 
-class GuardRejected(ValueError):
+class GuardRejected(SafetyPolicyViolation):
     pass
 
 
@@ -37,10 +42,10 @@ class SafetyGuard:
                 or (target.port or default_port) != self._port or target.userinfo
                 or target.fragment):
             self._reject("outside fixture scope")
-        if actor not in self._accounts:
-            self._reject("unauthorized actor")
-        if method == "DELETE" or method not in self._methods:
-            self._reject("method blocked")
+        try:
+            check_common(actor, method, self._accounts, self._methods, self.remaining)
+        except SafetyPolicyViolation as exc:
+            self._reject(str(exc))
         # Compare raw path and the exact raw query: no URL-decoding, parameter
         # rewriting, arbitrary query values, or bare '?' can widen the scope.
         try:

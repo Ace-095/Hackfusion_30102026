@@ -8,7 +8,7 @@ import json
 import re
 from typing import Literal
 
-from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+from canarygate.network.boundary import GuardedReadRunner
 from canarygate.seed.discovery import harvest_private_lists
 
 
@@ -58,7 +58,7 @@ def _baseline(response, actor, expected_id, id_field, owner_field, private_field
     return private
 
 
-def observe_owner_baselines(runner: GuardedHTTPXRunner, *, actor_a: str, actor_b: str,
+def observe_owner_baselines(runner: GuardedReadRunner, *, actor_a: str, actor_b: str,
                             profile_path: str, identity_field: str, list_path: str,
                             detail_template: str, id_field: str, owner_field: str,
                             private_field: str, ownership_model: str) -> OwnerBaselineObservation:

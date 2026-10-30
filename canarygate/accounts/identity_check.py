@@ -9,7 +9,7 @@ import json
 import re
 from typing import Literal
 
-from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+from canarygate.network.boundary import GuardedReadRunner
 
 
 @dataclass(frozen=True)
@@ -19,9 +19,9 @@ class IdentityObservation:
     reason: str
 
 
-def observe_identity(runner: GuardedHTTPXRunner, *, actor: str, path: str, identity_field: str) -> IdentityObservation:
+def observe_identity(runner: GuardedReadRunner, *, actor: str, path: str, identity_field: str) -> IdentityObservation:
     """Observe one explicitly declared profile field; never return response data."""
-    if (not isinstance(runner, GuardedHTTPXRunner) or not isinstance(actor, str)
+    if (not isinstance(runner, GuardedReadRunner) or not isinstance(actor, str)
             or not isinstance(path, str) or not isinstance(identity_field, str)
             or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", identity_field)
             or actor not in {item.account for item in runner.scope.accounts}
@@ -67,11 +67,11 @@ class IdentityPairObservation:
     reason: str
 
 
-def observe_identity_pair(runner: GuardedHTTPXRunner, *, actor_a: str, actor_b: str,
+def observe_identity_pair(runner: GuardedReadRunner, *, actor_a: str, actor_b: str,
                           path: str, identity_field: str) -> IdentityPairObservation:
     """Observe two distinct account profiles; this does not establish ownership."""
     accounts = (actor_a if isinstance(actor_a, str) else "", actor_b if isinstance(actor_b, str) else "")
-    if not isinstance(runner, GuardedHTTPXRunner) or not all(isinstance(a, str) for a in (actor_a, actor_b)):
+    if not isinstance(runner, GuardedReadRunner) or not all(isinstance(a, str) for a in (actor_a, actor_b)):
         return IdentityPairObservation(accounts, "SKIPPED", "Two scoped accounts and a guarded runner are required")
     scoped = {item.account for item in runner.scope.accounts}
     try:

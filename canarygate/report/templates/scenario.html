@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CanaryGate offline scenario report</title>
+<style>body{font:16px system-ui;max-width:980px;margin:2rem auto;padding:0 1rem;color:#18212d}pre{background:#f3f5f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{color:#18334f}.warning{background:#fff3c4;padding:1rem}.verdict{font-size:1.2rem;font-weight:700}</style>
+</head><body>
+<h1>CanaryGate offline scenario report — not live testing</h1>
+<p class="warning">Synthetic recorded responses only. No live target, socket or DNS request was made; production networking remains disabled. This is not an organizer authorization or production security assessment.</p>
+<h2>Executive summary</h2>
+<p><strong>Scenario:</strong> {{ run.scenario_id }}</p>
+<p><strong>Transport:</strong> {{ run.transport }} (network transport enabled: {{ run.network_transport_enabled }})</p>
+<p><strong>Verdict:</strong> <span class="verdict">{{ run.verdict }}</span></p>
+<p><strong>Reason:</strong> {{ run.reason }}</p>
+<p><strong>Status:</strong> {{ run.status }} · <strong>Scan ID:</strong> {{ run.id }} · <strong>Timestamp:</strong> {{ run.created_at }}</p>
+<pre>{{ json_block(sections.executive_summary) }}</pre>
+<h2>Scope and accounts</h2>
+<pre>{{ json_block(sections.scope_and_accounts) }}</pre>
+<h2>Endpoint inventory</h2>
+<pre>{{ json_block(sections.endpoint_inventory) }}</pre>
+<h2>Read-BOLA evidence and decision checklist</h2>
+<p>This report explains a CONFIRMED verdict only when the checklist records verified private ownership, both owner baselines, a guarded cross-account request, a checked response and separate private-data disclosure evidence.</p>
+<pre>{{ json_block(sections.bola_evidence) }}</pre>
+<h2>Outcome and remediation</h2>
+<pre>{{ json_block(sections.outcome) }}</pre>
+<h2>Constraints and prohibited traffic</h2>
+<pre>{{ json_block(sections.constraints) }}</pre>
+<h2>Known limitations</h2>
+<pre>{{ json_block(sections.limitations) }}</pre>
+<h2>Reproduce this offline scenario</h2>
+<p>The recorded target is local and cannot be reached over a network. This command starts a new offline scenario scan; it does not replay a live target.</p>
+<pre>{{ reproduce }}</pre>
+<p>Machine-readable sections: <code>{{ report_url }}</code></p>
+</body></html>

@@ -6,6 +6,7 @@ resolution, sequential execution, redirect handling and authentication bodies.
 """
 from threading import Lock
 
+from canarygate.guard.policy import check_common
 from canarygate.scope.authorized import AuthorizedScope
 
 
@@ -33,8 +34,7 @@ class AuthorizedPreflight:
         if not all(isinstance(item, str) for item in (actor, method, url)):
             raise ValueError("invalid request metadata")
         with self._lock:
-            if actor not in self._accounts or method in {"DELETE", "PUT", "PATCH"} or method not in self._methods:
-                raise ValueError("request outside scope")
+            check_common(actor, method, self._accounts, self._methods, self._remaining)
             classification = self._operations.get((method, url))
             if not ((classification == "READ_ONLY" and method in {"GET", "HEAD", "OPTIONS"})
                     or (classification == "AUTHENTICATION" and method == "POST")):
