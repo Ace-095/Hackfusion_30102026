@@ -1,0 +1,23 @@
+# Python and test artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/
+
+# Local configuration, credentials, generated scans and editor files
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+reports/
+scan-output/
+.vscode/
+.idea/
+.DS_Store

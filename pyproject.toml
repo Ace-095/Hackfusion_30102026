@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69,<76"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canarygate"
+version = "0.1.0"
+description = "Foundation for an evidence-based API authorization testing tool"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "pydantic==2.10.6",
+  "PyYAML==6.0.2",
+  "httpx==0.28.1",
+  "fastapi==0.115.12",
+  "uvicorn==0.34.2",
+  "Jinja2==3.1.6",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.5"]
+
+[tool.setuptools.packages.find]
+include = ["canarygate*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
