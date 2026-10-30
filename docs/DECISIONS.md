@@ -575,7 +575,8 @@ verified ownership registry, proof of privacy, evidence or a BOLA verdict. Owner
 detail baselines, independently reviewed expected policy, cross-user private
 disclosure, redaction and report integration remain necessary. The helper is not
 connected to the scanner or API. Tests use mocks only, with no external traffic.
-The full local suite passed 334 tests, one third-party warning. See
+The full local suite passed 334 tests, one third-party warning. GitHub Actions
+run `41047263116` passed Ubuntu and Windows for `eab894d`. See
 [judge demo](checkpoints/19-resource-harvest.md).
 
 ## Outstanding checkpoints
