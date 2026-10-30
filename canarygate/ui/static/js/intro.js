@@ -21,9 +21,16 @@
   var root = document.documentElement;
   root.classList.remove("no-js");
 
-  var reduceMotion = window.matchMedia
+  var reduceQuery = window.matchMedia
     ? window.matchMedia("(prefers-reduced-motion: reduce)")
     : { matches: false, addEventListener: function () {} };
+
+  /* The visitor can opt back into the motion even when the system asks for
+     reduced motion; the class is what the stylesheet keys off. */
+  var forced = false;
+  function motionAllowed() {
+    return forced || !reduceQuery.matches;
+  }
 
   var progress = document.querySelector("[data-intro-progress]");
   var countdown = document.querySelector("[data-intro-countdown]");
@@ -102,8 +109,8 @@
   }
 
   function startClock() {
-    if (reduceMotion.matches) {
-      if (countdown) countdown.textContent = "select “Enter the interface” when ready";
+    if (!motionAllowed()) {
+      if (countdown) countdown.textContent = "menu is in the bar above — or use “Open the menu”";
       if (progress) progress.style.width = "100%";
       return;
     }
@@ -240,9 +247,14 @@
      Pure decoration; hidden from assistive technology and skipped entirely
      when the visitor prefers reduced motion.                                 */
   var canvas = document.querySelector("[data-intro-canvas]");
-  var ctx = canvas && !reduceMotion.matches ? canvas.getContext("2d") : null;
+  var canvasStarted = false;
 
-  if (ctx) {
+  function initCanvas() {
+    if (canvasStarted || !canvas || !motionAllowed()) return;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    canvasStarted = true;
+
     var width = 0, height = 0;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var packets = [];
@@ -343,5 +355,25 @@
     drawFrame = window.requestAnimationFrame(draw);
   }
 
+  /* ------------------------------------------------------- play it anyway
+     Some browsers report reduced motion because of an OS setting the visitor
+     may not know about. The storyboard stays readable either way; this button
+     simply plays the sequence for people who want it.                        */
+  var playAnyway = document.querySelector("[data-intro-play-anyway]");
+  if (playAnyway) {
+    if (!reduceQuery.matches) {
+      playAnyway.hidden = true;          /* nothing to opt out of */
+    }
+    playAnyway.addEventListener("click", function () {
+      forced = true;
+      document.documentElement.classList.add("force-motion");
+      document.dispatchEvent(new CustomEvent("intro:force-motion"));
+      playAnyway.hidden = true;
+      initCanvas();
+      restart();
+    });
+  }
+
+  initCanvas();
   startClock();
 })();

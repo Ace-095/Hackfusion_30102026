@@ -655,6 +655,27 @@ All hand-written CSS; **no GSAP, no Three.js, no canvas video, no screenshots**.
 * **Ambient canvas.** Slow request lines with ripple events where they cross the
   gate. Decoration only, `aria-hidden`, skipped entirely under reduced motion.
 
+### 14.2a The sequence is never a gate
+
+The screenshot that prompted this section showed the **reduced-motion
+storyboard** — all seven scenes stacked, no motion — with nothing but a small
+"Skip intro" link. Two problems, both fixed without removing the fallback:
+
+1. **No obvious way in.** There is now a persistent top bar with direct links
+   (Dashboard · Findings · Runs · Matrix · Reports) and a primary
+   **Open the menu** control, plus a full menu in the hero foot with eight
+   routes, reachable by a skip link. None of them depend on the sequence
+   finishing, on JavaScript, or on motion being allowed.
+2. **The static layout looked broken.** The fixed header sat on top of the first
+   scene, and the scenes read as loose text. Static mode now unpins the header,
+   numbers each scene like a storyboard, and keeps the menu in reach.
+
+**Reduced motion is now an explicit, explained state.** A notice says motion is
+off and why, and offers *Play the sequence anyway*. Choosing it sets
+`html.force-motion`, which every reduced-motion rule is scoped against
+(`html:not(.force-motion) .scene`), then restarts the sequence and starts the
+canvas. The visitor keeps control in both directions.
+
 ### 14.3 Sound
 
 There is **no audio file in the repository**. The optional pulse is synthesised

@@ -143,11 +143,34 @@
 
     </div>
 
+    <div class="hero-static">
+      <p class="hero-static-text">
+        <b>Motion is off.</b> This browser asks for reduced motion, so the sequence is
+        shown as a storyboard instead. Nothing is missing — here is the way in.
+      </p>
+      <p class="hero-static-actions">
+        <button type="button" class="cta-quiet as-button" data-intro-play-anyway>
+          Play the sequence anyway
+        </button>
+      </p>
+    </div>
+
     <div class="hero-foot">
       <p class="hero-progress" data-intro-count aria-hidden="true">
         <span class="hero-bar"><span class="hero-bar-fill" data-intro-progress></span></span>
         <span class="hero-clock" data-intro-countdown>entering the interface in 21s</span>
       </p>
+      <nav class="hero-menu" id="interface-menu" aria-label="Menu">
+        <span class="hero-menu-label">Menu</span>
+        <a href="/ui/">Dashboard</a>
+        <a href="/ui/endpoints">Inventory</a>
+        <a href="/ui/findings">Findings</a>
+        <a href="/ui/scans">Runs</a>
+        <a href="/ui/matrix">Matrix</a>
+        <a href="/ui/reports">Reports</a>
+        <a href="/ui/suites">Test suites</a>
+        <a class="hero-menu-primary" href="/ui/" data-intro-enter>Enter the interface →</a>
+      </nav>
       <a class="hero-scroll" href="#argument" aria-label="Read the argument below">
         <span>keep reading</span><span class="hero-scroll-arrow" aria-hidden="true">↓</span>
       </a>

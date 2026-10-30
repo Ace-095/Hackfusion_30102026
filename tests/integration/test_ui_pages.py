@@ -787,3 +787,51 @@ def test_landing_page_can_be_replayed_from_the_interface(tmp_path):
         # The dashboard is still the dashboard: the cover did not replace it.
         assert dashboard.count("<h1") == 1
         assert "Security posture" in dashboard
+
+
+def test_landing_page_always_offers_a_direct_route_into_the_interface(tmp_path):
+    """The sequence is never a gate: there is always a menu one click away."""
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+
+        # A persistent top menu, and a prominent "Open the menu" control.
+        top = re.search(r'<nav class="cover-nav" aria-label="Go straight to the interface">'
+                        r'(.*?)</nav>', body, re.S)
+        assert top, "top menu missing"
+        top_links = re.findall(r'href="([^"]+)"', top.group(1))
+        assert len(top_links) == 5
+        assert 'class="cover-enter" href="/ui/"' in body
+        assert "Open the menu" in body
+
+        # A fuller menu in the hero foot, reachable by the skip link.
+        foot = re.search(r'<nav class="hero-menu" id="interface-menu"[^>]*>(.*?)</nav>', body, re.S)
+        assert foot, "hero menu missing"
+        foot_links = re.findall(r'href="([^"]+)"', foot.group(1))
+        assert len(foot_links) == 8
+        assert 'class="skip-to-main" href="#interface-menu"' in body
+
+        # Every route in both menus resolves.
+        for href in set(top_links + foot_links):
+            assert client.get(href, follow_redirects=False).status_code in (200, 303), href
+
+
+def test_landing_page_explains_a_static_storyboard_and_offers_to_play_it(tmp_path):
+    """Reduced motion is a supported layout, not a dead end."""
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+        assert 'class="hero-static"' in body
+        assert "Motion is off" in body
+        assert "data-intro-play-anyway" in body
+        assert "Play the sequence anyway" in body
+
+        css = client.get("/ui/static/css/intro.css").text
+        # The fallback is scoped so the visitor can opt back in...
+        assert "html:not(.force-motion) .scene" in css
+        assert "html.force-motion .hero-static" in css
+        # ...and it no longer leaves a fixed header sitting on the first scene.
+        assert "html:not(.force-motion) .cover-top" in css
+        assert "position: static" in css.split("html:not(.force-motion) .cover-top")[1][:120]
+
+        script = client.get("/ui/static/js/intro.js").text
+        assert 'classList.add("force-motion")' in script
+        assert "intro:force-motion" in script

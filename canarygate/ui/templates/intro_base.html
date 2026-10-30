@@ -11,19 +11,28 @@
   <title>CanaryGate · evidence-based API authorization testing</title>
   {#- Local assets only; no fonts, no CDN, no analytics, no tracking. -#}
   <link rel="stylesheet" href="/ui/static/css/intro.css">
-  <noscript><meta http-equiv="refresh" content="21; url=/ui/"></noscript>
+  <noscript><meta http-equiv="refresh" content="24; url=/ui/"></noscript>
 </head>
 <body class="cover">
-  <a class="cover-skip" href="/ui/" data-intro-enter>Skip intro →</a>
+  <a class="skip-to-main" href="#interface-menu">Skip to the menu</a>
 
   <canvas class="cover-canvas" data-intro-canvas aria-hidden="true"></canvas>
   <div class="cover-grid" aria-hidden="true"></div>
   <div class="cover-grain" aria-hidden="true"></div>
-  <div class="cover-sweep" aria-hidden="true"></div>
 
   <header class="cover-top">
     <span class="cover-mark" aria-hidden="true">CG</span>
-    <span class="cover-mode">fixture build · live scanning off</span>
+
+    {#- Direct entry to the interface. Always visible, always one click, and it
+        never depends on the sequence finishing. -#}
+    <nav class="cover-nav" aria-label="Go straight to the interface">
+      <a href="/ui/">Dashboard</a>
+      <a href="/ui/findings">Findings</a>
+      <a href="/ui/scans">Runs</a>
+      <a href="/ui/matrix">Matrix</a>
+      <a href="/ui/reports">Reports</a>
+    </nav>
+
     <div class="cover-tools">
       <button type="button" class="tool" data-intro-sound aria-pressed="false"
               title="Synthesised pulse, generated in this browser. No audio file is loaded.">
@@ -32,6 +41,9 @@
       <button type="button" class="tool" data-intro-replay title="Play the sequence again (R)">
         <span aria-hidden="true">↻</span> Replay
       </button>
+      <a class="cover-enter" href="/ui/" data-intro-enter>
+        Open the menu <span aria-hidden="true">→</span>
+      </a>
     </div>
   </header>
 
