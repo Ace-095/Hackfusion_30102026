@@ -196,10 +196,18 @@ def test_the_lab_makes_no_outbound_connection(lab, monkeypatch):
         assert lab.get("/records/rb/guarded", headers=auth(alice)).status_code == 403
 
 
-def test_the_scanner_package_never_references_the_lab():
+def test_the_scanner_never_imports_the_lab_package():
+    """The scanner may contain a lab *transport*, but never import the lab app.
+
+    Checkpoint 35 added `canarygate.network.targetlab`, which talks to the lab over
+    loopback HTTPS. The lab's own code (accounts, records, flaw hooks) must stay out
+    of the scanner so a scan can never be scored against in-process ground truth.
+    """
     root = Path(__file__).resolve().parents[2]
     for path in (root / "canarygate").rglob("*.py"):
-        assert "targetlab" not in path.read_text(encoding="utf-8").lower(), path
+        text = path.read_text(encoding="utf-8")
+        assert "import targetlab" not in text, path
+        assert "from targetlab" not in text, path
 
 
 def test_the_lab_has_no_outbound_http_client():

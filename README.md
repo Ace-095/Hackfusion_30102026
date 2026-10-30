@@ -105,7 +105,9 @@ the frozen nine-section P0 report at `?view=p0`, and
 untested cells; see [checkpoint 31](docs/checkpoints/31-report-and-matrix.md).
 
 A deliberately vulnerable local test API, **TargetLab**, is available for
-validation work: `.venv/bin/python -m targetlab` (loopback only, never deploy).
+validation work. CanaryGate can collect evidence from it over loopback HTTPS via
+`POST /api/lab-scans` (checkpoint 35; requires `CANARYGATE_TARGETLAB_CA`); this is
+controlled validation, not live scanning: `.venv/bin/python -m targetlab` (loopback only, never deploy).
 See [docs/TARGETLAB.md](docs/TARGETLAB.md) and
 [checkpoint 34](docs/checkpoints/34-targetlab.md). Scanning it is **not**
 implemented yet; the lab is a target, not a scanner transport.

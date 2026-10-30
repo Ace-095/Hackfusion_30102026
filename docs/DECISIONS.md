@@ -977,3 +977,31 @@ reports must say so.
 The lab's tests are classified `in_process_api` in `tools/p0_audit.py` because
 every test file must declare its environment, but TargetLab is not a P0
 capability and does not change the acceptance gate.
+
+### Checkpoint 35: a lab transport, not a loosened guard
+
+The production guard requires a pinned organizer IP over TLS, and it is disabled.
+Reaching a loopback lab therefore needed a *separate* path, not a relaxation. The
+`local_lab` mode is deliberately poorer than the competition mode: one literal
+address, one fixed route table, a test CA, and a maximum budget of 40. It cannot
+name a host, a hostname, a path outside `TARGETLAB_OPERATIONS`, or a resolver.
+
+Two existing scopes were tightened rather than extended: `competition` and
+`approved_lab` now reject loopback destinations outright, so no organizer
+configuration can accidentally become a lab scan, and no lab scan can be
+described as an organizer scan.
+
+The transport talks to the numeric address directly, so there is no hostname for
+DNS rebinding to hijack, and it pins a test certificate whose SAN is
+`IP:127.0.0.1`. `verify=False` does not appear anywhere; a wrong CA and a
+hostname mismatch both fail closed and halt the run.
+
+The evidence workflow stops at observation on purpose. Mapping these observations
+to BOLA or SCI verdicts is checkpoint 36/37 work; doing it now would tempt the
+decision engine to read the lab's known answers. The lab's
+`/lab/ground-truth` route is not even in the scanner's allow-list.
+
+One honesty cost: the suite now contains two files that really open a socket.
+They are classified `loopback_tls` in the audit, distinct from the forbidden
+`real_networking` label, and they only ever connect to `127.0.0.1` on an ephemeral
+port.

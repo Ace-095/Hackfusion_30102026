@@ -131,3 +131,15 @@ separate private-disclosure evidence), authentication, input validation and
 disclosure. SCI does not add a sixth verdict and does not relax any of them: a
 SCI `CONFIRMED` additionally requires all eight checklist flags, including that
 neither participating control already failed on its own.
+
+## 10. Additive interface: `local_lab` (checkpoint 35)
+
+- `AuthorizedScope.mode` gains `"local_lab"`. `competition` and `approved_lab`
+  keep their rules and additionally reject loopback destinations.
+- `canarygate.scope.authorized.TARGETLAB_OPERATIONS` is a fixed constant mapping
+  the only permitted method/path pairs to their classification.
+- `canarygate.network.targetlab.TargetLabTransport` / `TargetLabRunner` implement
+  the same guard contract (`RunSafetyGuard.authorize*` immediately before the
+  socket) with a pinned test CA and a literal `127.0.0.1` destination.
+- `POST /api/lab-scans` and the `lab_runs` table are new; no existing route, table
+  or model changed.

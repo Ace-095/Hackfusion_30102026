@@ -364,3 +364,44 @@ endpoint remains `untested` because no authorization claim was made.
 All interaction responses are offline synthetic data. `POST` performs no network
 request: the runner releases recorded responses only after
 `RunSafetyGuard.execution()` permits the exact actor/method/path.
+
+## TargetLab evidence scans (checkpoint 35)
+
+These routes talk to a **locally running TargetLab over TLS** and are the only
+place in the API where a socket is opened. They are not live-organizer scanning:
+the destination is pinned to `127.0.0.1`, the scope mode is `local_lab`, and
+production networking stays disabled.
+
+`POST /api/lab-scans`
+
+```json
+{"port": 8765, "request_budget": 12}
+```
+
+`port` is the loopback port TargetLab is listening on (1024–65535);
+`request_budget` is 7–40. No host, hostname, path, account or credential may be
+supplied. Requires the environment variable `CANARYGATE_TARGETLAB_CA` to point at
+the test-only certificate; without it the API answers `400` and stores nothing.
+If the lab is unreachable, or a request is refused (redirect, TLS failure, size
+cap, budget), the API answers `502` and stores nothing.
+
+The run (`LabRun`) records `transport` metadata (`destination: "127.0.0.1"`,
+`tls_verification: "pinned_test_ca_with_hostname_check"`, `redirects: "refused"`,
+`retries: "none"`, `dns: "not_used"`, `network_transport_enabled: true`,
+`production_networking: false`), seven `checks` with `{id, endpoint, actor,
+status, observation, verified, evidence, evidence_sha256}`, a `summary`,
+`constraints` (`requests_sent`, `blocked_by_guard`, `budget_remaining`, `halted`)
+and `limitations`.
+
+`observation` is descriptive, not a verdict: `allowed_owner`, `allowed_other`,
+`denied`, `unexpected_status`, `unverified`, `blocked_by_guard`. No BOLA or SCI
+verdict is produced at this checkpoint.
+
+- `GET /api/lab-scans/{run_id}` — the stored run.
+- `GET /api/lab-scans/{run_id}/report?view=sections` — executive summary, scope and
+  transport, checks, constraints, limitations.
+- `GET /api/lab-scans/{run_id}/report?format=html` — the same projection, headed
+  "Controlled validation, not live validation".
+
+Evidence is bounded to status codes and booleans. Credentials, tokens, headers
+and response bodies are never stored, returned or reported.

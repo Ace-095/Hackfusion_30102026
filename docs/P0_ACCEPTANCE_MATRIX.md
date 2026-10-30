@@ -242,7 +242,9 @@ distinguishability, redaction and API reachability.
 | Partial (gap stated) | 9 |
 | Missing | 2 — BFLA, live/organizer validation |
 | Unreachable through the application API | 0 |
-| Test files with a declared evidence class | 46 of 46 |
+| Test files with a declared evidence class | 49 of 49 |
+| Loopback-only test files (`loopback_tls`) | 2 |
+| Real-networking test files | 0 |
 | Collected tests | 760 |
 | Test files declaring real networking | 0 |
 
@@ -261,6 +263,12 @@ on it in the same report (`GET /profile`, AUTHN-04a). `_secured()` now excludes
 such endpoints; no verdict rule changed. Cross-component tests also prove that a
 `CONFIRMED` authorization finding reaches a red matrix cell, and that every red
 cell is backed by a `CONFIRMED` finding in a contributing run.
+
+Checkpoint 35 adds the isolated TargetLab transport (`local_lab` mode, literal
+`127.0.0.1`, pinned test CA, no DNS, no redirects, no retries) and
+`POST /api/lab-scans`. It changes no P0 requirement and no verdict: the lab run
+records observations, not findings. Suite total is 815 with 49 classified files,
+two of which open loopback-only sockets under the new `loopback_tls` label.
 
 **Gate unchanged: NOT ACCEPTED for complete frozen P0.** The offline subset,
 now including SCI, is accepted with documented limitations; live validation and

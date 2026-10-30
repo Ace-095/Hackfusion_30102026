@@ -32,6 +32,7 @@ EVIDENCE_LABELS = {
     "recorded_offline_authentication": "recorded authentication probe transcript, no sockets",
     "recorded_offline_validation": "recorded input/disclosure transcript, no sockets",
     "in_process_api": "FastAPI TestClient against a temporary SQLite file",
+    "loopback_tls": "real HTTPS server and client on 127.0.0.1 only; no external network",
     "unit": "pure function/type tests; no transport at all",
     "real_networking": "opens a real connection (must be empty for P0)",
 }
@@ -74,6 +75,8 @@ TEST_EVIDENCE = {
     "tests/integration/test_p0_report_api.py": "recorded_offline",
     "tests/integration/test_sci_scenarios.py": "recorded_offline",
     "tests/lab/test_targetlab_api.py": "in_process_api",
+    "tests/lab/test_targetlab_transport.py": "loopback_tls",
+    "tests/integration/test_targetlab_scan.py": "loopback_tls",
     "tests/security/test_sci_decisions.py": "unit",
     "tests/integration/test_read_bola_oracle.py": "fixture",
     "tests/integration/test_resource_enumeration.py": "fixture",
@@ -510,6 +513,7 @@ def run_audit() -> dict:
         "test_files": len(test_files), "collected_tests": len(node_ids),
         "api_routes_checked": sum(len(r.api_routes) for r in REQUIREMENTS),
         "real_networking_tests": [p for p, label in TEST_EVIDENCE.items() if label == "real_networking"],
+        "loopback_tests": [p for p, label in TEST_EVIDENCE.items() if label == "loopback_tls"],
     }
 
 
@@ -517,7 +521,8 @@ def render(report: dict) -> str:
     lines = [f"P0 audit: {report['requirements']} requirements, "
              f"{report['collected_tests']} collected tests, {report['test_files']} test files",
              "status: " + ", ".join(f"{k}={v}" for k, v in report["statuses"].items()),
-             f"api routes checked: {report['api_routes_checked']}", ""]
+             f"api routes checked: {report['api_routes_checked']}",
+             f"loopback-only test files: {len(report.get('loopback_tests', []))}", ""]
     lines.append(f"{'id':<4}{'status':<13}{'evidence':<32}statement")
     for row in report["rows"]:
         lines.append(f"{row['id']:<4}{row['status']:<13}{row['evidence']:<32}{row['statement']}")

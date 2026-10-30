@@ -14,6 +14,26 @@ from yaml.tokens import AliasToken, AnchorToken
 from canarygate.models.scope import ScopeConfig
 
 MAX_SCOPE_BYTES = 64 * 1024
+# The single loopback destination permitted by the local_lab mode.
+TARGETLAB_HOST = "127.0.0.1"
+# Fixed allow-list of TargetLab routes. This is a constant, never configuration:
+# a local_lab scope cannot widen beyond these exact paths. The lab's
+# /lab/ground-truth route is deliberately absent so a scanner can never read the
+# answers it is being scored against.
+TARGETLAB_OPERATIONS = {
+    ("GET", "/health"): "READ_ONLY",
+    ("GET", "/profile"): "READ_ONLY",
+    ("GET", "/admin/users"): "READ_ONLY",
+    ("GET", "/records/ra"): "READ_ONLY",
+    ("GET", "/records/rb"): "READ_ONLY",
+    ("GET", "/records/ra/secure"): "READ_ONLY",
+    ("GET", "/records/rb/secure"): "READ_ONLY",
+    ("GET", "/records/ra/guarded"): "READ_ONLY",
+    ("GET", "/records/rb/guarded"): "READ_ONLY",
+    ("GET", "/diagnostics/banner"): "READ_ONLY",
+    ("GET", "/errors/trace"): "READ_ONLY",
+    ("POST", "/login"): "AUTHENTICATION",
+}
 AUTH_PROBE_NAMES = ("missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
                     "alg_none", "api_key_missing", "api_key_invalid", "logout_reuse")
 AuthProbeName = Literal["missing", "malformed", "wrong_scheme", "jwt_sub", "jwt_role",
@@ -111,7 +131,7 @@ class AuthorizedOperation(BaseModel):
 
 class AuthorizedScope(ScopeConfig):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
-    mode: Literal["competition", "approved_lab"]
+    mode: Literal["competition", "approved_lab", "local_lab"]
     allowed_methods: tuple[str, ...] = Field(min_length=1, max_length=16)
     request_budget: int = Field(gt=0, le=100000)
     written_authorization_reference: str
@@ -184,7 +204,29 @@ class AuthorizedScope(ScopeConfig):
             literal_host = None
         if literal_host is not None and self.organizer_ip is not None and literal_host != ipaddress.ip_address(self.organizer_ip):
             raise ValueError("literal host conflicts with organizer IP")
+        if self.mode == "local_lab":
+            self._validate_local_lab()
+        else:
+            # TargetLab mode must be explicitly selected. A competition or
+            # approved-lab scope can never point at loopback, so a lab target
+            # cannot be reached by accident through another mode.
+            if self.hostname == TARGETLAB_HOST or self.organizer_ip == TARGETLAB_HOST:
+                raise ValueError("loopback destinations require local_lab mode")
         return self
+
+    def _validate_local_lab(self):
+        if self.hostname != TARGETLAB_HOST or self.organizer_ip != TARGETLAB_HOST:
+            raise ValueError("local_lab requires the exact loopback destination 127.0.0.1")
+        if self.scheme != "https":
+            raise ValueError("local_lab requires https")
+        if self.approved_resolver is not None:
+            raise ValueError("local_lab never resolves hostnames")
+        for operation in self.operations:
+            expected = TARGETLAB_OPERATIONS.get((operation.method, operation.path))
+            if expected is None:
+                raise ValueError("operation is not a declared TargetLab route")
+            if expected != operation.classification:
+                raise ValueError("TargetLab route classification does not match its declared class")
 
     @property
     def origin(self):

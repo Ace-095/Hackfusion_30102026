@@ -16,9 +16,20 @@ a test enforces that.
 ## Run it
 
 ```bash
+# plain HTTP: manual poking only
 .venv/bin/python -m targetlab --port 8765
-# targetlab: DELIBERATELY VULNERABLE test API on http://127.0.0.1:8765 (loopback only, do not deploy)
+
+# TLS: required for CanaryGate scans (checkpoint 35)
+.venv/bin/python -m targetlab --port 8765 \
+    --tls-cert tests/fixtures/tls/targetlab-cert.pem \
+    --tls-key tests/fixtures/tls/targetlab-key.pem
+# targetlab: DELIBERATELY VULNERABLE test API on https://127.0.0.1:8765 (loopback only, do not deploy)
 ```
+
+The test certificate has `subjectAltName = IP:127.0.0.1` and is signed only by
+itself; it is a public fixture, never a credential for a real service. Point
+CanaryGate at it with `CANARYGATE_TARGETLAB_CA=tests/fixtures/tls/targetlab-cert.pem`
+before calling `POST /api/lab-scans`.
 
 | Route | Behaviour |
 |---|---|
@@ -81,7 +92,7 @@ are declared, and it runs on the same machine. Reports must say so.
 
 | Checkpoint | Goal |
 |---|---|
-| 35 | A guarded transport that can reach the lab over TLS without weakening the production guard: a loopback-only scope mode, pinned certificate, no redirects, same budget and one-execution boundary. |
+| 35 | **Done.** Dedicated `local_lab` transport: literal `127.0.0.1`, pinned test CA with hostname checking, no DNS, no redirects, no retries, same `RunSafetyGuard`. See [checkpoint 35](checkpoints/35-targetlab-transport.md). |
 | 36 | Live BOLA validation: detect `/records/{id}` (CONFIRMED with verified ownership and disclosure) and reject `/records/{id}/secure` (SAFE). |
 | 37 | Live SCI validation: reproduce deny → reject → leak, verify the disclosure independently, and report CONFIRMED with an interaction explanation. |
 

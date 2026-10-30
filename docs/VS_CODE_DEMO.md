@@ -344,3 +344,41 @@ curl -s -H "Host: example.com" http://127.0.0.1:8765/health
 Then `.venv/bin/python -m pytest tests/lab/test_targetlab_api.py -q` → 19 passed.
 Say plainly: this is a target we wrote, not live validation, and the scanner
 cannot reach it yet.
+
+### Checkpoint 35 TargetLab transport demo
+
+Start the lab with TLS in one terminal:
+
+```sh
+.venv/bin/python -m targetlab --port 8765 \
+    --tls-cert tests/fixtures/tls/targetlab-cert.pem \
+    --tls-key tests/fixtures/tls/targetlab-key.pem
+```
+
+Start CanaryGate in another, with the CA configured:
+
+```sh
+export CANARYGATE_TARGETLAB_CA=tests/fixtures/tls/targetlab-cert.pem   # Windows: set ...
+.venv/bin/python -m uvicorn canarygate.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Then:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/lab-scans \
+     -H 'content-type: application/json' -d '{"port": 8765}'
+```
+
+Expected: `201` with `transport.destination = "127.0.0.1"`,
+`transport.tls_verification = "pinned_test_ca_with_hostname_check"`, seven checks
+where LAB-01…LAB-04 are `allowed_owner`, LAB-05 is `allowed_other` (the deliberate
+BOLA observation) and LAB-06/LAB-07 are `denied`, plus
+`constraints.requests_sent = 9`.
+
+Show the report: `GET /api/lab-scans/{id}/report?view=sections` and
+`?format=html`. Read the heading aloud: "Controlled validation, not live
+validation."
+
+Prove containment quickly: stop the lab and repeat the POST → `502`, and no run is
+stored. Then run
+`.venv/bin/python -m pytest tests/lab/test_targetlab_transport.py -q` (24 passed).
