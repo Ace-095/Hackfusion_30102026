@@ -655,6 +655,22 @@ summaries and guard remain in use. No BFLA, general evidence engine, live networ
 execution, or live target testing was added. Full local suite: 427 passed, one
 third-party warning. See [judge demo](checkpoints/23-read-bola-oracle.md).
 
+## Checkpoint 24 — independent validation planning only
+
+The user added separate VAmPI and crAPI validation milestones, explicitly gated
+on written organizer approval even for local instances. Added inert, target-free
+candidate mapping profiles and scenario/ground-truth plans; neither profile is
+a runtime recipe or scope and neither application is a dependency. Static review
+of pinned GitHub sources found VAmPI's global book list prevents the frozen
+peer-list-exclusion proof; its destructive GET `/createdb` is never allowed.
+crAPI's candidate owner and location fields are nested and its detail response
+does not directly match the registry's owner contract. These are readiness
+blockers, not permission to weaken ownership. Full pinned upstream OpenAPI specs
+were parsed locally for inventory only; no lab was launched or contacted. No
+independent live validation has been performed, and network execution is still
+disabled. See [validation plan](validation/README.md) and
+[judge demo](checkpoints/24-independent-validation-plan.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

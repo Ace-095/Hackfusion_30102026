@@ -155,3 +155,5 @@ For the default-deny live execution tests, see [checkpoint 21](checkpoints/21-li
 For fixture verified ownership, see [checkpoint 22](checkpoints/22-verified-ownership.md).
 
 For the two-part fixture Read-BOLA oracle, see [checkpoint 23](checkpoints/23-read-bola-oracle.md).
+
+For independent validation planning, see [checkpoint 24](checkpoints/24-independent-validation-plan.md).

@@ -74,7 +74,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md), and
 [checkpoint 21 demo](docs/checkpoints/21-live-disabled.md), and
 [checkpoint 22 demo](docs/checkpoints/22-verified-ownership.md), and
-[checkpoint 23 demo](docs/checkpoints/23-read-bola-oracle.md).
+[checkpoint 23 demo](docs/checkpoints/23-read-bola-oracle.md), and
+[checkpoint 24 demo](docs/checkpoints/24-independent-validation-plan.md).
 
 ## Run the fixture API locally
 
@@ -107,3 +108,5 @@ Do not commit credentials, private target data, generated evidence, or reports.
 The `Identity` model excludes its token from normal Pydantic serialization and
 representation, but this is not a complete redaction system: claims, arbitrary
 request/response dictionaries, logs and exceptions may still contain secrets.
+
+Independent VAmPI and crAPI validation profiles are [preparation only](docs/validation/README.md); written organizer approval is required before scanning either, even locally.
