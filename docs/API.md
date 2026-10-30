@@ -47,6 +47,14 @@ by `CANARYGATE_DB_PATH`. The fixture target is not exposed as a network service.
 | `GET /api/reports/{id}?include_observations=true` | Opt-in JSON bundle `{run, observation_set}`; default response stays `FixtureRun` |
 | `GET /api/reports/{id}?format=html` | Local Jinja2 HTML fixture report with observations; unknown formats return 400 |
 
+Every `…/report` route also accepts `view=run` (the default): it returns the stored
+run itself with 200. `?view=sections` returns the section projection, `?format=html`
+the HTML report, and `?view=p0` the frozen nine-section report where the family
+supports it. Until the integration branch the seven family report routes were
+annotated with the section model alone, so the documented default answered 500; the
+annotation now covers both shapes and no behaviour changed. See
+[FRONTEND_BACKEND_INTEGRATION.md](FRONTEND_BACKEND_INTEGRATION.md) §7.
+
 ## Specification inspection (provisional)
 
 Send the file as the **raw HTTP body**, not multipart form data. Accepted content
