@@ -397,6 +397,10 @@ without DNS, and TLS verifies the scoped hostname. It is not exposed through the
 API or used by the scanner, but **direct invocation can create real traffic**.
 Do not use it without written organizer authorization and independent review.
 
+The experimental wire implementation uses Python `http.client`, whereas the
+frozen spec calls for HTTPX. It is not a completed or approved replacement for
+the specified runner; that mismatch must be resolved before integration.
+
 No proxies, automatic redirects, cookies, retries, login, writes, arbitrary
 headers or query strings are supported. The reader uses one sequential lock and
 per-instance budget; it stops on network failures, oversized bodies, rate limits,
@@ -410,7 +414,9 @@ for live scanning, not evidence that it is complete.
 Initial 14 tests failed because the component did not exist. A subsequent TLS
 failure test exposed exception details leaking and lack of halt; both were fixed.
 Tests use mocked network sockets plus real TLS over an in-process socket pair,
-including certificate hostname rejection. No external target was contacted.
+including certificate hostname rejection. A follow-up test also caught inherited
+TLS session-key logging, which is now disabled before the handshake. No external
+target was contacted.
 Full local suite: 257 passed, one third-party warning. GitHub Actions run
 `41043336104` passed Ubuntu and Windows for `f9ee1cb`. Judge demonstration:
 [checkpoint 12](checkpoints/12-pinned-reader.md).

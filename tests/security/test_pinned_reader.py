@@ -316,3 +316,15 @@ def test_tls_setup_failure_halts_without_exposing_exception_details(mocked_wire,
     assert 'token-alice' not in str(error.value)
     with pytest.raises(ValueError, match='halted'): client.get('alice', '/items')
     assert sum(e[0] == 'connect' for e in mocked_wire[0]) == 1
+
+
+def test_tls_key_logging_is_disabled_before_handshake(mocked_wire, monkeypatch):
+    from canarygate.network import pinned_reader
+    class TLSWithKeyLog:
+        keylog_filename = '/tmp/should-not-receive-session-secrets'
+        def wrap_socket(self, connection, *, server_hostname):
+            assert self.keylog_filename is None
+            return connection
+    context = TLSWithKeyLog()
+    monkeypatch.setattr(pinned_reader.ssl, 'create_default_context', lambda: context)
+    assert reader().get('alice', '/items').status == 200

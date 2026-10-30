@@ -66,7 +66,11 @@ class PinnedReader:
                 sock = socket.socket(family, socket.SOCK_STREAM)
                 sock.settimeout(5.0)
                 sock.connect((str(self._ip), self._scope.port))
-                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self._scope.hostname)
+                context = ssl.create_default_context()
+                # CPython honors SSLKEYLOGFILE by default; never write TLS session
+                # secrets even when the process inherited that environment value.
+                context.keylog_filename = None
+                sock = context.wrap_socket(sock, server_hostname=self._scope.hostname)
                 connection = http.client.HTTPConnection(self._scope.hostname, self._scope.port, timeout=5.0)
                 connection.sock = sock
                 host = f"[{self._scope.hostname}]" if ":" in self._scope.hostname else self._scope.hostname

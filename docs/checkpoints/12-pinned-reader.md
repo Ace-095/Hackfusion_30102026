@@ -23,8 +23,9 @@ tests only. No external target or DNS resolver is contacted.
 The tests demonstrate exact classified GET-only scope checks before connecting,
 pinning to an organizer-supplied literal IP, TLS hostname verification, no
 redirect following, sequential requests, a per-instance budget, size limits,
-halts and no automatic retries. They also check bearer-token binding to named
-accounts and rejection of invalid credentials. No credentials are persisted by
+halts and no automatic retries. They also check the supplied bearer-token mapping for named accounts and
+rejection of malformed credentials; this does not verify token identity. TLS
+session-key logging is disabled before the handshake. No credentials are persisted by
 this component; returned body bytes are raw, may contain secrets and are not
 approved for report persistence.
 
