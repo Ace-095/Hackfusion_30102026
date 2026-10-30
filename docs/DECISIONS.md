@@ -634,6 +634,27 @@ its synthetic array contract, not a guarantee for arbitrary live APIs. Productio
 network execution remains disabled. Local suite: 389 passed, one third-party
 warning. See [judge demo](checkpoints/22-verified-ownership.md).
 
+## Checkpoint 23 — fixture Read-BOLA oracle
+
+The scanner's inline BOLA verdict logic is replaced by one pure fixture oracle
+using the existing `Result` and verified `OwnedResource` registry. It checks
+both owner baselines and fixture request identities, distinct unmasked private
+marker, matching cross-account private response, and the bundled owner-only
+policy. HTTP 200/ID alone, unverified ownership, unknown policy, non-private
+resources, ambiguous bodies and identity mismatch are inconclusive; the scanner
+skips if prerequisites prevent a probe. SAFE requires the exact checked fixture
+403 denial body without the marker; 403 status alone is insufficient. A
+regression test caught a denial body matching the private marker and prevents a
+false SAFE. It emits no SUSPECTED verdict at this narrow stage.
+
+New fixture reports store a boolean oracle checklist and reason. Old stored runs
+remain readable with an empty checklist instead of fabricated evidence; the
+unkeyed stored checksum is not an authenticity guarantee. This is a provisional
+API addition for the frontend collaborator. The existing redacted fixture
+summaries and guard remain in use. No BFLA, general evidence engine, live network
+execution, or live target testing was added. Full local suite: 427 passed, one
+third-party warning. See [judge demo](checkpoints/23-read-bola-oracle.md).
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

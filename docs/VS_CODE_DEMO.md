@@ -153,3 +153,5 @@ For owner-baseline observation tests, see [checkpoint 20](checkpoints/20-owner-b
 For the default-deny live execution tests, see [checkpoint 21](checkpoints/21-live-disabled.md).
 
 For fixture verified ownership, see [checkpoint 22](checkpoints/22-verified-ownership.md).
+
+For the two-part fixture Read-BOLA oracle, see [checkpoint 23](checkpoints/23-read-bola-oracle.md).

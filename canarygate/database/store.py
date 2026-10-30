@@ -90,7 +90,8 @@ class FixtureStore:
             raise EvidenceIntegrityError("stored fixture report failed integrity verification")
         try:
             parsed = json.loads(payload)
-            if not isinstance(parsed, dict) or set(parsed) != set(FixtureRun.model_fields):
+            fields = set(FixtureRun.model_fields)
+            if not isinstance(parsed, dict) or set(parsed) not in (fields, fields - {"bola_checklist"}):
                 raise ValueError("stored run fields do not match the contract")
             result = FixtureRun.model_validate(parsed).model_dump(mode="json")
             if result["id"] != run_id:

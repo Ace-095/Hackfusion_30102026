@@ -70,7 +70,10 @@ a production secret-redaction system. API contracts remain provisional.
 `FixtureRun` includes ID, time, status, actor/role, endpoint, target resource,
 verified owner, expected access and provenance, setup/readiness states, verdict,
 reason, remediation, scope/spec hashes, a captured endpoint inventory and
-fixture-only counters. `checks` contains
+fixture-only counters. `bola_checklist` is an additive boolean map recording
+the fixture oracle prerequisites and observations for each new verdict; false
+means not established. A stored pre-checkpoint run returns an empty map (not
+recorded), and the existing contracts remain provisional. `checks` contains
 per-test authentication, validation and disclosure verdicts, evidence and skip
 reasons; AUTHN-01/02/03 run only after their prerequisites and when the fixture
 scope explicitly permits them. JWT-specific checks are skipped for opaque tokens.

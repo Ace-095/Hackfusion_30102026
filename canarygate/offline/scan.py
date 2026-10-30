@@ -13,6 +13,7 @@ from .input_checks import pending_input_checks, run_input_checks
 from canarygate.evidence.observations import capture as capture_observation, seal as seal_observation
 from canarygate.seed.recipe import validate_fixture_recipe
 from canarygate.seed import registry
+from canarygate.oracles import read_bola
 from canarygate.spec.parser import parse_inventory
 
 
@@ -82,6 +83,7 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
               "evidence": {"ownership": None, "disclosure": None},
               "checks": pending_checks() + pending_input_checks(),
               "verdict": "SKIPPED", "reason": "Setup incomplete", "remediation": None,
+              "bola_checklist": read_bola.empty_checklist(),
               "scope_hash": hashlib.sha256(scope_bytes).hexdigest(),
               "spec_hash": hashlib.sha256(spec_bytes).hexdigest(),
               "inventory": fixture_inventory, "constraints": {}}
@@ -146,23 +148,21 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
             on_discovery=discovery, on_exclusion=exclusion, on_baseline=baseline)
         setup_status["resources"] = ownership.resource_status
         setup_status["ownership_verification"] = ownership.ownership_status
+        oracle_args = dict(ownership=ownership, resource_type=resource_type, resource=resource,
+                           actor=account_a.username, owner=account_b.username,
+                           expected_access=policy.expected_access, expected_source=policy.expected_source)
+        readiness = read_bola.evaluate_read_bola(**oracle_args, response=None)
+        result["bola_checklist"] = readiness.checklist
         if ownership.ownership_status != "SUCCESS":
             return skip(ownership.reason)
-        # Ownership is independent of whether a private disclosure marker exists.
         ids, baselines = ownership.ids, ownership.baselines
-        if resource.private_field in {resource.id_field, resource.ownership_field, "id", "status", "owner"}:
-            return skip("Configured disclosure field is not private", gate="bola_coverage", status="FAILED")
         owner_response, owner_body = baselines[account_b.username]
         private_value = owner_body.get(resource.private_field)
-        other_value = baselines[account_a.username][1].get(resource.private_field)
         if resource.known_owner_canary:
             update_observation(baseline_observations[account_b.username],
                                canary_matches_recipe=private_value == resource.known_owner_canary)
-        if (not isinstance(private_value, str) or not private_value or private_value == other_value
-                or any(value in private_value for value in (ids[account_a.username], ids[account_b.username]))
-                or private_value in {account_a.username, account_b.username}
-                or (resource.known_owner_canary and private_value != resource.known_owner_canary)):
-            return skip("Private owner baseline could not be verified", gate="bola_coverage", status="FAILED")
+        if not readiness.checklist["private_baseline"]:
+            return skip(readiness.verdict_reason, gate="bola_coverage", status="FAILED")
         result["target_resource"] = ids[account_b.username]
         result["verified_owner"] = account_b.username
         result["evidence"]["ownership"] = _summary(account_b.username, account_b.role, owner_response, True,
@@ -170,23 +170,18 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
         setup_status["ownership_verification"] = "SUCCESS"
         path = resource.detail.path.replace("{id}", ids[account_b.username])
         attacker_response = request(account_a, resource.detail, token=tokens[account_a.username], path=path)
-        attacker_body = _object(attacker_response)
-        disclosed = bool(attacker_body and attacker_body.get(resource.private_field) == private_value)
+        decision = read_bola.evaluate_read_bola(**oracle_args, response=attacker_response)
+        result["bola_checklist"] = decision.checklist
+        disclosed = decision.checklist["private_disclosure"]
         observe("cross_user_read", account_a, attacker_response,
                 private_data_matches_owner_baseline=disclosed)
         result["evidence"]["disclosure"] = _summary(account_a.username, account_a.role, attacker_response, disclosed,
                                                     matches_owner_private_baseline=disclosed)
         setup_status["bola_coverage"] = "SUCCESS"
         setup_status["reason"] = None
-        if policy.expected_access != "owner-only":
-            result["verdict"], result["reason"] = "INCONCLUSIVE", "Owner-only access is not established"
-        elif disclosed:
-            result["verdict"], result["reason"] = "CONFIRMED", "Verified fixture ownership and cross-user private baseline disclosure"
+        result["verdict"], result["reason"] = decision.verdict, decision.verdict_reason
+        if decision.remediation_key == "bola":
             result["remediation"] = "Enforce object-level authorization for every resource read."
-        elif attacker_response.status_code == 403:
-            result["verdict"], result["reason"] = "SAFE", "The fixture denied the cross-user read"
-        else:
-            result["verdict"], result["reason"] = "INCONCLUSIVE", "No private baseline disclosure established"
         # OpenAPI establishes authentication requirements, not ownership policy.
         auth_required = any(e["path"] == resource.detail.path and e["method"] == resource.detail.method
                             and e["expected_access"] == "authenticated" for e in fixture_inventory)

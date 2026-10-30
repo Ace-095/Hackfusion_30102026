@@ -1,7 +1,7 @@
 """Provisional frontend-facing API shapes, pending spec and team review."""
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from canarygate.models.result import Verdict
 
@@ -113,6 +113,11 @@ class FixtureRun(BaseModel):
     verdict: Verdict
     reason: str
     remediation: str | None
+    # Empty on pre-checkpoint stored records; do not infer historical evidence.
+    bola_checklist: dict[Literal["private_resource", "distinct_accounts", "ownership_verified",
+                                 "owner_baseline", "private_baseline", "attacker_request",
+                                 "response_checked", "private_disclosure", "policy_denies_access",
+                                 "verified_denial"], StrictBool] = Field(default_factory=dict)
     scope_hash: str
     spec_hash: str
     inventory: list[InventoryEndpoint]

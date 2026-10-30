@@ -73,7 +73,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 19 demo](docs/checkpoints/19-resource-harvest.md), and
 [checkpoint 20 demo](docs/checkpoints/20-owner-baselines.md), and
 [checkpoint 21 demo](docs/checkpoints/21-live-disabled.md), and
-[checkpoint 22 demo](docs/checkpoints/22-verified-ownership.md).
+[checkpoint 22 demo](docs/checkpoints/22-verified-ownership.md), and
+[checkpoint 23 demo](docs/checkpoints/23-read-bola-oracle.md).
 
 ## Run the fixture API locally
 
