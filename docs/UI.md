@@ -767,6 +767,8 @@ itself and says so.
 | `test_the_canvas_is_decoration_and_cannot_drift_from_the_css` | Canvas is `aria-hidden`, reads `--sd` instead of keeping its own schedule, guarded for a missing 2D context, skipped under reduced motion |
 | `test_the_reel_hud_reports_time_and_cut_never_a_result` | The HUD is `aria-hidden`, exposes time / cut / bar hooks, and contains no verdict vocabulary |
 | `test_every_cut_is_numbered_against_the_whole_sequence` | Nine chips, `1..9` with no duplicates, one shared denominator |
+| `test_every_beat_finishes_before_its_scene_is_cut` | Every delayed beat (burst, verdicts, rows, words, gate) ends inside the window its scene is given |
+| `test_the_burst_rays_keep_their_rotation` | The 24 rays keep distinct angles in the markup, and no CSS transform is applied to a ray |
 | `test_the_canary_holds_the_opening_long_enough_to_be_seen` | The bird's window is ≥ 2.4 s and the next cut does not start before it leaves |
 | `test_static_urls_are_fingerprinted_so_an_old_stylesheet_cannot_replay` | Every static URL carries a fingerprint; documents are `no-store`; fingerprinted assets are immutable |
 | `test_landing_page_can_be_replayed_from_the_interface` | `/ui/intro` renders, the sidebar links to it, and the dashboard is untouched |
@@ -832,6 +834,30 @@ Runtime is **15 s** — the showreel brief's length — with cuts on a 0.5 s gri
 and ~0.25 s overlaps. The runtime lives in four places (`--run`, `RUN_MS`, the
 visible countdown, the `<noscript>` refresh) and a test asserts all four agree,
 because they have drifted before.
+
+### 14.8a Two traps the verdict burst fell into
+
+Cut 6 is the busiest in the reel, and it exposed both of these. Both were
+invisible to every existing test, so each now has its own guard.
+
+**1. A CSS transform overrides the SVG transform attribute.** Each of the 24
+rays is drawn at its angle with `transform="rotate(N 120 120)"` in the markup.
+The first version also animated `transform` in the keyframes (`scaleY`), which
+*replaces* that attribute: all 24 rays collapsed onto the same vertical line,
+and with `animation-fill-mode: both` the line froze there. The viewer saw one
+red needle appear and stop, not a burst. The fix is structural — rotation stays
+in the markup, rays animate opacity only, and the outward motion moved to the
+group (`.burst-rays`, which has no attribute to fight with). Guarded by
+`test_the_burst_rays_keep_their_rotation`.
+
+**2. A beat scheduled past its own cut.** The burst was delayed 1.15 s inside a
+1.75 s scene, so it arrived with 0.6 s left and was sliced off by the cut; the
+"200" badge, the verdict, the last word punch and the gate bars were all
+overdue too. Everything is now timed to finish *inside* its window — the burst
+lands at 0.05 s and is gone by 1.50 s, the verdict dim settles at 1.65 s.
+Guarded by `test_every_beat_finishes_before_its_scene_is_cut`, which reads the
+window lengths out of the stylesheet itself, so a future retime cannot silently
+push a beat past its cut.
 
 ### 14.9 Sound still leads the picture
 
