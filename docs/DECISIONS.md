@@ -153,6 +153,8 @@ exact scope enforcement, network/DNS isolation, stop behavior and redaction.
 The local CLI and HTML report were also exercised against a running local
 backend, and a wheel was checked for the new modules and scope fixture. These
 results are not the full v3.2 acceptance suite or evidence of live-target safety.
+GitHub Actions also passed on Linux and Windows for checkpoint commit `937b33f`
+(run 41024758853).
 
 ## Outstanding checkpoints
 
