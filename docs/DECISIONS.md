@@ -411,7 +411,8 @@ Initial 14 tests failed because the component did not exist. A subsequent TLS
 failure test exposed exception details leaking and lack of halt; both were fixed.
 Tests use mocked network sockets plus real TLS over an in-process socket pair,
 including certificate hostname rejection. No external target was contacted.
-Full local suite: 257 passed, one third-party warning. Judge demonstration:
+Full local suite: 257 passed, one third-party warning. GitHub Actions run
+`41043336104` passed Ubuntu and Windows for `f9ee1cb`. Judge demonstration:
 [checkpoint 12](checkpoints/12-pinned-reader.md).
 
 ## Outstanding checkpoints
