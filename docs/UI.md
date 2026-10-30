@@ -534,3 +534,27 @@ Verified on real runs: the fixture run (5 observations + 13 executed probes)
 marks exactly one ownership event and one disclosure event, and the 9 SKIPPED
 checks produce no events at all. INCONCLUSIVE and unknown check verdicts render
 as recorded — the adapter copies the verdict, it never derives one.
+
+---
+
+## 13. Demonstration script (mapped to the UI)
+
+One confirmed Read-BOLA fixture run, seven clicks. Every step below lands on a
+page that already exists on this branch; nothing needs to be typed.
+
+| Step | Where | What the judge sees |
+| --- | --- | --- |
+| 1. Alice authenticates | `/ui/setup` | Per-account authentication state and the readiness gates — the backend's own values |
+| 2. CanaryGate discovers Bob's resource | `/ui/endpoints` | The inventory: method, expected access, provenance of that expectation |
+| 3. Alice requests Bob's resource | `/ui/scans/{id}/replay` → Play | Event cards appear in capture order: discovery, owner baseline, cross-user read |
+| 4. The server returns private information | same page, the `cross_user_read` card | Status 200, `item.owner = bob`, `private field present = yes`, and the evidence-part tag |
+| 5. Ownership and disclosure verified independently | `/ui/scans/{id}/evidence` | Two numbered proof blocks with their own hashes, anchors and checklists |
+| 6. Flight Recorder reveals the verdict | `/ui/scans/{id}/replay` → End (or `Space` and wait) | The verdict panel appears only after the final event |
+| 7. The matrix reflects the finding | `/ui/matrix` | The actor × endpoint cell for alice × `GET /items/{id}` carries the verdict; unassessed cells stay explicitly "not assessed" |
+
+Two things to say out loud while presenting:
+
+* the recorder never shows a verdict before the last event, and the page states
+  that the verdict is derived from the whole run, not from that event;
+* the evidence attached to each event is labelled with the matching rule
+  (phase, identity, timestamp), so "why is this here?" has an answer on screen.
