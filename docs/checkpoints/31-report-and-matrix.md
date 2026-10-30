@@ -163,7 +163,9 @@ hatched cells are the coverage gaps, and each row names the run that produced it
   `tests/security/test_p0_report.py`, 9 in
   `tests/integration/test_p0_report_api.py`).
 - `python -m compileall -q canarygate tests` remains clean.
-- CI: to be recorded after the checkpoint commit is pushed.
+- CI on `cc4edbb` (run `41065574034`): `tests (ubuntu-latest, 3.11)` and
+  `tests (windows-latest, 3.11)` both succeeded on the first attempt.
+- Wheel build: 99 files, including `templates/p0.html`.
 
 ## Remaining gaps
 
