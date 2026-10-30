@@ -3,7 +3,8 @@
 Status: **integrated and verified on this branch** (`arena/80050ed6-hackfusion-30102026`).
 The interface from `arena/a1fe3757-hackfusion-30102026` is served by the checkpoint-38
 backend, calls its handlers in the same process, and adds no security logic of its
-own. 1017 tests pass; the P0 audit is clean at 58 rows / 60 test files / 0 failures.
+own. 1017 tests passed at integration time (head after checkpoint 39: 1055); the P0
+audit is clean at 58 rows / 63 test files / 0 failures.
 
 | Question | Answer |
 | --- | --- |
@@ -271,7 +272,8 @@ than a behaviour change:
 
 ## 8. Testing
 
-`1017 passed` on this branch (916 before the integration). The 101 UI tests are
+`1017 passed` on this branch at integration time (916 before it; 1055 at head after
+checkpoint 39). The 101 UI tests are
 registered with an evidence class in `tools/p0_audit.py`, so the audit fails if one
 silently disappears.
 
@@ -452,7 +454,7 @@ Feature work is frozen. Each row below is a check a reviewer can repeat.
 | Check | Result | How |
 | --- | --- | --- |
 | CI on the PR head | **green on both jobs** — `tests (ubuntu-latest, 3.11)` and `tests (windows-latest, 3.11)` completed success on `a589ba0` | checks tab of PR #4 |
-| Full local suite | 1017 passed | `.venv/bin/python -m pytest tests -q` |
+| Full local suite | 1055 passed | `.venv/bin/python -m pytest tests -q` |
 | Requirement audit | 58 rows, 0 failures; 47 implemented · 9 partial · 2 missing · 0 unreachable | `.venv/bin/python tools/p0_audit.py` |
 | Clean installation | wheel built and installed into a fresh venv outside the repo; UI and API launched from `site-packages` and served every page, both static bundles and the JSON API; a form scan stored a run whose page, report and `?view=run` JSON all answered 200; a lab scan without a CA answered 400 | commands below |
 | Browser-level journey | **17/17** checks in a DOM with scripts and HTMX, against a real uvicorn server and the real TLS lab | `.venv/bin/python tools/browser_smoke.py --jsdom /tmp/browser-harness` |

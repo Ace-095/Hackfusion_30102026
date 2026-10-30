@@ -475,7 +475,7 @@ git diff --stat c36dda1 -- . ":(exclude)canarygate/ui"
 #           pyproject.toml, tools/p0_audit.py, tests/integration/test_ui_*.py
 
 # 3. The whole suite passes, backend tests included and unmodified
-python -m pytest -q          # 1017 passed
+python -m pytest -q          # 1055 passed
 python tools/p0_audit.py     # 58 rows, 0 failures
 
 # 4. The backend alone still has no UI routes

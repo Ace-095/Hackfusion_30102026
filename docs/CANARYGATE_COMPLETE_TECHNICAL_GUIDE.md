@@ -1,7 +1,7 @@
 # CanaryGate — The Complete Technical Master Guide
 
 - **Repository:** `Ace-095/Hackfusion_30102026`
-- **Document scope:** the code as it exists at commit `d9436d1` on branch `arena/aa67fa1b-hackfusion-30102026` (test suite: 916 passing tests).
+- **Document scope:** the code as it exists at commit `8202d77` on branch `arena/80050ed6-hackfusion-30102026` (test suite: 1055 passing tests).
 - **Audience:** the engineer who has to explain, debug, extend, or defend CanaryGate in front of judges — and who must never overstate what it does.
 
 ---
@@ -69,7 +69,7 @@ It will not claim production readiness, general live-target accuracy, a complete
 **Part IV — Engineering**
 - [§15 Technology stack, alternatives, and trade-offs](#15-technology-stack-alternatives-and-trade-offs)
 - [§16 Testing strategy and the evidence ladder](#16-testing-strategy-and-the-evidence-ladder)
-- [§17 Checkpoint history CP26–CP37](#17-checkpoint-history-cp26cp37)
+- [§17 Checkpoint history CP26–CP39](#17-checkpoint-history-cp26cp39)
 - [§18 Limitations: implemented, partial, planned, out of scope](#18-limitations-implemented-partial-planned-out-of-scope)
 
 **Part V — Operating and defending**
@@ -628,7 +628,7 @@ canarygate/
   models/       pydantic contracts: result, ownership, scope, evidence, matrix, …
 targetlab/      app.py, state.py, safety.py, testing.py, __main__.py
 tools/          p0_audit.py, demo.py, demo_kit.py, consistency_audit.py, run_ci_tests.py
-tests/          unit (55), integration (402), security (364), lab (95) = 916
+tests/          unit (65), integration (531), security (364), lab (95) = 1055
 ```
 
 Two facts that matter and are easy to get wrong:
@@ -800,10 +800,10 @@ Per workflow: a plan (what to check), a runner (how to talk), a transcript/model
 190 lines of FastAPI with declared flaws, a loopback-only middleware, mutable per-process state, and `/lab/ground-truth` for after-the-fact scoring. *Why in the same repository:* a scanner that cannot be validated against a known-answer target has no evidence at all; keeping the lab in-tree makes the flaw auditable and the comparison reproducible. *If removed:* no `[LOOP]` validation, and the "ground truth is not an input" claim would have nothing to be tested against.
 
 **12. `tools/` — mechanical honesty.**
-`p0_audit.py` verifies 58 requirement rows, their file/symbol/test references, evidence labels, and route reachability; `demo.py` runs the four-stage demo; `demo_kit.py` compares 16 surfaces (73 invariants); `consistency_audit.py` wraps the comparison; `run_ci_tests.py` runs the suite in CI. *Why:* a claim that is not mechanically checked rots. *If removed:* the counts in this guide would be hand-maintained and would drift.
+`p0_audit.py` verifies 58 requirement rows, their file/symbol/test references, evidence labels, and route reachability; `demo.py` runs the four-stage demo; `demo_kit.py` compares 17 surfaces (142 invariants); `consistency_audit.py` wraps the comparison; `run_ci_tests.py` runs the suite in CI. *Why:* a claim that is not mechanically checked rots. *If removed:* the counts in this guide would be hand-maintained and would drift.
 
 **13. `tests/` — regression evidence.**
-56 files, 916 tests, four directories with different jobs (see §16). *Why:* every safety property in this document has an adversarial test that tries to break it, not just a happy-path test that exercises it.
+63 files, 1055 tests, four directories with different jobs (see §16). *Why:* every safety property in this document has an adversarial test that tries to break it, not just a happy-path test that exercises it.
 
 ### 5.8.1 Consumers and blast radius, in one table
 
@@ -1034,7 +1034,7 @@ flowchart TD
 
 ### 7.5 CP36: what the loopback run actually validated
 
-`docs/checkpoints/36-targetlab-bola.md` reports the CP36 milestone (851 tests at the time; head is 916). What CP36 established, verifiable in code and tests today:
+`docs/checkpoints/36-targetlab-bola.md` reports the CP36 milestone (851 tests at the time; head is 1055). What CP36 established, verifiable in code and tests today:
 
 1. **A real HTTPS request path** with a pinned test CA and hostname checking (`network/targetlab.py`).
 2. **Ownership collection over that transport** through the *same* registry the offline paths use (`seed/registry.py::collect_guarded_ownership`), not a lab-specific copy.
@@ -1830,11 +1830,11 @@ flowchart TD
     RUN --> P0["nine-section P0<br/>?view=p0"]
     RUN --> HTML["HTML page<br/>?format=html"]
     RUN --> M["matrix rows<br/>/api/authorization-matrix"]
-    SEC --> CMP["CP38 comparison:<br/>same facts on 16 surfaces"]
+    SEC --> CMP["CP38 comparison:<br/>same facts on 17 surfaces"]
     P0 --> CMP
     HTML --> CMP
     M --> CMP
-    CMP --> J["73 invariants<br/>ALL CHECKS PASSED"]
+    CMP --> J["142 invariants<br/>ALL CHECKS PASSED"]
 ```
 
 *Figure 10 — Projection fan-out. The surfaces are not independent reports; they are four renderings of one payload, which is why they can be mechanically compared.*
@@ -1946,6 +1946,26 @@ The matrix carries `COVERAGE_STATEMENT`:
 
 When a lab run contributes rows, the statement remains true at the level of the whole matrix (offline + lab cells both exist), and the `live_target_contacted: false` field confirms the boundary. The `role` column is mostly hatched: the project does not have a role inventory, which is `D3`/`D11` again.
 
+### 14.9 The second matrix: nine account × asset combinations (CP39)
+
+Section 14.7 describes the *endpoint* matrix: rows are API operations, columns are access classes. CP39 adds a different, deliberately small matrix for the demo tenant: rows are the three requesting accounts, columns are the three private assets, so the nine cells are the nine combinations a judge can ask about. Both are projections of stored evidence; neither decides anything.
+
+| Cell | Answered by | What a verdict means there |
+|---|---|---|
+| diagonal (`mallapa` × `MKT-2026-041`) | the run's `owner_baseline` check (`LAB-BOLA-01/02`) | `SAFE` when the owner's own record came back and ownership was verified — a baseline, never a disclosure |
+| off-diagonal (`mallapa` × `BRD-2026-018`) | the run's `cross_account` check (`LAB-BOLA-03/04`) | `CONFIRMED` only with verified ownership **and** a matching private disclosure |
+| the same off-diagonal cell, secure side | `cross_account_secure` (`LAB-BOLA-05/06`) on the same run | `SAFE` only on a checked `403` |
+
+Three properties make it defensible, and all three are enforced by the pydantic contract rather than by the template:
+
+1. **Two states, not five.** A cell is `tested` or `untested`. An untested cell has no verdict, no reason, no evidence, `sources: 0` and `actual_access: "no_evidence"`; the model raises if anything else is supplied. Missing evidence therefore cannot be rendered as `SAFE`, `SKIPPED` or `INCONCLUSIVE` — those five verdicts describe a *check*, and "nothing ran" is not a check.
+2. **Every tested cell is traceable.** It carries `run_id`, `check_id`, `direction`, `status`, `endpoint`, `evidence_sha256`, `created_at`, `port` and the four booleans the label is derived from. `tools/demo_kit.py` re-opens the cited run and compares verdict, digest and status; `tools/consistency_audit.py` rebuilds the whole matrix from the database with no API and no socket.
+3. **Duplicates and staleness are reported.** The newest run wins (`sources` counts the rest, `superseded_runs` names them), and a cell whose selected run used a different loopback port than the newest run is marked `stale`. Ties on the second-precision timestamp are broken by storage order — the store's `rowid` — because ordering by UUID looked equivalent and is not.
+
+Measured at head, on a fresh database: zero runs ⇒ 9 untested; one run ⇒ 4 tested / 5 untested (2 CONFIRMED, 2 SAFE); the three `coverage_pairs` ⇒ 9 tested, 6 CONFIRMED, 3 SAFE, `duplicated_cells: 3`; a second lab instance on a different port ⇒ `stale_cells: 3`. The page (`/ui/lab/matrix`) shows the same numbers and links each cell to `/ui/lab/bola/{run_id}#{check_id}`.
+
+The reset workflow is reachable from this page because a judge who has just seen a CONFIRMED interaction asks "and does it clear?" The page states the boundary in two columns: the reset clears the lab's per-account compatibility flag, and it preserves every stored run, matrix cell, evidence hash, report and reset proof. It is a separate controlled execution, not a cleanup of the evidence on screen.
+
 
 ---
 
@@ -1975,7 +1995,7 @@ Only the technologies actually imported or configured are listed. `pyproject.tom
 ### 15.1 The three technology decisions that carry the most weight
 
 1. **Pydantic strict models everywhere.** Every run, check and report is a model with `extra="forbid"`. This is what prevents "helpful" fields from appearing in evidence, and it is why the lab SCI run could be *rejected* for claiming networking in offline mode. The cost is verbosity: adding a field means touching models, tests, projectors and docs.
-2. **Pure oracles + one transport object.** The decision layer imports nothing that can do I/O. That is why 916 tests can exercise the real decision path without a single network call in most of them, and why `[LOOP]` tests can be a small, focused subset.
+2. **Pure oracles + one transport object.** The decision layer imports nothing that can do I/O. That is why 1055 tests can exercise the real decision path without a single network call in most of them, and why `[LOOP]` tests can be a small, focused subset.
 3. **Raw socket for the lab.** Using `http.client` over a socket we wrapped means there is no hidden redirect follower, no proxy support, no connection reuse, and no TLS fallback. It also means the code is longer and less idiomatic — an accepted trade for provability.
 
 ### 15.2 What is deliberately absent from the stack
@@ -1990,11 +2010,11 @@ No ORM (SQL is four columns and trivial), no Alembic (no migrations, fresh DB pe
 
 | Directory | Files | Tests | What it is for |
 |---|---|---|---|
-| `tests/unit` | 9 | 55 | Pure contracts: oracles, parser, redaction, JWT metadata, storage |
-| `tests/integration` | 27 | 402 | Full pipelines through the API and stores; offline scenarios; lab BOLA/SCI; demo consistency |
+| `tests/unit` | 10 | 65 | Pure contracts: oracles, parser, redaction, JWT metadata, storage |
+| `tests/integration` | 33 | 531 | Full pipelines through the API and stores; offline scenarios; lab BOLA/SCI; demo consistency |
 | `tests/security` | 14 | 364 | Adversarial guard/policy/redaction tests; each tries to break a safety property |
 | `tests/lab` | 6 | 95 | TargetLab itself: API contract, transport, adversarial lab tests |
-| **Total** | **56** | **916** | |
+| **Total** | **63** | **1055** | |
 
 Collected with `.venv/bin/python -m pytest tests --collect-only -q` at head. CI runs the same suite on `ubuntu-latest` and `windows-latest` with Python 3.11 (`.github/workflows/tests.yml`).
 
@@ -2008,23 +2028,23 @@ Collected with `.venv/bin/python -m pytest tests --collect-only -q` at head. CI 
 | Recorded transcript | `tests/integration/test_sci_scenarios.py` | realistic response bytes flow through the real decision path | that the recorder captured a real server |
 | Loopback TLS | `tests/integration/test_targetlab_bola.py` | real socket, real TLS, real 403/200, real store, real report | anything about a third-party target |
 | Lab adversarial | `tests/lab/test_lab_sci_adversarial.py` | wrong CA, tampered evidence, dropped baseline, refused redirect all fail closed | general detection quality |
-| Cross-surface consistency | `tests/integration/test_demo_consistency.py` | 16 surfaces agree over 73 invariants; 7 tamper negatives detected | that the surfaces are *right*, only that they agree |
+| Cross-surface consistency | `tests/integration/test_demo_consistency.py` | 17 surfaces agree over 142 invariants; 7 tamper negatives detected | that the surfaces are *right*, only that they agree |
 | Audit | `tests/integration/test_p0_audit.py` | every requirement row has code, tests and an evidence class | that the requirement is fully met (hence `partial`) |
 
 ### 16.3 The four-level distinction you must never blur
 
-1. **Test-passing.** 916 tests pass. This proves the code does what the tests assert.
+1. **Test-passing.** 1055 tests pass. This proves the code does what the tests assert.
 2. **Implemented.** The audit marks 47 of 58 requirements implemented, with code references and tests.
-3. **Lab-validated.** Seven test files use real loopback TLS; four workflows have real-socket evidence. This proves the machinery works against a real server — one we wrote.
+3. **Lab-validated.** Ten test files use real loopback TLS; four workflows have real-socket evidence. This proves the machinery works against a real server — one we wrote.
 4. **Real-world validated.** **Zero.** No organizer-authorized target has ever been contacted. `D12` is missing.
 
 A judge who asks "is it tested?" deserves all four sentences, in that order.
 
 ### 16.4 CP36 and CP37 as test milestones (reported, then verified)
 
-- **CP36 reported 851 tests** at the time (`docs/checkpoints/36-targetlab-bola.md`). Head is 916. The CP36-specific evidence, still present: `tests/integration/test_targetlab_bola.py` and `tests/lab/test_lab_bola_*` (contract + adversarial).
+- **CP36 reported 851 tests** at the time (`docs/checkpoints/36-targetlab-bola.md`). Head is 1055. The CP36-specific evidence, still present: `tests/integration/test_targetlab_bola.py` and `tests/lab/test_lab_bola_*` (contract + adversarial).
 - **CP37 reported 903 tests.** The CP37-specific evidence: `tests/lab/test_lab_sci_contract.py`, `tests/lab/test_lab_sci_adversarial.py`, plus additions to `tests/integration/test_targetlab_sci.py`, including the single-baseline `ValueError` test and the "no second decision engine" assertion.
-- These numbers are *reported* because the code has advanced; they are not quotable as current. Current is 916, measured.
+- These numbers are *reported* because the code has advanced; they are not quotable as current. Current is 1055, measured.
 
 ### 16.5 What the adversarial tests actually attack
 
@@ -2049,23 +2069,23 @@ Representative themes (files are real; Appendix G records how this guide was ver
 6. asserts each declared route binding is actually served by the app;
 7. emits a JSON report for the demo and docs.
 
-At head it reports: **58 requirements, 47 implemented, 9 partial, 2 missing, 0 unreachable; 916 collected tests across 56 files; 17 route bindings; 7 loopback test files; 1 real-networking row (D12, missing).** `failures: []`.
+At head it reports: **58 requirements, 47 implemented, 9 partial, 2 missing, 0 unreachable; 1055 collected tests across 63 files; 17 route bindings; 10 loopback test files; 1 real-networking row (D12, missing).** `failures: []`.
 
 The audit's own limitation is worth memorizing: it proves *traceability*, not *quality*. A weak test with the right id would satisfy it. That is why the security tests are adversarial and why CP38 added cross-surface comparison on top.
 
 ### 16.7 The CP38 consistency layer
 
-`tools/demo.py` runs four stages and then `tools/demo_kit.py` compares 16 surfaces (stored run, section JSON, nine-section P0, HTML text, matrix, ground truth, constraints, transport, limitations) across two runs, plus seven negative checks in `tests/integration/test_demo_consistency.py` (five tampered report/matrix surfaces, one tampered database row, one static safety sweep). Output at head:
+`tools/demo.py` runs four stages and then `tools/demo_kit.py` compares 17 surfaces (stored run, section JSON, nine-section P0, HTML text, matrix, ground truth, constraints, transport, limitations, and since CP39 the nine-cell demo asset matrix) across two runs, plus seven negative checks in `tests/integration/test_demo_consistency.py` (five tampered report/matrix surfaces, one tampered database row, one static safety sweep). Output at head:
 
 ```
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 
 This is the closest thing the project has to an integration contract: if a projector silently drops a fact, or a template shows a different verdict than the JSON, the demo fails.
 
 ---
 
-## 17. Checkpoint history CP26–CP37
+## 17. Checkpoint history CP26–CP39
 
 The checkpoints are the engineering log. Each row gives the goal, the artifact it produced, and the significance — including the mistakes, because they are the most defensible part of the story.
 
@@ -2083,6 +2103,8 @@ The checkpoints are the engineering log. Each row gives the goal, the artifact i
 | 35 | Isolated TargetLab HTTPS transport | `network/targetlab.py` | First real socket; loopback-only, pinned CA, no redirects |
 | 36 | Real TargetLab read-BOLA | `scan/lab_bola.py`, `LAB-BOLA-01…06` | First real HTTPS finding; negative control on `/secure` |
 | 37 | Real HTTPS SCI | `scan/lab_sci.py`, reset proof | First real interaction finding; fixed the single-baseline bug |
+| 38 | Final integration | `tools/demo.py`, `tools/demo_kit.py`, `tools/p0_audit.py` | Froze features; proved every reporting surface agrees over one stored payload |
+| 39 | Demo asset matrix | `scan/lab_matrix.py`, `scan/lab_matrix_models.py`, `/api/lab-matrix`, `/ui/lab/matrix` | Projected stored checks onto the nine account × asset combinations; untested is a distinct state, never SAFE |
 
 ### 17.1 Three moments that define the project's credibility
 
@@ -2105,7 +2127,7 @@ No checkpoint was marked "validated on a live target," because none was. No chec
 ```
 requirements: 58
 statuses: implemented 47, partial 9, missing 2, unreachable 0
-test files: 56      collected tests: 916      api route bindings: 17
+test files: 63      collected tests: 1055      api route bindings: 17
 real_networking rows: D12 (missing)
 ```
 
@@ -2177,7 +2199,7 @@ On Windows, replace `.venv/bin/` with `.venv\Scripts\`. `requirements.txt` simpl
 ### 19.3 The five commands you will actually use
 
 ```sh
-# 1. full regression — expect "916 passed"
+# 1. full regression — expect "1055 passed"
 .venv/bin/python -m pytest tests -q
 
 # 2. requirement audit — expect 58 requirements, 0 failures
@@ -2219,9 +2241,9 @@ TargetLab refuses a non-loopback `--host` (exit code 2) and rejects non-loopback
 
 | Command | Success looks like | Failure looks like |
 |---|---|---|
-| `pytest tests -q` | `916 passed in ~70s` | any `FAILED`; CI annotates the first ten |
+| `pytest tests -q` | `1055 passed in ~110s` | any `FAILED`; CI annotates the first ten |
 | `p0_audit.py` | `58 requirements, 0 failures`, then counts | `ReferenceError`, dangling symbol, unclassified test file |
-| `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
+| `demo.py` | four stages, then `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` | non-zero exit, a stage disagreement, a tamper test that did not fire |
 | `consistency_audit.py` | same invariant line, rebuilt from stored evidence | `EvidenceIntegrityError`, projection mismatch |
 | `compileall -q canarygate targetlab tests tools` | silence | syntax error |
 
@@ -2374,10 +2396,10 @@ STAGE 4 — evidence and reporting
   ground truth is scored when the report is built, never before the verdict
   every surface states: controlled validation of the loopback lab, not live validation
 
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 **What the judge observes:** the same result from a clean start, with the consistency check as the exit criterion.
-**Technical point:** 16 surfaces, 73 invariants, and seven negative checks that prove the checker can fail.
+**Technical point:** 17 surfaces, 142 invariants, and seven negative checks that prove the checker can fail.
 **Say:** "One command, clean database, and it exits non-zero if any surface disagrees."
 
 ### 20.1 If something goes wrong during the demo
@@ -2438,13 +2460,13 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q7. What did you build in 16 hours, and what did you cut?**
 **Say:** "We built the guard, scope model, five workflows, two detection engines, persistence with integrity, a frozen nine-section report, a matrix, a vulnerable lab, a real loopback HTTPS transport, a P0 audit and a one-command demo. We cut BFLA, mass assignment, GraphQL, OAuth flows, CVSS and any live scanning."
 **Deeper:** Every cut is in `docs/DECISIONS.md`; the freeze at CP38 stopped new features so the remaining time went into consistency and evidence.
-**Example:** 916 tests, 58 requirement rows, 34 route operations at head.
+**Example:** 1055 tests, 58 requirement rows, 34 route operations at head.
 **Limit:** The feature list is narrow on purpose, and the narrowness is the reason the safety claims hold.
 
 **Q8. Why should a judge believe any of this?**
 **Say:** "Because every claim has a mechanism you can inspect and re-run: the demo is one command, the audit is mechanical, the evidence is hash-verified, and the answer key is scored after the verdicts."
-**Deeper:** `tools/demo.py` exits non-zero if any of 16 surfaces disagree; `tools/p0_audit.py` fails on dangling references or unclassified tests; the README tells you the exact commands.
-**Example:** `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)`.
+**Deeper:** `tools/demo.py` exits non-zero if any of 17 surfaces disagree; `tools/p0_audit.py` fails on dangling references or unclassified tests; the README tells you the exact commands.
+**Example:** `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)`.
 **Limit:** Belief should still stop at "controlled validation of our own lab." That sentence is printed on every report.
 
 ---
@@ -2483,7 +2505,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 
 **Q14. How do the report, the matrix and the HTML stay consistent?**
 **Say:** "They are projections of one stored payload, and CP38 compares them. If a projector drops or changes a fact, the demo fails."
-**Deeper:** `tools/demo_kit.py` extracts facts from the stored run, section JSON, P0 JSON, HTML text and matrix, then compares 73 invariants across 16 surfaces, including seven negative checks that prove the comparison can fail.
+**Deeper:** `tools/demo_kit.py` extracts facts from the stored run, section JSON, P0 JSON, HTML text and matrix, then compares 142 invariants across 17 surfaces, including seven negative checks that prove the comparison can fail.
 **Example:** `test_demo_consistency.py`.
 **Limit:** Agreement is not correctness — four surfaces can agree on a wrong verdict.
 
@@ -2607,7 +2629,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q33. You validated against a lab you wrote. Isn't that circular?**
 **Say:** "Yes, and we say so in every run's limitations. The lab proves the machinery — real TLS, real 403s, real markers, real storage — not the discovery ability. Independent validation needs an organizer-authorized target, which is `D12` and missing."
 **Deeper:** The circularity is mitigated, not eliminated: the oracle is unchanged from the offline path, the ground truth is scored afterwards, and the secure route is a negative control.
-**Example:** CP36 reported 851 tests at the time; head is 916.
+**Example:** CP36 reported 851 tests at the time; head is 1055.
 **Limit:** This is the most important limitation in the project. Never describe the lab as "live."
 
 **Q34. How would BOLA detection perform on a real API?**
@@ -2687,7 +2709,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 
 **Q45. What is the difference between "tests pass" and "it works"?**
 **Say:** "Tests prove the behaviors we asserted. 'Works' would require validation against a target we did not write. We have the first, not the second."
-**Deeper:** Four levels: 916 tests passing → 47 implemented requirements → seven loopback test files → zero real-world targets.
+**Deeper:** Four levels: 1055 tests passing → 47 implemented requirements → ten loopback test files → zero real-world targets.
 **Example:** `D12` missing is the fourth level.
 **Limit:** Judges should hear all four levels, in that order.
 
@@ -2730,7 +2752,7 @@ Format for each question: **Say** (the spoken answer, 2–4 sentences), **Deeper
 **Q52. Give me the one sentence you want remembered.**
 **Say:** "CanaryGate proves its machinery against a lab it wrote and refuses to claim anything beyond that; the discipline is in what it will not report."
 **Deeper:** Ten-flag BOLA checklist, both-baseline SCI, five verdicts, hash-verified evidence, ground truth as grader, two requirements visibly missing.
-**Example:** `ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)` — and the next line in every report: controlled validation, not live.
+**Example:** `ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)` — and the next line in every report: controlled validation, not live.
 **Limit:** That sentence is the ceiling, not a stepping stone to a bigger claim.
 
 
@@ -2948,7 +2970,7 @@ Every path below exists at head; the symbol is where the behavior described in t
 | `targetlab/testing.py` | `LabTlsServer`, `TARGETLAB_CERT`, `OTHER_CERT`, `free_port` | test server |
 | `tools/p0_audit.py` | `REQUIREMENTS`, `TEST_EVIDENCE`, `run_audit`, `EVIDENCE_LABELS` | mechanical audit |
 | `tools/demo.py` | four stages, `--database/--json/--keep` | one-command demo |
-| `tools/demo_kit.py` | 16 surfaces, 73 invariants, compare helpers | consistency engine |
+| `tools/demo_kit.py` | 17 surfaces, 142 invariants, compare helpers | consistency engine |
 | `tools/consistency_audit.py` | `--database`, `--json` | re-hash + re-project |
 | `tests/fixtures/tls/` | `targetlab-cert.pem`, `targetlab-key.pem`, `test-cert.pem`, `test-key.pem` | public test certs |
 
@@ -3027,7 +3049,7 @@ Idea: a 3xx is a refusal and halts; nothing is retried; the socket uses a numeri
 Idea: 64 KiB cap, duplicate-key rejection, object-only decisions, depth/node limits. Why here: parser differentials and memory abuse are removed. Point at: `MAX_RESPONSE_BYTES`, `_unique_object`, `disclosure.py`.
 
 **17. Pure oracles, I/O at the edges.**
-Idea: decisions are pure functions of evidence objects. Why here: 916 tests mostly need no network, and a verdict cannot be nudged by a side effect. Point at: `oracles/*`.
+Idea: decisions are pure functions of evidence objects. Why here: 1055 tests mostly need no network, and a verdict cannot be nudged by a side effect. Point at: `oracles/*`.
 
 **18. Redaction before hashing before storage.**
 Idea: minimize, canonicalize, hash, then insert. Why here: the hash covers exactly what can be shown. Point at: `evidence/redaction.py`, stores.
@@ -3078,7 +3100,7 @@ $ git status --porcelain
 
 ```
 $ .venv/bin/python -m pytest tests --collect-only -q
-916 tests collected
+1055 tests collected
     unit 55 | integration 402 | security 364 | lab 95
 ```
 
@@ -3087,7 +3109,7 @@ $ .venv/bin/python -m pytest tests --collect-only -q
 ```
 $ .venv/bin/python tools/p0_audit.py --json /tmp/audit.json
 58 requirements | implemented 47 | partial 9 | missing 2 | unreachable 0
-916 collected tests | 56 test files | api_routes_checked 17 (bindings)
+1055 collected tests | 56 test files | api_routes_checked 17 (bindings)
 failures: []
 ```
 
@@ -3140,7 +3162,7 @@ STAGE 4 — evidence and reporting
   ground truth is scored when the report is built, never before the verdict
   every surface states: controlled validation of the loopback lab, not live validation
 
-ALL CONSISTENCY CHECKS PASSED (73 invariants over 16 surfaces)
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
 ```
 
 Two details in that transcript are worth noticing. LAB-BOLA-01/02 return `200` and are still `SAFE`: a successful cross-account *request* is not a finding until the body is shown to carry the owner's private marker, and for those checks it does not. And the request counts belong to three separate stored runs, not one: read-BOLA 18 of 20, SCI 11 of 16, reset 8 of 16. Stage 2 is a projection of the same read-BOLA run (its two `LAB-BOLA-05/06` checks), not a second scan — which is exactly why the demo can print 18/20 twice for one run id.
@@ -3166,7 +3188,42 @@ lab-scans default -> 500 | sections -> 200 | p0 -> 400
 
 ### G.9 Scope of the edits
 
-Only `docs/CANARYGATE_COMPLETE_TECHNICAL_GUIDE.md` was created. No source file, test, schema, scope, fixture, template, or checkpoint document was changed. Nothing in this guide proposes a feature: the only "fixes" named are defects observed in code that this documentation task is not permitted to change.
+The guide itself was created in one task, and only
+`docs/CANARYGATE_COMPLETE_TECHNICAL_GUIDE.md` was written then: no source file,
+test, schema, scope, fixture, template, or checkpoint document was changed.
+Nothing in the guide proposes a feature; the only "fixes" named are defects
+observed in code that that task was not permitted to change.
+
+### G.10 Refresh at CP39
+
+The numbers in this document were re-measured after checkpoint 39, because the
+guide is only useful if it matches head. Commands and observed output:
+
+```
+$ git log --oneline -1
+8202d77 CP39: assemble the demo asset matrix from stored TargetLab runs
+$ .venv/bin/python -m pytest tests -q
+1055 passed, 1 warning in 109.27s
+$ .venv/bin/python tools/p0_audit.py
+P0 audit: 58 requirements, 1055 collected tests, 63 test files
+status: implemented=47, partial=9, missing=2, unreachable=0
+loopback-only test files: 10
+api routes checked: 17
+no dangling references, unclassified tests or unreachable API claims
+$ .venv/bin/python tools/demo.py
+ALL CONSISTENCY CHECKS PASSED (142 invariants over 17 surfaces)
+$ .venv/bin/python tools/browser_smoke.py --jsdom <harness>
+19/19 browser checks passed
+$ .venv/bin/python tools/consistency_audit.py --database <demo db with 3 BOLA runs>
+runs checked: 3  projections rebuilt: 7  invariants: 220
+asset matrix rebuilt offline: 9 tested, 0 untested, 6 CONFIRMED, 3 SAFE
+ALL STORED RUNS INTACT AND CONSISTENT
+```
+
+That refresh changed four things in this guide: the measured counts (1055 tests
+across 63 files; 142 demo invariants over 17 surfaces), the §17 checkpoint table
+(CP38 and CP39 rows), a new §14.9 on the demo asset matrix, and §16.7's surface
+list. Every other claim in the guide was read out of the code at `8202d77`.
 
 ---
 
