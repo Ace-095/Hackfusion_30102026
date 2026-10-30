@@ -826,3 +826,56 @@ def test_identity_mismatch_halts_other_runners_in_same_run(mocked_wire):
     mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"bob"}'))
     assert observe_identity(one, actor='alice', path='/profile', identity_field='username').status == 'MISMATCH'
     with pytest.raises(ValueError, match='halted'): two.get('alice', '/items')
+
+
+def test_identity_pair_requires_distinct_tokens_and_two_matching_profiles(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity_pair
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice', 'bob': 'token-bob'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"bob"}'))
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice"}'))
+    result = observe_identity_pair(runner, actor_a='alice', actor_b='bob', path='/profile', identity_field='username')
+    assert result.status == 'MATCHED_PAIR'
+    assert result.accounts == ('alice', 'bob')
+    assert 'token-alice' not in repr(result) and 'token-bob' not in repr(result)
+    assert sum(e[0] == 'request' for e in mocked_wire[0]) == 2
+
+
+@pytest.mark.parametrize('accounts,tokens', [
+    (('alice', 'alice'), {'alice': 'token-alice'}),
+    (('alice', 'bob'), {'alice': 'same-token', 'bob': 'same-token'}),
+    (('alice', 'bob'), {'alice': 'token-alice'}),
+    (('alice', 'eve'), {'alice': 'token-alice'}),
+])
+def test_identity_pair_rejects_non_distinct_or_missing_accounts_before_network(mocked_wire, accounts, tokens):
+    from canarygate.accounts.identity_check import observe_identity_pair
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, tokens)
+    result = observe_identity_pair(runner, actor_a=accounts[0], actor_b=accounts[1], path='/profile', identity_field='username')
+    assert result.status == 'SKIPPED'
+    assert not mocked_wire[0]
+
+
+def test_identity_pair_cannot_match_if_second_profile_is_ambiguous(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity_pair
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice', 'bob': 'token-bob'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{}'))
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice"}'))
+    result = observe_identity_pair(runner, actor_a='alice', actor_b='bob', path='/profile', identity_field='username')
+    assert result.status == 'INCONCLUSIVE'
+
+
+def test_identity_pair_halts_when_second_profile_matches_other_account(mocked_wire):
+    from canarygate.accounts.identity_check import observe_identity_pair
+    from canarygate.network.guarded_httpx import GuardedHTTPXRunner
+    scope = load_authorized_scope(SCOPE + '\n - {method: GET, path: /profile, classification: READ_ONLY}\n')
+    runner = GuardedHTTPXRunner(scope, {'alice': 'token-alice', 'bob': 'token-bob'})
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice"}'))
+    mocked_wire[1].appendleft(FakeResponse(200, b'{"username":"alice"}'))
+    result = observe_identity_pair(runner, actor_a='alice', actor_b='bob', path='/profile', identity_field='username')
+    assert result.status == 'MISMATCH'
+    with pytest.raises(ValueError, match='halted'): runner.get('alice', '/items')

@@ -5,6 +5,7 @@ socket creation. Direct use can connect to a supplied IP: do not use against a
 real target until independently reviewed and explicitly authorized.
 """
 import http.client
+import hmac
 import json
 import os
 import ipaddress
@@ -246,6 +247,14 @@ class GuardedHTTPXRunner:
 
     def supports_read_path(self, path: str) -> bool:
         return isinstance(path, str) and path in self._paths
+
+    def has_distinct_credentials(self, actor_a: str, actor_b: str) -> bool:
+        if not isinstance(actor_a, str) or not isinstance(actor_b, str) or actor_a == actor_b:
+            return False
+        with self._transport._run_guard.execution():
+            first = self._transport._tokens.get(actor_a)
+            second = self._transport._tokens.get(actor_b)
+            return first is not None and second is not None and not hmac.compare_digest(first, second)
 
     def halt(self):
         self._transport._run_guard.halt()

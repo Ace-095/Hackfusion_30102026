@@ -541,6 +541,23 @@ Independent cross-account controls, resource discovery, generic recipes and the
 live scan orchestrator remain missing. It is not exposed through the API and is
 not authorization to run against a target.
 
+## Checkpoint 18 — two-account identity observations
+
+Test-first cases added `observe_identity_pair`: it requires two distinct scoped
+accounts and two distinct in-memory bearer credentials before any request, then
+observes the explicitly scoped profile operation as each account. Two matching
+profiles yield `MATCHED_PAIR`, not a BOLA or ownership verdict; ambiguous data
+is inconclusive, missing/duplicate identities are skipped and clear mismatches
+halt the shared run. Responses and token values are not returned. Seven cases
+initially failed because the pair helper did not exist. The full local suite
+passed 315 tests with one third-party warning. See [judge demo](checkpoints/18-identity-pair.md).
+
+These are observed profile controls, not proof of role, policy, resource
+privacy or ownership. The scanner/API remain disconnected. Resource discovery,
+verified ownership, live-data evidence, end-to-end safety review and the
+remaining backend requirements are still outstanding. Tests contact no
+external target or DNS service.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

@@ -55,3 +55,32 @@ def observe_identity(runner: GuardedHTTPXRunner, *, actor: str, path: str, ident
         runner.halt()
         return IdentityObservation(actor, "MISMATCH", "Identity response did not match the scoped account")
     return IdentityObservation(actor, "MATCHED", "Profile field matched the scoped account; independent controls are still required")
+
+
+@dataclass(frozen=True)
+class IdentityPairObservation:
+    accounts: tuple[str, str]
+    status: Literal["MATCHED_PAIR", "MISMATCH", "INCONCLUSIVE", "SKIPPED"]
+    reason: str
+
+
+def observe_identity_pair(runner: GuardedHTTPXRunner, *, actor_a: str, actor_b: str,
+                          path: str, identity_field: str) -> IdentityPairObservation:
+    """Observe two distinct account profiles; this does not establish ownership."""
+    accounts = (actor_a if isinstance(actor_a, str) else "", actor_b if isinstance(actor_b, str) else "")
+    if not isinstance(runner, GuardedHTTPXRunner) or not all(isinstance(a, str) for a in (actor_a, actor_b)):
+        return IdentityPairObservation(accounts, "SKIPPED", "Two scoped accounts and a guarded runner are required")
+    scoped = {item.account for item in runner.scope.accounts}
+    try:
+        distinct = actor_a in scoped and actor_b in scoped and runner.has_distinct_credentials(actor_a, actor_b)
+    except ValueError:
+        return IdentityPairObservation(accounts, "INCONCLUSIVE", "Run is halted")
+    if not distinct:
+        return IdentityPairObservation(accounts, "SKIPPED", "Distinct scoped accounts and credentials are required")
+    first = observe_identity(runner, actor=actor_a, path=path, identity_field=identity_field)
+    if first.status != "MATCHED":
+        return IdentityPairObservation(accounts, first.status, "First account profile did not match")
+    second = observe_identity(runner, actor=actor_b, path=path, identity_field=identity_field)
+    if second.status != "MATCHED":
+        return IdentityPairObservation(accounts, second.status, "Second account profile did not match")
+    return IdentityPairObservation(accounts, "MATCHED_PAIR", "Distinct credentials produced matching account profiles; ownership is not established")
