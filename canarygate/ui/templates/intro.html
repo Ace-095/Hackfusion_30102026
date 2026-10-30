@@ -1,74 +1,261 @@
 {% extends "intro_base.html" %}
 
 {#-
-  The cover sequence. Ten seconds, five beats, one word at the end.
+  The landing page: a twenty-one second title sequence, then the pitch.
 
   Rules this page follows:
   * every line is real project copy — no invented claim, no sample verdict;
-  * all text is in the DOM from the first byte, so it is readable with a screen
-    reader, with JavaScript off, and with animations blocked;
-  * the canvas is decoration only and is hidden from assistive technology;
-  * nothing here is a result. The verdict words are the backend's vocabulary,
-    labelled as such.
+  * the "product" shown in the sequence is built from the interface's own
+    components (verdict chips, evidence cards, event rows, matrix cells), not
+    from screenshots, so each part can move on its own;
+  * all text is in the DOM immediately: readable with a screen reader, with
+    JavaScript disabled, and with animation blocked;
+  * the sequence is decoration; the page below it is the actual argument.
 -#}
 
-{% block beats %}
-<section class="beat beat-1" data-beat="1">
-  <p class="beat-kicker">01 · the problem</p>
-  <p class="beat-line">A 200 response alone<br><em>is never enough.</em></p>
-  <p class="beat-sub">An API answering a request is not the same as an API
-    authorising it.</p>
-</section>
+{% block content %}
+<main>
+  <!-- ==================================================== title sequence -->
+  <section class="hero" id="hero" data-intro-stage aria-label="CanaryGate title sequence">
+    <div class="hero-scenes" data-intro-scenes>
 
-<section class="beat beat-2" data-beat="2">
-  <p class="beat-kicker">02 · the proof</p>
-  <p class="beat-line">Two-part evidence.<br><em>One verdict.</em></p>
-  <div class="beat-pair">
-    <span class="beat-proof">
-      <span class="beat-proof-n">1</span>
-      <b>Ownership proof</b>
-      <span>the resource really belongs to the other account</span>
-    </span>
-    <span class="beat-proof">
-      <span class="beat-proof-n">2</span>
-      <b>Disclosure proof</b>
-      <span>private data actually crossed that boundary</span>
-    </span>
-  </div>
-</section>
+      <!-- 07 · the product -------------------------------------------------- -->
+      <article class="scene scene-title" data-scene="7">
+        <p class="kicker pop">canarygate · v3.2 · local offline build</p>
+        <h1 class="wordmark">
+          <span class="wordmark-a">Canary</span><span class="wordmark-b">Gate</span>
+          <span class="wordmark-gate" aria-hidden="true"></span>
+        </h1>
+        <p class="tagline pop">evidence-based API authorization testing</p>
+        <p class="facts pop">
+          <span>local</span><span>fixture-only</span><span>no live scanning</span>
+        </p>
+        <p class="cta-row pop">
+          <a class="cta" href="/ui/" data-intro-enter>Enter the interface</a>
+          <a class="cta-quiet" href="/ui/scans" data-intro-enter>Go straight to the evidence</a>
+        </p>
+      </article>
 
-<section class="beat beat-3" data-beat="3">
-  <p class="beat-kicker">03 · the vocabulary</p>
-  <ul class="beat-verdicts" aria-label="The five verdicts this tool can record">
-    <li class="v v-confirmed">CONFIRMED</li>
-    <li class="v v-suspected">SUSPECTED</li>
-    <li class="v v-safe">SAFE</li>
-    <li class="v v-inconclusive">INCONCLUSIVE</li>
-    <li class="v v-skipped">SKIPPED</li>
-  </ul>
-  <p class="beat-sub">The only five conclusions this tool can draw.
-    No invented severity, no score.</p>
-</section>
 
-<section class="beat beat-4" data-beat="4">
-  <p class="beat-kicker">04 · the record</p>
-  <p class="beat-line">Every request recorded.<br><em>Every verdict traceable.</em></p>
-  <p class="beat-sub">Flight recorder: replay the evidence in the order the
-    backend captured it, then reveal the verdict.</p>
-</section>
+      <!-- 01 · the problem ------------------------------------------------ -->
+      <article class="scene scene-1" data-scene="1">
+        <p class="kicker pop">01 — the problem</p>
+        <h2 class="scene-line">
+          <span class="pop">Answering a request</span>
+          <span class="pop">is not the same as</span>
+          <span class="pop accent">authorising it.</span>
+        </h2>
+        <div class="wire pop" aria-hidden="true">
+          <span class="wire-line"></span>
+          <span class="wire-packet"></span>
+          <span class="wire-status">200</span>
+          <span class="wire-gate"></span>
+        </div>
+        <p class="scene-sub pop">Most API testing stops at the status code.</p>
+      </article>
 
-<section class="beat beat-title" data-beat="5">
-  <p class="beat-kicker">05 · the product</p>
-  <h1 class="intro-word">
-    <span class="intro-word-a">Canary</span><span class="intro-word-b">Gate</span>
-  </h1>
-  <p class="intro-tagline">evidence-based API authorization testing</p>
-  <p class="intro-facts">
-    <span>local</span><span>fixture-only</span><span>no live scanning</span>
-  </p>
-  <p class="intro-cta-row">
-    <a class="intro-cta" href="/ui/" data-intro-enter>Enter the interface</a>
-    <a class="intro-link" href="/ui/scans" data-intro-enter>Skip to the evidence</a>
-  </p>
-</section>
+      <!-- 02 · the claim -------------------------------------------------- -->
+      <article class="scene scene-2" data-scene="2">
+        <p class="kicker pop">02 — the standard of proof</p>
+        <h2 class="scene-line">
+          <span class="pop">A 200 response alone</span>
+          <span class="pop accent">is never enough.</span>
+        </h2>
+        <p class="scene-sub pop">
+          CanaryGate will not call something a vulnerability because a request
+          succeeded. It has to prove what the request actually did.
+        </p>
+      </article>
+
+      <!-- 03 · two-part evidence ------------------------------------------ -->
+      <article class="scene scene-3" data-scene="3">
+        <p class="kicker pop">03 — the method</p>
+        <h2 class="scene-line"><span class="pop">Two-part evidence. One verdict.</span></h2>
+        <div class="proof-pair">
+          <div class="proof pop">
+            <span class="proof-n">01</span>
+            <b>Ownership proof</b>
+            <span>the resource really belongs to the other account</span>
+          </div>
+          <span class="proof-link pop" aria-hidden="true"></span>
+          <div class="proof pop">
+            <span class="proof-n">02</span>
+            <b>Disclosure proof</b>
+            <span>private data actually crossed that boundary</span>
+          </div>
+        </div>
+        <p class="scene-sub pop">One part alone is not a finding.</p>
+      </article>
+
+      <!-- 04 · the vocabulary --------------------------------------------- -->
+      <article class="scene scene-4" data-scene="4">
+        <p class="kicker pop">04 — the vocabulary</p>
+        <ul class="verdicts" aria-label="The five verdicts this tool can record">
+          <li class="v v-confirmed pop">CONFIRMED</li>
+          <li class="v v-suspected pop">SUSPECTED</li>
+          <li class="v v-safe pop">SAFE</li>
+          <li class="v v-inconclusive pop">INCONCLUSIVE</li>
+          <li class="v v-skipped pop">SKIPPED</li>
+        </ul>
+        <p class="scene-sub pop">
+          Five conclusions, and nothing else. No invented severity, no score.
+        </p>
+      </article>
+
+      <!-- 05 · the flight recorder ---------------------------------------- -->
+      <article class="scene scene-5" data-scene="5">
+        <p class="kicker pop">05 — the record</p>
+        <div class="mini pop" aria-hidden="true">
+          <div class="mini-row">
+            <span class="mini-n">1</span><span class="mini-method">GET</span>
+            <span class="mini-path">/items</span><span class="mini-st">200</span>
+            <span class="mini-actor">alice</span>
+          </div>
+          <div class="mini-row is-proof">
+            <span class="mini-n">2</span><span class="mini-method">GET</span>
+            <span class="mini-path">/items/bob-item</span><span class="mini-st">200</span>
+            <span class="mini-actor">bob</span><span class="mini-tag">ownership</span>
+          </div>
+          <div class="mini-row is-proof">
+            <span class="mini-n">3</span><span class="mini-method">GET</span>
+            <span class="mini-path">/items/bob-item</span><span class="mini-st">200</span>
+            <span class="mini-actor">alice</span><span class="mini-tag">disclosure</span>
+          </div>
+          <div class="mini-verdict"><span class="v v-confirmed">CONFIRMED</span></div>
+        </div>
+        <h2 class="scene-line sm">
+          <span class="pop">Every request recorded.</span>
+          <span class="pop accent">Every verdict traceable.</span>
+        </h2>
+      </article>
+
+      <!-- 06 · the matrix -------------------------------------------------- -->
+      <article class="scene scene-6" data-scene="6">
+        <p class="kicker pop">06 — the coverage</p>
+        <div class="matrix-mini pop" aria-hidden="true">
+          <div class="mx-row mx-head"><span></span><span>alice</span><span>bob</span></div>
+          <div class="mx-row"><span>/items</span><span class="mx safe">SAFE</span><span class="mx safe">SAFE</span></div>
+          <div class="mx-row"><span>/items/{id}</span><span class="mx conf">CONFIRMED</span><span class="mx safe">SAFE</span></div>
+          <div class="mx-row"><span>/search</span><span class="mx none">not assessed</span><span class="mx none">not assessed</span></div>
+        </div>
+        <h2 class="scene-line sm"><span class="pop">Gaps stay visible.</span></h2>
+      </article>
+
+    </div>
+
+    <div class="hero-foot">
+      <p class="hero-progress" data-intro-count aria-hidden="true">
+        <span class="hero-bar"><span class="hero-bar-fill" data-intro-progress></span></span>
+        <span class="hero-clock" data-intro-countdown>entering the interface in 21s</span>
+      </p>
+      <a class="hero-scroll" href="#argument" aria-label="Read the argument below">
+        <span>keep reading</span><span class="hero-scroll-arrow" aria-hidden="true">↓</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ========================================================== the pitch -->
+  <section class="band" id="argument">
+    <div class="band-inner">
+      <p class="band-kicker">the argument</p>
+      <h2 class="band-title">
+        Anyone can show you a red badge.<br>
+        <span class="accent">This shows you the proof behind it.</span>
+      </h2>
+      <p class="band-sub">
+        CanaryGate tests API authorisation, and it refuses to guess. Every
+        conclusion is attached to the exact requests that produced it — the
+        ownership baseline, the cross-user read, and the disclosure that followed.
+      </p>
+
+      <div class="cards">
+        <article class="card">
+          <span class="card-n">01</span>
+          <h3>Evidence before verdict</h3>
+          <p>A finding exists only when two independently captured requests agree:
+            the owner reading their own resource, and a different account reading
+            it afterwards.</p>
+        </article>
+        <article class="card">
+          <span class="card-n">02</span>
+          <h3>Nothing is inferred</h3>
+          <p>Status codes, assertions, hashes and counters are rendered from the
+            backend's own records. If the backend could not establish something,
+            the page says “not recorded”.</p>
+        </article>
+        <article class="card">
+          <span class="card-n">03</span>
+          <h3>Every claim is replayable</h3>
+          <p>The flight recorder steps through the captured requests in order and
+            reveals the verdict last — so the conclusion can be checked against
+            the record, not taken on trust.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================== the journey -->
+  <section class="band band-alt" id="journey">
+    <div class="band-inner">
+      <p class="band-kicker">one investigation, seven steps</p>
+      <h2 class="band-title">Follow a Read-BOLA finding from request to verdict.</h2>
+      <ol class="journey-rail">
+        <li><a href="/ui/"><span class="rail-n">1</span><b>Posture</b><span>what the backend reports about itself</span></a></li>
+        <li><a href="/ui/endpoints"><span class="rail-n">2</span><b>Inventory</b><span>each endpoint and the access it expects</span></a></li>
+        <li><a href="/ui/scans"><span class="rail-n">3</span><b>Scan results</b><span>stored runs, newest first</span></a></li>
+        <li><a href="/ui/findings"><span class="rail-n">4</span><b>Finding</b><span>why this verdict, in the backend's words</span></a></li>
+        <li><a href="/ui/scans"><span class="rail-n">5</span><b>Ownership proof</b><span>the resource belongs to the other account</span></a></li>
+        <li><a href="/ui/scans"><span class="rail-n">6</span><b>Disclosure proof</b><span>private data crossed the boundary</span></a></li>
+        <li><a href="/ui/matrix"><span class="rail-n">7</span><b>Matrix &amp; report</b><span>coverage, gaps, and a printable record</span></a></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ======================================================= the verdicts -->
+  <section class="band" id="vocabulary">
+    <div class="band-inner">
+      <p class="band-kicker">the vocabulary</p>
+      <h2 class="band-title">Five conclusions. Each one has a rule.</h2>
+      <ul class="vocab">
+        <li><span class="v v-confirmed">CONFIRMED</span>
+          <span>Ownership and disclosure are both proven. One without the other is not a finding.</span></li>
+        <li><span class="v v-suspected">SUSPECTED</span>
+          <span>Something crossed a boundary, but the evidence is incomplete.</span></li>
+        <li><span class="v v-safe">SAFE</span>
+          <span>The oracle ran and matched the expected denial — including the denial body.</span></li>
+        <li><span class="v v-inconclusive">INCONCLUSIVE</span>
+          <span>The backend could not decide from what it captured. Not a pass.</span></li>
+        <li><span class="v v-skipped">SKIPPED</span>
+          <span>The check never ran. Missing coverage, never a green tick.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ========================================================= the honesty -->
+  <section class="band band-alt" id="limits">
+    <div class="band-inner">
+      <p class="band-kicker">what this build refuses to do</p>
+      <h2 class="band-title">The limits are on the page, not in the fine print.</h2>
+      <ul class="limits">
+        <li><b>No live scanning.</b> The API reports <code>mode="fixture"</code> and
+          <code>live_scanning=false</code>. Nothing here touches a network or a real target.</li>
+        <li><b>Synthetic results.</b> Fixture and transcript runs are recordings. They
+          are not evidence about any real or organiser-supplied API.</li>
+        <li><b>No severity, no score.</b> Severity is not in the contract, so the
+          interface never invents one.</li>
+        <li><b>No authentication.</b> This server is local and unauthenticated.
+          Do not expose it.</li>
+      </ul>
+      <p class="band-cta">
+        <a class="cta" href="/ui/" data-intro-enter>Enter the interface</a>
+        <a class="cta-quiet" href="/ui/intro">Watch the sequence again</a>
+      </p>
+    </div>
+  </section>
+
+  <footer class="landing-foot">
+    <span>CanaryGate v3.2 · local offline checkpoint</span>
+    <span>Fixture and transcript results are synthetic recordings.</span>
+  </footer>
+</main>
 {% endblock %}

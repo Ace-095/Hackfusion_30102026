@@ -671,7 +671,7 @@ def test_inconclusive_runs_are_rendered_as_inconclusive_everywhere(tmp_path):
 # --------------------------------------------------------------------------- #
 # Cover sequence (the front door)
 # --------------------------------------------------------------------------- #
-def test_cover_is_the_front_door_and_hands_off_to_the_interface(tmp_path):
+def test_landing_page_is_the_front_door_and_hands_off_to_the_interface(tmp_path):
     with _client(tmp_path) as client:
         response = client.get("/")
         assert response.status_code == 200
@@ -680,17 +680,22 @@ def test_cover_is_the_front_door_and_hands_off_to_the_interface(tmp_path):
 
         # Exactly one page title, and it is the product name.
         assert body.count("<h1") == 1
-        assert re.search(r'<h1 class="intro-word">\s*<span class="intro-word-a">Canary</span>'
-                         r'<span class="intro-word-b">Gate</span>', body)
+        assert re.search(r'<h1 class="wordmark">\s*<span class="wordmark-a">Canary</span>'
+                         r'<span class="wordmark-b">Gate</span>', body)
 
-        # Five beats, and the copy is the project's own phrasing.
-        assert body.count("data-beat=") == 5
+        # Seven scenes, and the copy is the project's own phrasing.
+        assert body.count('data-scene="') == 7
         assert "is never enough" in body
         assert "Ownership proof" in body and "Disclosure proof" in body
         assert "Every request recorded" in body
+        assert "One part alone is not a finding" in body
+
+        # The sequence shows the product's own components, not screenshots.
+        assert 'class="mini-row is-proof"' in body
+        assert 'class="mx conf"' in body and "not assessed" in body
 
         # The verdict words appear as vocabulary, never as results.
-        assert "The only five conclusions this tool can draw" in body
+        assert "Five conclusions, and nothing else" in body
         for verdict in ("CONFIRMED", "SUSPECTED", "SAFE", "INCONCLUSIVE", "SKIPPED"):
             assert verdict in body
         assert 'badge badge-danger">CONFIRMED' not in body
@@ -705,12 +710,37 @@ def test_cover_is_the_front_door_and_hands_off_to_the_interface(tmp_path):
         assert EXTERNAL_REFERENCE.search(body) is None
         assert "Fixture and transcript results are synthetic" in body
 
-        # The cover is not the interface: no navigation shell, no fixture banner.
+        # The landing page is not the interface: no navigation shell, no banner.
         assert 'id="site-nav"' not in body
         assert "Skip to content" not in body
 
 
-def test_cover_assets_are_local_and_agree_on_the_ten_second_runtime(tmp_path):
+def test_landing_page_carries_the_argument_below_the_sequence(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+
+        # The page is more than a splash screen: it makes the case in text.
+        assert 'id="argument"' in body
+        assert 'id="journey"' in body
+        assert 'id="vocabulary"' in body
+        assert 'id="limits"' in body
+        assert "Anyone can show you a red badge" in body
+        assert "Seven steps".lower() or "seven steps" in body.lower()
+
+        # Every journey step links somewhere real, and every link resolves.
+        rail = re.findall(r'<ol class="journey-rail">(.*?)</ol>', body, re.S)[0]
+        hrefs = re.findall(r'href="([^"]+)"', rail)
+        assert len(hrefs) == 7
+        for href in hrefs:
+            assert client.get(href, follow_redirects=False).status_code in (200, 303), href
+
+        # The honesty section repeats what the build refuses to do.
+        for phrase in ("No live scanning", "Synthetic results", "No severity, no score",
+                       "No authentication"):
+            assert phrase in body, phrase
+
+
+def test_landing_assets_are_local_and_agree_on_the_runtime(tmp_path):
     with _client(tmp_path) as client:
         assert client.get("/").status_code == 200
         for asset in ("/ui/static/css/intro.css", "/ui/static/js/intro.js"):
@@ -720,17 +750,36 @@ def test_cover_assets_are_local_and_agree_on_the_ten_second_runtime(tmp_path):
 
         css = client.get("/ui/static/css/intro.css").text
         script = client.get("/ui/static/js/intro.js").text
+
         # One runtime, declared in both files; the countdown cannot drift from
         # the animation if these stay equal.
-        assert "--run: 10s" in css
-        assert "RUN_MS = 10000" in script
-        # Accessibility behaviour that must not be removed by a redesign.
+        assert "--run: 21s" in css
+        assert "RUN_MS = 21000" in script
+        # Every scene delay lives in the stylesheet, not inline.
+        assert body_has_no_inline_style(client.get("/").text)
+        assert ".scene-1 { --sd:" in css
+
+        # Accessibility and honesty behaviour that a redesign must not remove.
         assert "prefers-reduced-motion: reduce" in css
         assert "prefers-reduced-motion: reduce" in script
         assert 'event.key === "Escape"' in script
+        assert "reading = true" in script          # cancels the auto hand-off
+        # Sound is synthesised, never a shipped audio file.
+        assert "createOscillator" in script
+        assert not re.search(r'\.(mp3|wav|ogg|m4a)["\']', script)
+        assert 'href="/ui/static/audio' not in client.get("/").text
+        # The toggle starts off, so nothing plays uninvited.
+        body = client.get("/").text
+        assert 'data-intro-sound aria-pressed="false"' in body
 
 
-def test_cover_can_be_replayed_from_the_interface(tmp_path):
+def body_has_no_inline_style(body):
+    """The landing page uses classes only, like the rest of the interface."""
+    stripped = body.replace('style="width:', "").replace("style=\"width:", "")
+    return "style=" not in stripped
+
+
+def test_landing_page_can_be_replayed_from_the_interface(tmp_path):
     with _client(tmp_path) as client:
         assert client.get("/ui/intro").status_code == 200
         dashboard = client.get("/ui/").text

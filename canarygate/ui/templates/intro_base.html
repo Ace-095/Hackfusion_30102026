@@ -1,45 +1,41 @@
-{#- Shell for the cover sequence. Deliberately not base.html: no sidebar, no
-    fixture banner, no navigation — the cover is a full-screen moment and ends by
-    handing the user to the interface. -#}
+{#- Shell for the landing page. Deliberately not base.html: no sidebar, no
+    fixture banner — this is the cover and the pitch, and it ends by handing the
+    visitor to the interface. -#}
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="CanaryGate — evidence-based API authorization testing. Local, fixture-only build.">
-  <meta name="robots" content="noindex">
+  <meta name="description" content="CanaryGate — evidence-based API authorization testing. A finding needs ownership proof and disclosure proof. Local, fixture-only build.">
   <title>CanaryGate · evidence-based API authorization testing</title>
-  {#- Local assets only; no fonts, no CDN, no analytics. -#}
+  {#- Local assets only; no fonts, no CDN, no analytics, no tracking. -#}
   <link rel="stylesheet" href="/ui/static/css/intro.css">
-  <noscript><meta http-equiv="refresh" content="10; url=/ui/"></noscript>
+  <noscript><meta http-equiv="refresh" content="21; url=/ui/"></noscript>
 </head>
 <body class="cover">
-  <a class="cover-skip" href="/ui/" data-intro-enter>Skip</a>
+  <a class="cover-skip" href="/ui/" data-intro-enter>Skip intro →</a>
 
   <canvas class="cover-canvas" data-intro-canvas aria-hidden="true"></canvas>
   <div class="cover-grid" aria-hidden="true"></div>
-  <div class="cover-scan" aria-hidden="true"></div>
+  <div class="cover-grain" aria-hidden="true"></div>
+  <div class="cover-sweep" aria-hidden="true"></div>
 
   <header class="cover-top">
     <span class="cover-mark" aria-hidden="true">CG</span>
     <span class="cover-mode">fixture build · live scanning off</span>
+    <div class="cover-tools">
+      <button type="button" class="tool" data-intro-sound aria-pressed="false"
+              title="Synthesised pulse, generated in this browser. No audio file is loaded.">
+        <span class="tool-dot" aria-hidden="true"></span><span data-intro-sound-label>Sound off</span>
+      </button>
+      <button type="button" class="tool" data-intro-replay title="Play the sequence again (R)">
+        <span aria-hidden="true">↻</span> Replay
+      </button>
+    </div>
   </header>
 
-  <main class="cover-stage" data-intro-stage>
-    {% block beats %}{% endblock %}
-  </main>
-
-  <footer class="cover-foot">
-    <p class="cover-count" data-intro-count aria-hidden="true">
-      <span class="cover-count-bar"><span class="cover-count-fill" data-intro-progress></span></span>
-      <span class="cover-count-text" data-intro-countdown>entering the interface in 10s</span>
-    </p>
-    <p class="cover-note">
-      Fixture and transcript results are synthetic recordings, not evidence about any
-      real or organizer-supplied API.
-    </p>
-  </footer>
+  {% block content %}{% endblock %}
 
   <script src="/ui/static/js/intro.js" defer></script>
 </body>

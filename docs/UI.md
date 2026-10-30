@@ -612,53 +612,103 @@ browser. Everything above is the strongest verification this environment allows.
 
 ---
 
-## 14. The cover (front door)
+## 14. The landing page (front door)
 
 `GET /` serves `templates/intro.html` (shell: `intro_base.html`); `GET /ui/intro`
-replays it. It is a ten-second sequence of five beats:
+replays it, and the interface sidebar links there.
 
-| Beat | Copy (verbatim from the project) |
+The page is two things at once: a **21-second title sequence** and the **pitch**.
+Every line is copy that already exists in the product — no invented claim, no
+sample verdict.
+
+### 14.1 The sequence
+
+| Scene | Window | Content |
+| --- | --- | --- |
+| — | 0.0 s | `CanaryGate` wordmark, tagline, `local · fixture-only · no live scanning`, **Enter the interface** |
+| 1 | 0.2 s | "Answering a request is not the same as authorising it." + a request crossing the gate |
+| 2 | 3.2 s | "A 200 response alone is never enough." |
+| 3 | 6.1 s | "Two-part evidence. One verdict." ownership / disclosure cards |
+| 4 | 9.2 s | The five verdicts cascade, then four dim and CONFIRMED keeps focus |
+| 5 | 12.0 s | Flight-recorder rows building up, ending on CONFIRMED |
+| 6 | 15.0 s | Matrix cells filling in, with `not assessed` left visible |
+| 7 | 17.5 s | The wordmark again, with the gate bars parting |
+
+The h1 is the wordmark and it sits **first in the DOM**, so a screen reader meets
+the page title before the scene captions, and the primary CTA is first in tab
+order. The scenes are absolutely positioned, so DOM order does not change the
+visual timing.
+
+### 14.2 What makes it move
+
+All hand-written CSS; **no GSAP, no Three.js, no canvas video, no screenshots**.
+
+* **Mask reveals.** Each line is clipped from the bottom (`clip-path: inset`)
+  and rises, staggered by `--n`, with a slight overshoot ease.
+* **Cross-fades with blur and scale.** Scenes overlap by ~0.4 s; the outgoing
+  scene blurs and lifts as the next lands.
+* **Component choreography.** The "product" in scenes 5 and 6 is built from the
+  interface's own parts — verdict chips, evidence cards, event rows, matrix
+  cells — so each piece animates on its own. Nothing is a flat image.
+* **A gate motif.** A single vertical line that traffic crosses, re-appearing as
+  the two bars that part around the wordmark.
+* **Ambient canvas.** Slow request lines with ripple events where they cross the
+  gate. Decoration only, `aria-hidden`, skipped entirely under reduced motion.
+
+### 14.3 Sound
+
+There is **no audio file in the repository**. The optional pulse is synthesised
+in the browser with the Web Audio API: a soft kick on every beat, an off-beat
+tick and a bar marker on a 100 BPM grid, master gain 0.07.
+
+It is **off by default**, starts only on an explicit click (browser autoplay
+rules plus basic courtesy), announces its state through `aria-pressed`, and
+suspends the context when muted. With no Web Audio support the button disables
+itself and says so.
+
+### 14.4 Behaviour that protects the reader
+
+* **The countdown is visible and honest** — "entering the interface in Ns".
+* **Scrolling, clicking, or pressing any key cancels the hand-off** and the
+  label changes immediately to "staying on the page — 'Enter the interface'
+  when ready".
+* **Skip** is always on screen; **Esc** leaves instantly; **R** replays.
+* **Replay** rebuilds the scene subtree (restarting every CSS animation from
+  zero) and resets the clock — no duplicated markup, no stale timers.
+* **Hidden scenes are untouchable.** `visibility` is stepped in the keyframes,
+  so an invisible CTA cannot be clicked before its scene arrives.
+* **Reduced motion** removes the canvas, lays the seven scenes out as a static
+  storyboard, and **never navigates on its own**.
+* **No JavaScript** keeps the whole page readable, the CSS sequence still plays,
+  the countdown is hidden (it would lie) and `<noscript>` refreshes to `/ui/`
+  after 21 s.
+
+### 14.5 Below the fold
+
+| Section | Purpose |
 | --- | --- |
-| 1 · the problem | "A 200 response alone is never enough." |
-| 2 · the proof | "Two-part evidence. One verdict." + Ownership proof / Disclosure proof |
-| 3 · the vocabulary | CONFIRMED · SUSPECTED · SAFE · INCONCLUSIVE · SKIPPED, captioned "the only five conclusions this tool can draw" |
-| 4 · the record | "Every request recorded. Every verdict traceable." (flight recorder) |
-| 5 · the product | **CanaryGate** + "evidence-based API authorization testing" + CTA |
+| `#argument` | "Anyone can show you a red badge. This shows you the proof behind it." + three cards: evidence before verdict, nothing inferred, everything replayable |
+| `#journey` | The seven-step investigation as a rail; every step links to a real route (a test follows all seven) |
+| `#vocabulary` | The five verdicts with the rule for each |
+| `#limits` | What the build refuses to do: no live scanning, synthetic results, no severity/score, no authentication |
+| footer | Build identity + the synthetic-results notice |
 
-Then it hands off to `/ui/`.
-
-### 14.1 Design constraints it obeys
-
-* **No new dependencies.** No Three.js, no GLSL, no font loading. The beats are
-  DOM text animated by CSS keyframes; `intro.js` only draws an ambient canvas
-  (drifting requests crossing a gate line) and runs the countdown. Deleting
-  `intro.js` leaves a working cover.
-* **No fabricated content.** Every line is copy that already appears elsewhere in
-  the product. The verdict words are labelled as vocabulary, not results.
-* **Truthful about the build.** The header says `fixture build · live scanning
-  off`; the footer repeats that fixture and transcript results are synthetic
-  recordings.
-* **Honest hand-off.** The countdown is visible (`entering the interface in Ns`),
-  `Skip` is always on screen, `Esc` leaves immediately, and both CTA links are
-  ordinary anchors.
-* **Reduced motion is a first-class path.** With `prefers-reduced-motion: reduce`
-  the canvas and sweep are removed, the beats lay out statically as a storyboard,
-  **and the page never navigates on its own** — the visitor leaves via the button.
-* **No JavaScript.** The sequence still plays (CSS), and
-  `<noscript><meta http-equiv="refresh" content="10; url=/ui/">` performs the
-  hand-off. Anchors work regardless.
-* **One runtime constant, asserted twice.** `intro.css` declares `--run: 10s` and
-  `intro.js` declares `RUN_MS = 10000`; a test fails if they drift.
-
-### 14.2 Tests
+### 14.6 Tests
 
 | Test | What it proves |
 | --- | --- |
-| `test_cover_is_the_front_door_and_hands_off_to_the_interface` | One `<h1>`, five beats, project copy present, verdicts presented as vocabulary not results, real anchors + `<noscript>` fallback, canvas hidden from AT, no external references, no navigation shell |
-| `test_cover_assets_are_local_and_agree_on_the_ten_second_runtime` | Both assets are local and served; the 10 s runtime and reduced-motion/Esc handling exist in both CSS and JS |
-| `test_cover_can_be_replayed_from_the_interface` | `/ui/intro` renders and the sidebar links to it; the dashboard is unchanged |
+| `test_landing_page_is_the_front_door_and_hands_off_to_the_interface` | One `<h1>` (the wordmark), seven scenes, project copy, product parts rather than screenshots, verdicts as vocabulary, real anchors + `<noscript>` fallback, no external references, no app shell |
+| `test_landing_page_carries_the_argument_below_the_sequence` | The four sections exist, all seven journey links resolve to real routes, the limits section states what the build refuses to do |
+| `test_landing_assets_are_local_and_agree_on_the_runtime` | Local assets, `--run: 21s` == `RUN_MS = 21000`, no inline styles, reduced-motion and Esc handling present, sound is synthesised (no audio file), toggle starts off |
+| `test_landing_page_can_be_replayed_from_the_interface` | `/ui/intro` renders, the sidebar links to it, and the dashboard is untouched |
 
-Behaviour (not markup) was verified in jsdom: countdown decrements, progress bar
-advances, `Esc` hands off to `/ui/`, and under reduced motion nothing navigates.
-The hand-off is also announced as an `intro:enter` DOM event so it is observable
-without a global variable.
+Behaviour was verified in jsdom against the real rendered page (19 assertions):
+scene count, no `<img>` anywhere, countdown, Esc, scroll cancelling the
+hand-off, replay rebuilding the subtree and resetting progress, sound off by
+default then synthesising oscillators and suspending on mute, and reduced
+motion never navigating. The full automatic hand-off was timed separately:
+**21 059 ms**, no interaction.
+
+**Still not done:** a real-browser visual pass. There is no browser binary in
+this environment (§12.6 explains why), so pacing, type rendering and the feel of
+the transitions are verified structurally and behaviourally, not visually.
