@@ -251,8 +251,8 @@ Follow a test-first sequence: integration cases for normal, sensitive, masked,
 undocumented, invalid-JSON, partial and persisted fixture responses were written
 and run before implementation; the seven new scenarios initially failed because
 DISC-03/04 were SKIPPED. Oracle tests also initially failed because the functions
-were absent. A masking edge-case test was added, observed failing, then fixed. Deeply nested
-JSON tests subsequently exposed uncaught decoder recursion in fixture response
+were absent. A masking edge-case test was added, observed failing, then fixed.
+Deeply nested JSON tests subsequently exposed uncaught decoder recursion in fixture response
 handling; those tests failed first, then passed after bounded failure handling.
 An existing full-suite assertion that still expected DISC-03/04 to be skipped was
 updated after confirming the changed behavior. No result was fabricated.
@@ -272,8 +272,9 @@ returned or stored; hashes cover minimized evidence, not raw traffic.
 The local full test suite passed: 142 tests, with one third-party Starlette/AnyIO
 deprecation warning. Real Uvicorn checks verified both the prior-checkpoint run
 and a new run, and reloaded the new report after restart; the wheel contains the
-fixture response schema and new oracle. Live scanning, general secret detection, full JSON Schema
-validation and pattern-based detection remain unimplemented. API contracts remain
+fixture response schema and new oracle. GitHub Actions passed on Linux and Windows
+for code commit `6057db9` (run 41039218117). Live scanning, general secret
+detection, full JSON Schema validation and pattern-based detection remain unimplemented. API contracts remain
 provisional and the fixture redactor is not appropriate for arbitrary live data.
 
 ## Outstanding checkpoints
