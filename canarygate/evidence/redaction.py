@@ -103,7 +103,7 @@ def prepare_for_storage(report):
                          "valid_control_observed"}
         allowed_values = {"authentication_probe": {"missing", "malformed", "wrong_scheme"},
                           "input_case": {"valid_control", "missing_required_limit", "wrong_type", "out_of_range"},
-                          "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header"}}
+                          "disclosure_signature": {"stack_trace", "internal_error_detail", "version_header", "sensitive_field", "unexpected_top_level_field"}}
         source = evidence.get("checklist", {})
         if not isinstance(source, dict):
             raise ValueError("invalid fixture evidence checklist")

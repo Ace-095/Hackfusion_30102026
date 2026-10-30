@@ -39,10 +39,10 @@ def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch, tmp_path):
         assert all(checks[name]["verdict"] == "SKIPPED" for name in ("AUTHN-04a", "AUTHN-04b", "AUTHN-05"))
         assert "Token is not a supported JWT format" in checks["AUTHN-04a"]["reason"]
         assert all(checks[name]["evidence"]["status_code"] == 401 for name in ("AUTHN-01", "AUTHN-02", "AUTHN-03"))
-        for name in ("INPUT-01", "INPUT-02", "INPUT-04", "DISC-01", "DISC-02", "DISC-05"):
+        for name in ("INPUT-01", "INPUT-02", "INPUT-04", "DISC-01", "DISC-02", "DISC-03", "DISC-04", "DISC-05"):
             assert checks[name]["verdict"] == "SAFE"
             assert checks[name]["evidence"] is not None
-        for name in ("INPUT-03", "INPUT-05", "INPUT-06", "INPUT-07", "DISC-03", "DISC-04", "DISC-06"):
+        for name in ("INPUT-03", "INPUT-05", "INPUT-06", "INPUT-07", "DISC-06"):
             assert checks[name]["verdict"] == "SKIPPED"
         assert run["evidence"]["ownership"]["private_canary_matched"] is True
         assert run["evidence"]["disclosure"]["private_canary_matched"] is True

@@ -68,7 +68,9 @@ fixture tests, not proof of full v3.2 acceptance.
    summaries, stored discovery/owner/cross-user observations, local reproduction
    instructions, verdict, remediation, authentication results and fixture constraint
    checklist. AUTHN-01/02/03 and INPUT-01/02/04 use real fixture responses;
-   DISC-01/02/05 inspect only those bounded responses. JWT-specific checks say
+   DISC-01/02/03/04/05 inspect only those bounded responses. DISC-03 checks
+   selected sensitive field names; DISC-04 compares top-level fields against an
+   explicitly closed fixture response schema. JWT-specific checks say
    SKIPPED for opaque tokens. The report identifies unfinished checks.
 4. Optional: in another terminal run the focused safety tests:
 
@@ -117,3 +119,5 @@ process first; the demo command deliberately connects only to port 8000.
 For the detailed observation and report demonstration, see [checkpoint 5](checkpoints/05-observations.md).
 
 For the separate, non-scanning OpenAPI upload demonstration, see [checkpoint 6](checkpoints/06-spec-inspection.md).
+
+For the sensitive-field and response-schema demonstration, see [checkpoint 7](checkpoints/07-disclosure.md).

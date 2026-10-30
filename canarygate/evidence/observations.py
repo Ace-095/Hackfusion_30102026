@@ -49,7 +49,7 @@ def capture(phase, account, response, *, id_field, owner_field, private_field, a
     """Record statuses and allowlisted synthetic IDs, never raw headers/private data."""
     try:
         body = response.json()
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         body = None
     items = None
     item = None

@@ -39,7 +39,7 @@ def run_auth_checks(runner, *, actor, role, path, token, private_field, baseline
             continue
         try:
             body = response.json()
-        except ValueError:
+        except (ValueError, UnicodeError, RecursionError):
             body = None
         verdict, reason = auth_verdict(response.status_code, body, private_field=private_field, baseline=baseline)
         matched = verdict == "CONFIRMED"

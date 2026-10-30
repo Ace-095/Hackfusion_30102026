@@ -57,7 +57,8 @@ See [collaboration and milestones](docs/DEVELOPMENT.md),
 [checkpoint 3 demo](docs/checkpoints/03-input-disclosure.md), and
 [checkpoint 4 demo](docs/checkpoints/04-persistence.md), and
 [checkpoint 5 demo](docs/checkpoints/05-observations.md), and
-[checkpoint 6 demo](docs/checkpoints/06-spec-inspection.md).
+[checkpoint 6 demo](docs/checkpoints/06-spec-inspection.md), and
+[checkpoint 7 demo](docs/checkpoints/07-disclosure.md).
 
 ## Run the fixture API locally
 

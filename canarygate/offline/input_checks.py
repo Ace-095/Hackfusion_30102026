@@ -3,9 +3,11 @@
 The four literal requests are independently approved in the fixture scope.
 They are not a generic user-input fuzzing facility or a live-target scanner.
 """
+import yaml
+
 from canarygate.guard.safety_guard import GuardRejected
 from canarygate.offline.runner import FixtureResponseTooLarge
-from canarygate.oracles.disclosure import disclosure_signals
+from canarygate.oracles.disclosure import disclosure_signals, inspect_sensitive_json, inspect_extra_fields
 from canarygate.oracles.validation import input_verdict
 
 INPUT_CASES = (
@@ -25,13 +27,12 @@ def _skipped(check_id, category, reason):
 def pending_input_checks(reason="Fixture validation prerequisites were not met"):
     checks = [_skipped(check_id, "Input validation", reason) for check_id, _, _ in INPUT_CASES]
     checks += [_skipped(check_id, "Disclosure", reason) for check_id, _ in DISC_CASES]
+    checks += [_skipped(check_id, "Disclosure", reason) for check_id in ("DISC-03", "DISC-04")]
     for check_id, category, why in (
         ("INPUT-03", "Input validation", "Enum check not implemented"),
         ("INPUT-05", "Input validation", "Extra property check not implemented"),
         ("INPUT-06", "Input validation", "Malformed JSON check not implemented"),
         ("INPUT-07", "Input validation", "Special characters check not implemented"),
-        ("DISC-03", "Disclosure", "Sensitive-field check not implemented"),
-        ("DISC-04", "Disclosure", "Response-schema comparison not implemented"),
         ("DISC-06", "Disclosure", "Resource-enumeration comparison not implemented"),
     ):
         checks.append(_skipped(check_id, category, why))
@@ -52,7 +53,30 @@ def _spec_supports_cases(endpoints):
     return False
 
 
-def run_input_checks(runner, *, actor, role, token, endpoints, summary):
+def _fixture_response_schemas(spec_text):
+    # This is the bundled, already-parsed fixture snapshot, never an uploaded spec.
+    # Only explicit application/json response schemas are considered by the oracle.
+    if not spec_text:
+        return {}
+    try:
+        doc = yaml.safe_load(spec_text)
+        responses = doc["paths"]["/search"]["get"]["responses"]
+        if not isinstance(responses, dict):
+            return {}
+        result = {}
+        for status, response in responses.items():
+            if isinstance(response, dict):
+                content = response.get("content", {})
+                media = content.get("application/json", {}) if isinstance(content, dict) else {}
+                schema = media.get("schema") if isinstance(media, dict) else None
+                if isinstance(schema, dict):
+                    result[str(status)] = schema
+        return result
+    except (yaml.YAMLError, TypeError, KeyError, ValueError):
+        return {}
+
+
+def run_input_checks(runner, *, actor, role, token, endpoints, summary, spec_text=None):
     checks = pending_input_checks()
     if not _spec_supports_cases(endpoints):
         return checks
@@ -81,7 +105,7 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary):
         try:
             control_body = control.json()
             control_ok = isinstance(control_body, dict) and isinstance(control_body.get("results"), list)
-        except ValueError:
+        except (ValueError, UnicodeError, RecursionError):
             pass
     if not control_ok:
         incomplete = True
@@ -101,7 +125,7 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary):
                 continue
             try:
                 response_body = response.json()
-            except ValueError:
+            except (ValueError, UnicodeError, RecursionError):
                 response_body = None
             verdict, reason = input_verdict(response.status_code, response_body)
             checks[index].update(verdict=verdict, reason=reason,
@@ -126,4 +150,29 @@ def run_input_checks(runner, *, actor, role, token, endpoints, summary):
             checks[offset].update(verdict="INCONCLUSIVE", reason="Fixture response coverage was incomplete; signature absence cannot establish safety")
         else:
             checks[offset]["reason"] = "No fixture response was inspected"
+    # Inspect the same scoped fixture responses; no additional requests are sent.
+    schemas = _fixture_response_schemas(spec_text)
+    for check_id, signature, inspector, finding, remediation in (
+        ("DISC-03", "sensitive_field", lambda response: inspect_sensitive_json(response),
+         "CONFIRMED", "Do not return passwords, tokens, secrets or password hashes in responses."),
+        ("DISC-04", "unexpected_top_level_field", lambda response: inspect_extra_fields(response, schemas),
+         "SUSPECTED", "Review undocumented response fields and restrict response DTOs to the declared schema."),
+    ):
+        check = next(item for item in checks if item["id"] == check_id)
+        inspected = [(response, label, *inspector(response)) for response, label, _ in observed]
+        matched = next(((response, label) for response, label, found, _ in inspected if found), None)
+        if matched:
+            response, label = matched
+            check.update(verdict=finding, reason=f"Fixture response contains {signature}; details are redacted",
+                         evidence=summary(actor, role, response, False, input_case=label,
+                                          disclosure_signature=signature), remediation=remediation)
+        elif len(inspected) == 4 and not incomplete and all(complete for _, _, _, complete in inspected):
+            response, label, _, _ = inspected[-1]
+            check.update(verdict="SAFE", reason=f"No {signature} observed in the four bounded fixture responses",
+                         evidence=summary(actor, role, response, False, input_case=label,
+                                          inspected_fixture_responses=4, disclosure_signature=signature))
+        elif inspected:
+            check.update(verdict="INCONCLUSIVE", reason="Fixture response inspection or coverage was incomplete")
+        else:
+            check["reason"] = "No fixture response was inspected"
     return checks

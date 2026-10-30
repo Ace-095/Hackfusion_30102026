@@ -31,9 +31,13 @@ def _summary(actor: str, role: str, response, matched: bool, **checklist) -> dic
         raw = response.json()
         if isinstance(raw, dict):
             body = {key: raw[key] for key in ("id", "owner") if isinstance(raw.get(key), str)}
+            if body.get("id") not in (None, "alice-item", "bob-item"):
+                body["id"] = "[REDACTED]"
+            if body.get("owner") not in (None, "alice", "bob"):
+                body["owner"] = "[REDACTED]"
             if "private_note" in raw:
                 body["private_note"] = "[REDACTED]"
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         pass
     summary = {"timestamp": datetime.now(timezone.utc).isoformat(), "actor": actor, "role": role,
                "method": response.request.method, "path": response.request.url.path,
@@ -50,7 +54,7 @@ def _object(response):
     try:
         value = response.json()
         return value if isinstance(value, dict) else None
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         return None
 
 
@@ -60,7 +64,7 @@ def _item_list(response):
     try:
         value = response.json()
         return value if isinstance(value, list) and all(isinstance(item, dict) for item in value) else None
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         return None
 
 
@@ -235,7 +239,8 @@ def run_fixture(target: FixtureTarget | None = None, *, recipe: dict | None = No
         auth_checks = result["checks"][:len(pending_checks())]
         result["checks"] = auth_checks + run_input_checks(
             runner, actor=account_a.username, role=account_a.role,
-            token=tokens[account_a.username], endpoints=fixture_inventory, summary=_summary)
+            token=tokens[account_a.username], endpoints=fixture_inventory, summary=_summary,
+            spec_text=spec_bytes.decode("utf-8"))
         return result
     except (GuardRejected, ValueError, KeyError, TypeError):
         result["status"] = "failed"

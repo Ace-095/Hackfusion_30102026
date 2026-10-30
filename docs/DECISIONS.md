@@ -245,6 +245,37 @@ existing demo were exercised, and the wheel was checked for parser and template.
 GitHub Actions passed on Linux and Windows for code commit `90f2e80`
 (run 41037800312). Live scanning remains disabled.
 
+## Checkpoint 7 — fixture sensitive-field and response-schema disclosure checks
+
+Follow a test-first sequence: integration cases for normal, sensitive, masked,
+undocumented, invalid-JSON, partial and persisted fixture responses were written
+and run before implementation; the seven new scenarios initially failed because
+DISC-03/04 were SKIPPED. Oracle tests also initially failed because the functions
+were absent. A masking edge-case test was added, observed failing, then fixed. Deeply nested
+JSON tests subsequently exposed uncaught decoder recursion in fixture response
+handling; those tests failed first, then passed after bounded failure handling.
+An existing full-suite assertion that still expected DISC-03/04 to be skipped was
+updated after confirming the changed behavior. No result was fabricated.
+
+DISC-03 scans only bounded JSON fixture responses for a small explicit allowlist
+of sensitive field names containing unmasked nonempty strings; it returns flags,
+not names, paths or values. Masked, redacted, empty and null values do not trigger
+confirmation. Uninterpretable values and incomplete traversal do not prove safety.
+DISC-04 compares only top-level keys against the bundled fixture's explicit,
+closed JSON response schemas for the actual status. An undocumented field is
+SUSPECTED rather than equated to sensitive disclosure; missing, open or complex
+schemas are INCONCLUSIVE. Both checks reuse the four already-scoped responses,
+with no extra requests. SAFE means only that the named signature was not seen in
+the four fully inspected synthetic responses. Redaction occurs before evidence is
+returned or stored; hashes cover minimized evidence, not raw traffic.
+
+The local full test suite passed: 142 tests, with one third-party Starlette/AnyIO
+deprecation warning. Real Uvicorn checks verified both the prior-checkpoint run
+and a new run, and reloaded the new report after restart; the wheel contains the
+fixture response schema and new oracle. Live scanning, general secret detection, full JSON Schema
+validation and pattern-based detection remain unimplemented. API contracts remain
+provisional and the fixture redactor is not appropriate for arbitrary live data.
+
 ## Outstanding checkpoints
 
 - [ ] Both developers review shared and API contracts against the supplied specification and addendum.

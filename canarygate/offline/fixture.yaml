@@ -22,8 +22,24 @@ paths:
           required: true
           schema: {type: integer, minimum: 1, maximum: 10}
       responses:
-        '200': {description: Bounded fixture search}
-        '400': {description: Invalid limit}
+        '200':
+          description: Bounded fixture search
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  results: {type: array, items: {type: object}}
+        '400':
+          description: Invalid limit
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  error: {type: string}
   /items/{id}:
     get:
       parameters:

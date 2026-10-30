@@ -74,8 +74,13 @@ fixture-only counters. `checks` contains
 per-test authentication, validation and disclosure verdicts, evidence and skip
 reasons; AUTHN-01/02/03 run only after their prerequisites and when the fixture
 scope explicitly permits them. JWT-specific checks are skipped for opaque tokens.
-INPUT-01/02/04 and DISC-01/02/05 cover only four fixed fixture responses, not all
-possible inputs or disclosures. The remaining checks are explicitly SKIPPED. Evidence has separately
+INPUT-01/02/04 and DISC-01/02/03/04/05 cover only four fixed fixture responses,
+not all possible inputs or disclosures. DISC-03 detects a narrow allowlist of
+sensitive JSON field names with unmasked string values; DISC-04 compares only
+top-level fields against an explicitly closed fixture response schema. An
+undocumented field is SUSPECTED, not automatically a confirmed security weakness.
+Missing schemas, unsupported response types or partial coverage are INCONCLUSIVE.
+The remaining checks are explicitly SKIPPED. Evidence has separately
 named `ownership` and `disclosure` entries. Each is nullable and includes a
 redacted request/response summary, account, role, time, status, verification
 checklist and SHA-256 of the redacted summary. These are minimized summaries, not
