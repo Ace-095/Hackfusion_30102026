@@ -533,7 +533,8 @@ shared run. Returned records contain no raw profile data or credentials. Tests
 cover malformed and duplicate-key JSON, mismatches, unscoped inputs, shared
 halts and a guarded login followed by a profile observation. They use mock
 sockets only; no external target was contacted. Local full suite: 308 passed,
-one third-party warning. See [judge demo](checkpoints/17-identity-observation.md).
+one third-party warning. GitHub Actions run `41046712345` passed Ubuntu and
+Windows for `f3588a7`. See [judge demo](checkpoints/17-identity-observation.md).
 
 This is not the two-account identity readiness gate or ownership verification.
 Independent cross-account controls, resource discovery, generic recipes and the
