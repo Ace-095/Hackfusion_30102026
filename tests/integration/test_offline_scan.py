@@ -13,9 +13,12 @@ from canarygate.offline.target import FixtureTarget
 def test_full_fixture_api_pipeline_cannot_open_network(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("real network access attempted")
-    monkeypatch.setattr(socket.socket, "connect", forbidden)
-    monkeypatch.setattr(socket, "getaddrinfo", forbidden)
+    # Windows asyncio creates a loopback socketpair while TestClient starts.
+    # Install the outbound guard only after that internal event loop exists;
+    # every API request and scanner operation below remains guarded.
     with TestClient(app) as client:
+        monkeypatch.setattr(socket.socket, "connect", forbidden)
+        monkeypatch.setattr(socket, "getaddrinfo", forbidden)
         assert client.get("/api/health").json() == {"status": "ok", "mode": "fixture", "live_scanning": False}
         inventory = client.get("/api/endpoints").json()["endpoints"]
         assert any(e["path"] == "/items/{id}" and e["expected_access"] == "authenticated" for e in inventory)
